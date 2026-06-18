@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from cosmu.config.feature_registry import feature_names
 from cosmu.data.altdata import StoreBackedAltProvider
 from cosmu.data.backtest import FUNDING_ACCRUAL_KEY, PRICE_FEATURES, align_asof, sum_funding_per_bar
@@ -17,6 +19,21 @@ from cosmu.strategy.spec import StrategySpec
 # How many trailing alt points to pull per (symbol, feature) before the as-of join. Generous (covers >1yr at any
 # ingest frequency) so align_asof always has its full window; bounded so a runaway series can't blow up memory.
 _ALT_HISTORY_LIMIT = 100_000
+
+# B5 staleness guard — natural cadence per alt feature, × this many cadences = the max age align_asof will carry a
+# value forward (a value staler than this is a DEAD feed, read None not carried as a live constant). Sub-daily feeds
+# (funding/OI/basis settle every few hours) tolerate hours; everything else is at most daily-published, so the
+# default daily cadence × N gives a few business days of slack (weekends/holidays/T+1 release) before clamping.
+_STALENESS_CADENCES = 5
+_SUBDAILY_FEATURES = frozenset({"funding_rate", "open_interest", "perp_spot_basis", "dvol"})
+
+
+def _feature_max_age(name: str) -> timedelta:
+    """The oldest a carried-forward value of `name` may be before align_asof treats the feed as dead. Sub-daily
+    perp metrics get an 8h cadence; every other alt feed is at most daily-published → a 1-day cadence. × the
+    cadence multiplier for slack (release lag / weekends). Conservative: a too-generous age only weakens the guard."""
+    cadence = timedelta(hours=8) if name in _SUBDAILY_FEATURES else timedelta(days=1)
+    return cadence * _STALENESS_CADENCES
 
 
 def alt_feature_universe() -> set[str]:
@@ -66,7 +83,9 @@ def build_alt_by_symbol(
                 points = provider.fetch_series(symbol, name, limit=_ALT_HISTORY_LIMIT)
             except Exception:  # noqa: BLE001 — a missing/erroring series is just no data for that feature
                 points = []
-            aligned = align_asof(points, bars)
+            # B5 staleness cap: don't carry a value older than the feed's natural cadence × N — a dead feed must
+            # read None at a bar (honest "no fresh data"), never a stale constant the gate mistakes for live signal.
+            aligned = align_asof(points, bars, max_age=_feature_max_age(name))
             if aligned:
                 feats[name] = aligned
             # The perp carry leg accrues the per-bar SUMMED funding (every settlement in the bar interval),

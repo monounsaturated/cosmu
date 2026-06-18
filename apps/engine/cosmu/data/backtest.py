@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import statistics
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
+
+_log = logging.getLogger("cosmu.data.backtest")
 
 if TYPE_CHECKING:
     # Type-only: the runtime import is deferred inside `_build_meta_gate` to break the cosmu.ml ↔ backtest cycle
@@ -908,24 +911,41 @@ def _regime_labels(closes: list[float], lookback: int = 30, band: float = 0.05) 
     return labels
 
 
-def align_asof(points: list[AltDataPoint], bars: list[Bar]) -> dict[str, float]:
+def align_asof(
+    points: list[AltDataPoint], bars: list[Bar], *, max_age: timedelta | None = None
+) -> dict[str, float]:
     """Point-in-time join of an alt-data series onto a bar series. Each bar gets the LATEST alt value whose
     `available_at` is <= that bar's timestamp — i.e. what we would actually have known at the bar. A point
     published after the bar is NEVER used (no look-ahead). Keyed by bar.ts.isoformat() so the value travels
     with the bar through any later slice (validation / holdout). Bars before the first available point get no
-    entry (the feature reads None there, exactly as if the data did not exist yet)."""
+    entry (the feature reads None there, exactly as if the data did not exist yet).
+
+    `max_age` (B5 staleness guard): an upper bound on how OLD a carried-forward value may be relative to the bar.
+    A real point-in-time read of a daily feed at a bar 60 days after the last publish would be 60 days stale — a
+    leakage-adjacent footgun (the gate treats a dead feed as a live, constant signal). When set, a bar whose
+    newest known point is older than `max_age` gets NO entry (the feature reads None — honest "we'd have had no
+    fresh data"), and the clamp is LOGGED. None (default) preserves the original carry-forever behaviour."""
     if not points or not bars:
         return {}
     pts = sorted(points, key=lambda p: p.available_at)
     out: dict[str, float] = {}
     i = 0
     current: float | None = None
+    current_at = None  # available_at of the value currently carried forward (for the staleness clamp)
+    clamped = 0
     for bar in sorted(bars, key=lambda b: b.ts):
         while i < len(pts) and pts[i].available_at <= bar.ts:
             current = pts[i].value
+            current_at = pts[i].available_at
             i += 1
-        if current is not None:
-            out[bar.ts.isoformat()] = current
+        if current is None:
+            continue
+        if max_age is not None and current_at is not None and (bar.ts - current_at) > max_age:
+            clamped += 1  # the freshest known value is staler than the feed's tolerated age → read None here
+            continue
+        out[bar.ts.isoformat()] = current
+    if clamped:
+        _log.info("align_asof clamped %d stale bars (max_age=%s) — dead-feed values not carried forward", clamped, max_age)
     return out
 
 

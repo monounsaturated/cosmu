@@ -45,6 +45,33 @@ def test_align_asof_is_point_in_time_no_lookahead():
     assert aligned[_d(4).isoformat()] == 0.005        # day4: carries the last known value forward
 
 
+def test_align_asof_max_age_clamps_dead_feed():
+    """B5 staleness guard: with a max_age cap, a value can be carried forward only while it is FRESH ENOUGH. A
+    dead feed (no new point for many bars) reads None past the cap instead of a stale constant."""
+    from datetime import timedelta
+
+    bars = [_bar(d) for d in (1, 2, 3, 10)]
+    points = [AltDataPoint(ts=_d(1), available_at=_d(1), value=0.7)]  # one point, then the feed dies
+    # No cap (legacy): the value carries forever — even to day 10 (9 days stale).
+    assert align_asof(points, bars)[_d(10).isoformat()] == 0.7
+    # 3-day cap: days 1-3 still get it (≤3 days old); day 10 (9 days old) is clamped → no entry.
+    capped = align_asof(points, bars, max_age=timedelta(days=3))
+    assert capped[_d(1).isoformat()] == 0.7
+    assert capped[_d(3).isoformat()] == 0.7
+    assert _d(10).isoformat() not in capped   # dead feed not carried as a live constant
+
+
+def test_feature_max_age_subdaily_vs_daily():
+    """The cadence map: sub-daily perp metrics tolerate hours; everything else a few business days."""
+    from datetime import timedelta
+
+    from cosmu.data.alt_join import _feature_max_age
+
+    assert _feature_max_age("funding_rate") == timedelta(hours=8) * 5    # sub-daily settle cadence
+    assert _feature_max_age("fear_greed") == timedelta(days=1) * 5       # daily-published default
+    assert _feature_max_age("some_unknown_metric") == timedelta(days=1) * 5
+
+
 def _funding_gated_spec() -> StrategySpec:
     return StrategySpec(
         name="funding-gated-test",

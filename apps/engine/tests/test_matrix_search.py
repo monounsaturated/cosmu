@@ -308,6 +308,132 @@ def test_crypto_cell_still_prices_at_binance(monkeypatch):
     assert (seen["slippage_bps"], seen["impact_bps"]) == (binance.slippage_bps, binance.impact_bps)
 
 
+# ---------------------------------------------------------------------------
+# B5 data pre-filter (item 4): skip a spec whose required alt metric is empty / stale / thin
+# ---------------------------------------------------------------------------
+
+def _funding_spec() -> StrategySpec:
+    """A spec that REQUIRES the funding_rate alt metric (so the B5 pre-filter applies to it)."""
+    j = json.loads(json.dumps(_SPEC_JSON))
+    j["name"] = "funding-needing-spec"
+    j["entry"].append({"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "fc"}})
+    j["param_space"]["fc"] = {"kind": "float", "lo": 0.0, "hi": 1.0}
+    return StrategySpec.model_validate(j)
+
+
+def _health_store(tmp_path, name: str):
+    from cosmu.knowledge.store import Store
+    return Store(Settings(database_url=f"sqlite:///{tmp_path}/{name}.sqlite3", openrouter_api_key=None))
+
+
+def _seed_metric(store, *, provider: str, metric: str, days: int, latest_iso: str) -> None:
+    """Insert `days` distinct-day rows for (provider, metric) + the matching summary row, so the health reader
+    sees real n_rows / distinct_days / latest_available_at."""
+    from cosmu.knowledge.store import utcnow
+    base = datetime(2024, 1, 1, tzinfo=UTC)
+    now = utcnow()
+    with store.batch() as w:
+        for i in range(days):
+            ts = (base + timedelta(days=i)).isoformat()
+            # alt_data.id is INTEGER AUTOINCREMENT — use raw SQL so we don't push a UUID into it.
+            w.execute(
+                "INSERT INTO alt_data(provider, symbol, metric, ts, available_at, value, ingested_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (provider, "BTCUSDT", metric, ts, ts, "0.01", now),
+            )
+        w.execute(
+            "INSERT INTO alt_data_provider_summary(provider, metric, n_rows, latest_available_at, latest_value, "
+            "updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (provider, metric, days, latest_iso, "0.01", now),
+        )
+
+
+def test_spec_data_eligible_price_only_always_passes(tmp_path):
+    from cosmu.research.matrix_search import spec_data_eligible
+    store = _health_store(tmp_path, "po")
+    ok, reason = spec_data_eligible(store, _make_spec())  # ret_Nd only — no alt metric
+    assert ok and reason == "price-only"
+
+
+def test_spec_data_eligible_skips_empty_metric(tmp_path):
+    """A funding spec with NO funding_rate rows is skipped (fails closed)."""
+    from cosmu.research.matrix_search import spec_data_eligible
+    store = _health_store(tmp_path, "empty")
+    ok, reason = spec_data_eligible(store, _funding_spec())
+    assert not ok and "no data for funding_rate" in reason
+
+
+def test_spec_data_eligible_skips_stale_metric(tmp_path):
+    """Fresh-enough row-count + distinct-days, but latest_available_at is years old → stale → skip."""
+    from cosmu.research.matrix_search import spec_data_eligible
+    store = _health_store(tmp_path, "stale")
+    _seed_metric(store, provider="binance", metric="funding_rate", days=200, latest_iso="2024-01-01T00:00:00+00:00")
+    now = datetime(2026, 6, 1, tzinfo=UTC)  # ~2.4y after the latest point
+    ok, reason = spec_data_eligible(store, _funding_spec(), now=now)
+    assert not ok and "stale" in reason
+
+
+def test_spec_data_eligible_skips_thin_metric(tmp_path):
+    """Fresh, but < 120 distinct observation days → too thin to gate a swing edge → skip."""
+    from cosmu.research.matrix_search import spec_data_eligible
+    store = _health_store(tmp_path, "thin")
+    latest = datetime(2026, 6, 1, tzinfo=UTC)
+    # 30 distinct days ending recently → fresh but thin.
+    _seed_metric(store, provider="binance", metric="funding_rate", days=30, latest_iso=latest.isoformat())
+    ok, reason = spec_data_eligible(store, _funding_spec(), now=latest + timedelta(days=1))
+    assert not ok and "thin" in reason
+
+
+def test_spec_data_eligible_passes_healthy_metric(tmp_path):
+    """Plenty of fresh, distinct-day data → eligible."""
+    from cosmu.research.matrix_search import spec_data_eligible
+    store = _health_store(tmp_path, "ok")
+    latest = datetime(2026, 6, 1, tzinfo=UTC)
+    _seed_metric(store, provider="binance", metric="funding_rate", days=200, latest_iso=latest.isoformat())
+    ok, reason = spec_data_eligible(store, _funding_spec(), now=latest + timedelta(days=1))
+    assert ok and reason == "ok"
+
+
+def test_run_matrix_cell_skips_data_starved_spec(monkeypatch, tmp_path):
+    """End-to-end: a funding spec with an empty funding feed is pre-filtered out of run_matrix_cell — it never
+    reaches the backtest (n_traded stays 0) instead of being run to produce a fabricated no-data row."""
+    import cosmu.research.matrix_search as ms
+
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(300)}, [_funding_spec()])
+    empty_store = _health_store(tmp_path, "starved")  # no alt_data, no summary → funding_rate has 0 rows
+    monkeypatch.setattr(ms, "_matrix_knowledge_store", lambda: empty_store)
+    # If the pre-filter failed and the spec ran, the spy would record a call.
+    real = ms.run_strategy_backtest_detailed
+    calls: list[str] = []
+
+    def spy(spec, params, market, **kwargs):
+        calls.append(spec.name)
+        return real(spec, params, market, **kwargs)
+
+    monkeypatch.setattr(ms, "run_strategy_backtest_detailed", spy)
+    r = ms.run_matrix_cell("BTCUSDT", "1d", persist=False)
+    assert calls == []                 # the data-starved spec was skipped before any backtest
+    assert r.n_traded == 0 and r.n_promoted == 0
+
+
+def test_metric_data_health_honest_empty_on_missing_data(tmp_path):
+    from cosmu.ingest.alt_summary import metric_data_health
+    store = _health_store(tmp_path, "mh_empty")
+    h = metric_data_health(store, "funding_rate")
+    assert h == {"n_rows": 0, "latest_available_at": None, "distinct_days": 0}
+
+
+def test_metric_data_health_counts_rows_and_distinct_days(tmp_path):
+    from cosmu.ingest.alt_summary import metric_data_health
+    store = _health_store(tmp_path, "mh_full")
+    _seed_metric(store, provider="binance", metric="funding_rate", days=150,
+                 latest_iso="2026-06-01T00:00:00+00:00")
+    h = metric_data_health(store, "funding_rate")
+    assert h["n_rows"] == 150
+    assert h["distinct_days"] == 150
+    assert h["latest_available_at"] == "2026-06-01T00:00:00+00:00"
+
+
 def test_malformed_spec_in_inbox_is_skipped_not_crashed(monkeypatch, tmp_path):
     """A malformed JSON file in the inbox is silently skipped; valid specs still run."""
     import cosmu.research.matrix_search as ms

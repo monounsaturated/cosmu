@@ -12,12 +12,14 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from cosmu.config.settings import Settings, get_settings
-from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
+from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store, spec_alt_feature_names
 from cosmu.data.backtest import run_strategy_backtest_detailed
 from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.ingest.alt_summary import metric_data_health
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.trials import record_trial, trial_stats
@@ -28,6 +30,56 @@ from cosmu.spine.venue import default_catalog
 from cosmu.strategy.spec import StrategySpec
 
 _INBOX = Path(__file__).resolve().parents[2] / "strategies" / "inbox"
+
+# B5 data pre-filter thresholds: a spec whose required ALT metric is empty / stale / too-thin is SKIPPED before any
+# compute — it cannot honestly trade, so running it would burn cells to produce a fabricated no-data row.
+_MIN_ALT_DISTINCT_DAYS = 120          # < this many distinct observation days → too thin to gate a swing edge
+_MAX_ALT_STALENESS_DAYS = 7           # latest available_at older than this → the feed is dead, the read would be None
+
+
+def _parse_iso(value: object) -> datetime | None:
+    """Parse an ISO-8601 timestamp string to an aware datetime (UTC-defaulted), or None on anything unparseable."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def spec_data_eligible(store: object, spec: StrategySpec, *, now: datetime | None = None) -> tuple[bool, str]:
+    """B5 pre-filter: is every ALT metric `spec` needs healthy enough to honestly gate? Returns (eligible, reason).
+
+    A spec with NO alt features is always eligible (price-only — bars carry their own coverage check). For each
+    required alt metric, read its pre-computed health (alt_data_provider_summary + a distinct-days count) and SKIP
+    the spec if ANY metric is empty (0 rows), STALE (latest available_at older than _MAX_ALT_STALENESS_DAYS), or
+    TOO THIN (< _MIN_ALT_DISTINCT_DAYS distinct observation days). Fails CLOSED — a missing/unreadable health row
+    counts as 0 rows (skip), so a sweep can never silently spend cells on a spec whose feature reads only None."""
+    metrics = sorted(spec_alt_feature_names(spec))
+    if not metrics:
+        return True, "price-only"
+    now = now or datetime.now(tz=UTC)
+    for metric in metrics:
+        h = metric_data_health(store, metric)
+        if int(h.get("n_rows") or 0) <= 0:
+            return False, f"no data for {metric}"
+        last = _parse_iso(h.get("latest_available_at"))
+        if last is None or (now - last) > timedelta(days=_MAX_ALT_STALENESS_DAYS):
+            return False, f"stale {metric} (latest={h.get('latest_available_at')})"
+        if int(h.get("distinct_days") or 0) < _MIN_ALT_DISTINCT_DAYS:
+            return False, f"thin {metric} ({h.get('distinct_days')}d < {_MIN_ALT_DISTINCT_DAYS})"
+    return True, "ok"
+
+
+def _matrix_knowledge_store() -> Store | None:
+    """The REAL knowledge Store (Postgres in prod/Modal, JSONL/SQLite locally) for the B5 health reads — NOT the
+    throwaway trials sqlite `run_matrix_cell` builds. None when unreachable (offline) → the pre-filter is skipped
+    (specs run as before; the pre-filter is an optimisation/guard, never a correctness gate)."""
+    try:
+        return Store(get_settings())
+    except Exception:  # noqa: BLE001 — unreachable settings/store → no pre-filter this run
+        return None
 
 
 @dataclass(frozen=True)
@@ -96,11 +148,19 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     tmp = tempfile.mkdtemp(prefix="cosmu-matrix-")
     store = Store(Settings(database_url=f"sqlite:///{tmp}/m.sqlite3", openrouter_api_key=None))
     alt_store = _matrix_alt_store()
+    # B5 data pre-filter: read each spec's required-alt-metric health from the REAL knowledge store ONCE, so an
+    # empty/stale/thin-data spec is skipped before any backtest compute (it would only ever produce a fabricated
+    # no-data row). None store (offline) → no pre-filter, specs run as before.
+    health_store = _matrix_knowledge_store()
 
     candidates: list[Candidate] = []
     n_traded = 0
     if len(bars) >= 60:
         for spec in specs:
+            if health_store is not None:
+                ok, _reason = spec_data_eligible(health_store, spec)
+                if not ok:
+                    continue  # required alt metric empty / stale / too-thin → skip (no compute on dead data)
             try:
                 # The SAME point-in-time alt join the Finder uses (lab/finder.py) — without it every
                 # funding/social/news/dvol spec reads None features and silently never trades, so the
