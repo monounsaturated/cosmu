@@ -39,6 +39,7 @@ class NlIntakeResult:
     draft: AuthorDraft
     queued: QueuedIdea | None = None  # the inbox drop (None when queue is skipped / store absent)
     explore_version_id: str | None = None  # the explore-lane version opened (None when explore is off / draft invalid)
+    agent_version_id: str | None = None  # the kind='llm' AgentSpec authored (None unless agent_lane is on)
     notes: list[str] = field(default_factory=list)
 
 
@@ -80,6 +81,9 @@ def run_pipeline(
     queue: bool = True,
     inbox_dir: Path | None = None,
     explore: bool = False,
+    agent_lane: bool = False,
+    agent_symbols: list[str] | None = None,
+    agent_venues: list[str] | None = None,
 ) -> NlIntakeResult:
     """Run the full NL→strategy chain on one document and (optionally) drop the synthesized brief into the inbox.
 
@@ -93,6 +97,13 @@ def run_pipeline(
     SIM executor observes its own logic forward (observe-only). A vibe GRADUATES to the gate-lane only if it later
     clears the unchanged gate — explore NEVER loosens or bypasses the gate, it just lets a low-confidence idea be
     watched on paper first. Default False keeps every existing caller byte-for-byte unchanged (queue-to-gate path).
+
+    `agent_lane=True` routes the SAME standardized report to the LLM/agent MODEL instead of the quant inbox: an
+    UNSTRUCTURED idea (a journalist's call, a social catalyst — not backtestable, no clean registry features)
+    becomes a typed AgentSpec and is authored as a kind='llm', observe-only, ZERO-capital strategy_version (Gate B
+    + a human launch later). This is the branch the dead `open_agent_strategy` write site needed; it is mutually
+    exclusive with the quant queue/explore disposition (an idea goes to one model, not both). Default False keeps
+    every existing caller unchanged.
     """
     notes: list[str] = []
 
@@ -170,7 +181,31 @@ def run_pipeline(
 
     queued: QueuedIdea | None = None
     explore_version_id: str | None = None
-    if explore and store is not None and draft.valid:
+    agent_version_id: str | None = None
+    if agent_lane and store is not None:
+        # AGENT MODEL branch: the unstructured idea routes to kind='llm' instead of the quant inbox. Reuse the
+        # SAME standardized `report` (the THINK step already ran) — agent_from_report maps it to a typed AgentSpec
+        # and open_agent_strategy persists it observe-only / ZERO capital. Lazy import to avoid a module cycle
+        # (author_agent → agent_author → store), mirroring the explore branch's local import.
+        from cosmu.strategy.agent_author import open_agent_strategy
+        from cosmu.strategy.author_agent import agent_from_report
+
+        agent = agent_from_report(report, name=draft.spec.name, symbols=agent_symbols, venues=agent_venues)
+        agent_version_id = open_agent_strategy(store, agent, origin="agent-nl")
+        _record(
+            store,
+            "nl_agent_authored",
+            {
+                "source": str(source),
+                "content_hash": content_hash,
+                "name": agent.name,
+                "version_id": agent_version_id,
+                "symbols": agent.symbols,
+                "venues": agent.venues,
+                "sources": agent.sources,
+            },
+        )
+    elif explore and store is not None and draft.valid:
         # VIBE/EXPLORE disposition: a low-confidence NL idea is NOT shoved at the strict gate. Persist the drafted
         # spec lane='explore' (paper, ZERO capital) and open a zero-capital paper track so the SIM executor
         # observes its own logic forward. It graduates to the gate-lane only if it later clears the unchanged gate.
@@ -216,5 +251,6 @@ def run_pipeline(
         draft=draft,
         queued=queued,
         explore_version_id=explore_version_id,
+        agent_version_id=agent_version_id,
         notes=notes,
     )
