@@ -46,6 +46,28 @@ FUNDED_STATUSES: frozenset[str] = PAPER_ALIASES | {LIVE}
 ALIVE_STATUSES: frozenset[str] = {SCREENED} | PAPER_ALIASES | {LIVE}
 
 
+# ── Screener LANE display labels (the single engine source the web ``lib/lifecycle.ts`` mirrors) ──────────────
+# The /strategies screener normalizes a version onto 5 LANES (the engine-status mapped: a version with no computed
+# evidence yet falls to the ``lab`` lane; ``screened`` → Backtest; paper/live/killed pass through). The ``lab`` lane
+# means "AUTHORED and READY, not-yet-computed" — its public label is **"New"** (was "Queued"). ``draft`` is the
+# AUTHORING sub-state UPSTREAM of ``lab`` (a version still being written, before it is ready to compute); kept as a
+# distinct lane so the front can tell "still being authored" from "ready but not yet run". Importers read these
+# instead of hand-writing the label text, so a rename touches ONE place on each side and the two never drift.
+DRAFT = "draft"   # authoring — a version still being written (not yet ready to compute)
+LAB = "lab"       # READY, not-yet-computed (authored, no backtest_symbols cell yet) — public label "New"
+
+#: Public label per screener lane. ``lab`` reads "New" (ready, not-yet-computed); ``draft`` reads "Draft".
+#: Mirrors web ``LIFE_LABEL`` / ``STAGE_LABEL`` (apps/web/lib/lifecycle.ts) — keep the two in lockstep.
+SCREENER_LABEL: dict[str, str] = {
+    DRAFT: "Draft",
+    LAB: "New",
+    SCREENED: "Backtest",
+    PAPER: "Paper",
+    LIVE: "Live",
+    KILLED: "Killed",
+}
+
+
 def is_paper(status: str | None) -> bool:
     """True when ``status`` is the paper stage (mirrors web ``isPaper``)."""
     return status in PAPER_ALIASES

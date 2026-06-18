@@ -158,3 +158,43 @@ def test_schemas_are_parseable(sqlite_tables, pg_tables):
     missing_pg = core - set(pg_tables)
     assert not missing_sqlite, f"Core tables missing from SQLite schema: {sorted(missing_sqlite)}"
     assert not missing_pg, f"Core tables missing from Postgres schema: {sorted(missing_pg)}"
+
+
+# ---------------------------------------------------------------------------
+# Item 2: tracks per-cell migration drops BOTH legacy version-wide UNIQUE names
+# ---------------------------------------------------------------------------
+
+_PER_CELL_MIGRATION = SCHEMA_DIR / "migrations" / "2026-06-18_tracks_per_cell.sql"
+
+
+def test_per_cell_migration_drops_both_version_wide_unique_names():
+    """The table was RENAMED sleeves→tracks, so an aged prod DB carries the OLD constraint name
+    `sleeves_strategy_version_id_key` (the one actually live on prod) while a newer DB carries
+    `tracks_strategy_version_id_key`. The step-3 drop must IF-EXISTS-drop BOTH so a fresh-or-aged DB both
+    end up cell-keyed — dropping only the `tracks_*` name silently leaves prod's `sleeves_*` UNIQUE in place,
+    re-introducing the per-version cap the brut spine breaks."""
+    sql = _PER_CELL_MIGRATION.read_text().lower()
+    assert "drop constraint if exists sleeves_strategy_version_id_key" in sql, (
+        "migration must drop the legacy (pre-rename) sleeves_* version-wide UNIQUE"
+    )
+    assert "drop constraint if exists tracks_strategy_version_id_key" in sql, (
+        "migration must drop the post-rename tracks_* version-wide UNIQUE"
+    )
+
+
+def test_fresh_schemas_tracks_is_cell_keyed_not_version_wide():
+    """Parity for fresh DBs: both schema files declare the per-cell UNIQUE (uq_tracks_cell) and NEITHER puts a
+    version-wide UNIQUE on tracks.strategy_version_id — a fresh DB is born cell-keyed, never needing the migration."""
+    for schema in (SQLITE_SCHEMA, PG_SCHEMA):
+        text = schema.read_text().lower()
+        assert "uq_tracks_cell on tracks(strategy_version_id, symbol, venue_id)" in text, (
+            f"{schema.name} must declare the per-cell unique index"
+        )
+        # Isolate the CREATE TABLE tracks (...) body and assert no inline UNIQUE on strategy_version_id.
+        m = re.search(r"create\s+table\s+if\s+not\s+exists\s+tracks\s*\(([^;]+)\)", text, re.DOTALL)
+        assert m is not None, f"{schema.name} must declare a tracks table"
+        body = m.group(1)
+        sv_line = next((ln for ln in body.splitlines() if "strategy_version_id" in ln), "")
+        assert "unique" not in sv_line, (
+            f"{schema.name} tracks.strategy_version_id must NOT carry a version-wide UNIQUE (cell-keyed only)"
+        )

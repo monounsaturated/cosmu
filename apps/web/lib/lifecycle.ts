@@ -1,13 +1,16 @@
 // module: the SINGLE web source of truth for the strategy lifecycle taxonomy. Two surfaces describe the same
 // pipeline with different vocabulary — the screener's `LifeStatus` (the normalized engine-status → 5 lanes,
-// where "lab" reads as Queued and "screened" as Backtest) and the strat-sheet's `Stage` (the
-// already-derived display stage). They render IDENTICALLY (same labels, same badge classes); this module
-// holds both unions, the LifeStatus→Stage bridge, and the shared label + badge-class maps so the two never
-// drift. Mirrors the engine's lifecycle vocabulary (cosmu/knowledge/lifecycle_status.py) on the web side.
+// where "lab" reads as "New" — authored, ready, not-yet-computed — and "screened" as Backtest) and the
+// strat-sheet's `Stage` (the already-derived display stage). They render IDENTICALLY (same labels, same badge
+// classes); this module holds both unions, the LifeStatus→Stage bridge, and the shared label + badge-class maps
+// so the two never drift. Mirrors the engine's lifecycle vocabulary (cosmu/knowledge/lifecycle_status.py:
+// SCREENER_LABEL) on the web side — keep the two in lockstep.
 //
 // NOTE: status is BADGE-ONLY for the money path (the live/arming interlock reads forward evidence, not this).
+// "draft" (still being authored) is an engine-side authoring sub-state UPSTREAM of "lab"; the screener surfaces
+// authored-but-uncomputed versions in the "lab"/"New" lane (no separate web lane needed until drafts are stored).
 
-// The screener's normalized lifecycle lane. "lab" → Queued, "screened" → Backtest.
+// The screener's normalized lifecycle lane. "lab" → New, "screened" → Backtest.
 export type LifeStatus = "lab" | "screened" | "paper" | "live" | "killed";
 // The strat-sheet's derived display stage (the LifeStatus lanes spelled with their public stage names).
 export type Stage = "queued" | "backtest" | "paper" | "live" | "killed";
@@ -22,15 +25,16 @@ export const LIFE_TO_STAGE: Record<LifeStatus, Stage> = {
 };
 
 // Public stage labels — keyed by LifeStatus lane (screener) and by Stage name (sheet); same rendered text.
+// The "lab"/"queued" lane reads "New" (authored, ready, not-yet-computed) — was "Queued".
 export const LIFE_LABEL: Record<LifeStatus, string> = {
-  lab: "Queued",
+  lab: "New",
   screened: "Backtest",
   paper: "Paper",
   live: "Live",
   killed: "Killed"
 };
 export const STAGE_LABEL: Record<Stage, string> = {
-  queued: "Queued",
+  queued: "New",
   backtest: "Backtest",
   paper: "Paper",
   live: "Live",

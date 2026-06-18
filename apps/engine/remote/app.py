@@ -99,6 +99,15 @@ _LAKE = dict(image=image, secrets=[engine_secret], timeout=60 * 60, cpu=4.0, mem
 # Light profile for the I/O-bound / cheap-probe schedules (ingest, mark, cost, heartbeat) — keeps the fleet's
 # Modal spend small (these aren't compute, they're network + a few queries). gate_sweep stays _HEAVY.
 _LIGHT = dict(image=image, secrets=[engine_secret], timeout=20 * 60, cpu=1.0, memory=2048)
+# Matrix-cell profile (B4 cost guard): one (asset, timeframe) gate cell is bounded work — a few seconds to a
+# couple minutes per slice. Cap the per-cell timeout at 8min (was the 1h _HEAVY default) so a stuck cell can
+# never burn an hour of fanned-out compute × tens of cells. Same beefy CPU/RAM for the cohort gate math.
+_MATRIX = dict(image=image, secrets=[engine_secret], timeout=8 * 60, cpu=4.0, memory=8192)
+
+# B4 cost guard constants for the sweep entrypoint: the hard cell ceiling + the per-cell cost estimate.
+_MAX_SWEEP_CELLS = 60                 # refuse a fan-out wider than this without an explicit re-think
+_EST_SECONDS_PER_CELL = 90.0         # rough mean wall-time of one matrix cell (well under the 8min cap)
+_MODAL_USD_PER_HOUR = 0.945          # the _MATRIX profile's blended $/hr (4 CPU + 8GB), for the $ projection
 
 
 def _run(module_args: list[str], *, extra_env: dict[str, str] | None = None) -> int:
@@ -196,7 +205,29 @@ def perp_gate_sweep() -> int:
 # loader will pull from R2. Until then, intraday cells honestly return no-data rather than crashing.
 # ---------------------------------------------------------------------------
 
-@app.function(**_HEAVY)
+def projected_sweep_usd(n_cells: int) -> float:
+    """Estimated $ for a sweep of `n_cells` matrix cells on the _MATRIX profile: cells × est-seconds × $/hr.
+    Pure + importable so the cost forecast is unit-testable without spinning up Modal."""
+    return n_cells * _EST_SECONDS_PER_CELL * (_MODAL_USD_PER_HOUR / 3600.0)
+
+
+def _guard_sweep_cost(n_cells: int, *, n_assets: int, n_timeframes: int) -> None:
+    """B4 cost guard for the sweep entrypoint: PRINT the projected $ then HARD-assert the cell ceiling, before any
+    compute fans out. A fan-out wider than _MAX_SWEEP_CELLS is refused (re-think / narrow the universe) so a
+    too-wide sweep can never silently burn Modal spend."""
+    usd = projected_sweep_usd(n_cells)
+    print(
+        f"[sweep] {n_cells} cells ({n_assets} assets × {n_timeframes} timeframes) — "
+        f"projected ~${usd:.2f} (@ {_EST_SECONDS_PER_CELL:.0f}s/cell × ${_MODAL_USD_PER_HOUR}/hr)"
+    )
+    assert n_cells <= _MAX_SWEEP_CELLS, (
+        f"sweep fan-out {n_cells} cells exceeds the {_MAX_SWEEP_CELLS}-cell cost ceiling "
+        f"(projected ~${usd:.2f}); narrow --assets/--timeframes or raise _MAX_SWEEP_CELLS deliberately"
+    )
+    print(f"[sweep] fanning out {n_cells} cells via Modal.starmap")
+
+
+@app.function(**_MATRIX)
 def matrix_cell(asset: str, timeframe: str) -> dict:
     """Single (asset, timeframe) cell of the strategy × universe sweep — the self-contained unit
     Modal.map fans out in parallel. Runs every inbox StrategySpec through the full honest Gate
@@ -234,7 +265,10 @@ def sweep(assets: str = "", timeframes: str = "1d") -> None:
     asset_list = [a.strip() for a in assets.split(",") if a.strip()] if assets else _BROAD_ASSETS
     tf_list = [t.strip() for t in timeframes.split(",") if t.strip()]
     cells = [(a, tf) for a in asset_list for tf in tf_list]
-    print(f"[sweep] fanning out {len(cells)} cells ({len(asset_list)} assets × {len(tf_list)} timeframes) via Modal.starmap")
+    # B4 cost guard: refuse a runaway fan-out and PRINT the projected $ before any compute is fanned out, so a
+    # too-wide sweep can never silently rack up Modal spend. The assert is the hard ceiling; the print is the
+    # forecast (cells × est-seconds × $/hr) the operator sees first.
+    _guard_sweep_cost(len(cells), n_assets=len(asset_list), n_timeframes=len(tf_list))
     for r in matrix_cell.starmap(cells):
         survivors = r.get("survivors") or []
         verdict = "SURVIVOR" if survivors else ("no-survivor" if r.get("n_traded") else "no-data")

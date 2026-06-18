@@ -26,9 +26,12 @@ _CENTS = Decimal("0.01")
 
 class _Inserter(Protocol):
     """Anything with ``Store.insert`` / ``Writer.insert`` — composes with both the per-arm Store and the
-    cohort batch ``Writer`` so the same helper serves every create lane."""
+    cohort batch ``Writer`` so the same helper serves every create lane. ``insert_or_get`` is the conflict-safe
+    twin used for the per-cell track insert so a re-promoted cell is a no-op, not an IntegrityError."""
 
     def insert(self, table: str, row: dict[str, Any]) -> str: ...
+
+    def insert_or_get(self, table: str, row: dict[str, Any], *, conflict_cols: list[str]) -> str: ...
 
 
 def open_paper_track(
@@ -78,4 +81,13 @@ def open_paper_track(
             row["symbol"] = symbol
         if venue_id is not None:
             row["venue_id"] = venue_id
+        # Conflict-safe against the per-cell UNIQUE (uq_tracks_cell on strategy_version_id, symbol, venue_id): a
+        # RE-PROMOTED cell (the same triple funded again in a later finder/loop pass) is a harmless no-op that
+        # returns the EXISTING track id instead of crashing on the unique. Only when the cell columns are live —
+        # ON CONFLICT (symbol, venue_id) cannot reference columns a pre-migration table lacks. Pre-migration the
+        # plain insert keeps raising on the legacy UNIQUE(strategy_version_id) so the finder/loop guard (one
+        # version-wide track per version) stays load-bearing.
+        return writer.insert_or_get(
+            "tracks", row, conflict_cols=["strategy_version_id", "symbol", "venue_id"]
+        )
     return writer.insert("tracks", row)

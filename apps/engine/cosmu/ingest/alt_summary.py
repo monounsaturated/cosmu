@@ -158,6 +158,41 @@ def latest_per_provider(store: Any) -> list[dict[str, Any]]:
     return out
 
 
+def metric_data_health(store: Any, metric: str) -> dict[str, Any]:
+    """Pre-compute eligibility facts for ONE alt metric (across all its providers), for the B5 data pre-filter.
+    Returns ``{n_rows, latest_available_at, distinct_days}``:
+
+    * ``n_rows`` / ``latest_available_at`` come from the cheap per-(provider, metric) summary rollup (no scan of
+      the ~17M-row alt_data table) — SUM of rows, MAX of available_at across the metric's providers.
+    * ``distinct_days`` is a small targeted ``COUNT(DISTINCT substr(ts,1,10))`` on alt_data for the metric — the
+      summary rollup does NOT track distinct days, so this one indexed count is the honest source. ``substr(ts,1,10)``
+      (the ISO date prefix) is backend-agnostic (works on both SQLite and Postgres TEXT timestamps).
+
+    Honest-empty / offline-safe: a missing table or a metric with no rows → all-zero / None (never fabricated), so a
+    pre-filter built on it FAILS CLOSED (skips the spec) rather than passing an untested spec on phantom freshness."""
+    out: dict[str, Any] = {"n_rows": 0, "latest_available_at": None, "distinct_days": 0}
+    try:
+        row = store.row(
+            "SELECT COALESCE(SUM(n_rows), 0) AS n_rows, MAX(latest_available_at) AS last_at "
+            "FROM alt_data_provider_summary WHERE metric = ?",
+            (metric,),
+        )
+    except Exception:  # noqa: BLE001 — table may not exist on a fresh/legacy store: fail closed (empty health)
+        return out
+    if row is not None:
+        out["n_rows"] = int(row.get("n_rows") or 0)
+        out["latest_available_at"] = row.get("last_at")
+    try:
+        d = store.row(
+            "SELECT COUNT(DISTINCT substr(ts, 1, 10)) AS days FROM alt_data WHERE metric = ?",
+            (metric,),
+        )
+        out["distinct_days"] = int(d.get("days") or 0) if d is not None else 0
+    except Exception:  # noqa: BLE001 — alt_data unreachable → 0 distinct days (fails closed)
+        out["distinct_days"] = 0
+    return out
+
+
 def latest_per_metric(store: Any, metrics: list[str]) -> dict[str, str]:
     """Latest available_at per metric (across all providers/symbols), read from the summary table (instant)
     instead of a GROUP BY over alt_data. Returns {metric: latest_available_at_iso} for the requested metrics

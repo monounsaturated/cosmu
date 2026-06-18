@@ -165,6 +165,40 @@ class Writer:
         )
         return str(record["id"])
 
+    def insert_or_get(self, table: str, row: dict[str, Any], *, conflict_cols: list[str]) -> str:
+        """Idempotent insert against a UNIQUE on `conflict_cols`: `ON CONFLICT (cols) DO NOTHING`, returning the
+        NEW id on insert or the EXISTING row's id on conflict. The conflict-safe twin of `insert` for a re-run
+        that re-touches a row a UNIQUE index already covers (e.g. a re-promoted brut cell against uq_tracks_cell):
+        the second call is a harmless no-op that hands back the original id instead of raising IntegrityError.
+
+        DO NOTHING returns no row, so on a conflict we read the existing id back by the conflict key. The conflict
+        columns are a fixed internal whitelist (never user input), safe to embed in the SQL. NULLs in a conflict
+        column are treated as DISTINCT by both backends (so a version-wide NULL-symbol/venue row never collides) —
+        the existing-id read uses `IS` so it still resolves a row whose conflict key contains NULLs."""
+        record = {"id": row.get("id", str(uuid4())), **row}
+        keys = list(record.keys())
+        placeholders = ", ".join("?" for _ in keys)
+        target = ", ".join(conflict_cols)
+        cur = self._con.execute(
+            f"INSERT INTO {table} ({', '.join(keys)}) VALUES ({placeholders}) "
+            f"ON CONFLICT ({target}) DO NOTHING RETURNING id",
+            [_serialize(record[key]) for key in keys],
+        )
+        inserted = cur.fetchone() if cur is not None and cur.description is not None else None
+        if inserted is not None:
+            return str(record["id"])
+        # Conflict (DO NOTHING returned no row): fetch the pre-existing row's id by the conflict key. Use the
+        # null-safe equality per backend (Postgres `IS NOT DISTINCT FROM`, SQLite `IS`) so a NULL conflict-column
+        # value still matches — a conflict on a partial/NULLable key only happens when the colliding values are
+        # identical, which for NULLs needs the null-safe operator (plain `=` would never match a NULL).
+        op = "IS NOT DISTINCT FROM" if self._con._pg else "IS"
+        where = " AND ".join(f"{c} {op} ?" for c in conflict_cols)
+        existing = self._con.execute(
+            f"SELECT id FROM {table} WHERE {where} LIMIT 1",
+            [_serialize(record[c]) for c in conflict_cols],
+        ).fetchone()
+        return str(existing["id"]) if existing is not None else str(record["id"])
+
     def execute(self, sql: str, params: Iterable[Any] = ()) -> None:
         """Run a raw write statement (e.g. DELETE/UPDATE) on this batch's single transaction."""
         self._con.execute(sql, params)
@@ -295,6 +329,11 @@ class Store:
     def insert(self, table: str, row: dict[str, Any]) -> str:
         with self.batch() as writer:
             return writer.insert(table, row)
+
+    def insert_or_get(self, table: str, row: dict[str, Any], *, conflict_cols: list[str]) -> str:
+        """Conflict-safe insert (see Writer.insert_or_get): new id on insert, existing id on a UNIQUE collision."""
+        with self.batch() as writer:
+            return writer.insert_or_get(table, row, conflict_cols=conflict_cols)
 
     def append_event(
         self,

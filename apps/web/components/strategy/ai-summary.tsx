@@ -23,8 +23,9 @@ export type GateFacts = {
   maxDd: number; // fraction: 0.083 = 8.3%
 } | null;
 
+// Lane labels mirror lib/lifecycle.ts (the "queued" lane reads "New" — authored, ready, not-yet-computed).
 const STAGE_LABEL: Record<Stage, string> = {
-  queued: "Queued",
+  queued: "New",
   backtest: "Backtest",
   paper: "Paper",
   live: "Live",

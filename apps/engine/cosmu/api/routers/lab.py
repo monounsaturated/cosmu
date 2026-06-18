@@ -113,6 +113,41 @@ def _dedup_cells(rows: list[dict]) -> list[dict]:
     return deduped
 
 
+# Authored-but-uncomputed versions: a Version that has NO backtest_symbols cell yet (today the screener INNER-JOINs
+# backtest_symbols, so 418/426 versions are invisible). One synthetic "New" row per such version so the operator
+# sees the whole authored population — symbol/venue empty (there is no cell), metrics zeroed (nothing computed), the
+# version's own status (which normalizes to the "New" lane via the web LifeBadge). NULL spec-only, never fabricated.
+_CELL_LESS_SELECT = (
+    "SELECT sv.id AS strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
+    "sv.created_at "
+    "FROM strategy_versions sv "
+    "JOIN strategies s ON s.id = sv.strategy_id "
+    "WHERE NOT EXISTS (SELECT 1 FROM backtest_symbols bs WHERE bs.strategy_version_id = sv.id)"
+)
+
+
+def _new_version_row(r: dict) -> LabSymbolRow:
+    """A cell-less (authored, not-yet-computed) Version as a synthetic 'New' screener row. No symbol/venue (no cell
+    exists), metrics zeroed (nothing computed — never a fabricated number), the version's real status drives the
+    lifecycle badge. verdict None so the front renders nothing in that slot."""
+    return LabSymbolRow(
+        strategy_version_id=r["strategy_version_id"],
+        strategy_name=r["strategy_name"],
+        strategy_id=r["strategy_id"],
+        kind=r.get("kind") or "quant",
+        status=r.get("status") or "lab",
+        symbol="",
+        venue_id=None,
+        return_pct=0.0,
+        sharpe=0.0,
+        max_drawdown=0.0,
+        trades=0,
+        verdict=None,
+        pooled_return_pct=None,
+        created_at=r["created_at"],
+    )
+
+
 @router.get("/lab/symbols", response_model=LabSymbolsResponse)
 def lab_symbols(symbol: str | None = None, venue: str | None = None,
                 verdict: str | None = None, version_id: str | None = None,
@@ -120,7 +155,12 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
     """Per-symbol backtest cells — one row per (strategy × symbol × venue), the granular truth the pooled
     leaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with
     the honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not
-    celebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal."""
+    celebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal.
+
+    Authored-but-UNCOMPUTED versions (no backtest_symbols cell yet) are ALSO surfaced — one synthetic 'New' row each
+    — so the whole authored population is visible, not just the ~8 versions that have cells. They are appended AFTER
+    the computed cells (which keep the outlier ranking) and only when no symbol/venue/verdict filter is active (a
+    cell-less version has no symbol/venue/verdict to match)."""
     conds: list[str] = []
     params: list[object] = []
     if symbol:
@@ -136,6 +176,9 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
         conds.append("bs.strategy_version_id = ?")
         params.append(version_id)
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    # Cell-less 'New' rows only make sense unfiltered (or filtered to a specific version_id) — a symbol/venue/verdict
+    # filter is asking for cells, which a not-yet-computed version has none of.
+    include_new = not (symbol or venue or verdict)
     with store.reading():
         # Fetch latest-first so the per-triplet dedup below keeps the most recent backtest, then we
         # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
@@ -145,9 +188,21 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
             r["venue_id"]
             for r in store.rows("SELECT DISTINCT venue_id FROM backtest_symbols WHERE venue_id IS NOT NULL ORDER BY venue_id")
         ]
+        new_rows: list[dict] = []
+        if include_new:
+            vsql = _CELL_LESS_SELECT
+            vparams: tuple = ()
+            if version_id:
+                vsql += " AND sv.id = ?"
+                vparams = (version_id,)
+            new_rows = store.rows(f"{vsql} ORDER BY sv.created_at DESC LIMIT 5000", vparams)
     deduped = _dedup_cells(rows)
     deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
     out = [_cell_row(r) for r in deduped[: max(1, limit)]]
+    # Append the authored-but-uncomputed 'New' versions after the ranked cells (they carry no return to rank by),
+    # trimmed so the whole response still respects `limit`.
+    if new_rows and len(out) < max(1, limit):
+        out += [_new_version_row(r) for r in new_rows[: max(1, limit) - len(out)]]
     return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
 
 
