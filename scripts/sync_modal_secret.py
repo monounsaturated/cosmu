@@ -41,6 +41,12 @@ WANTED = (
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
     "R2_BUCKET",
+    # Runtime BARS-FROM-RAILWAY lane (cosmu/data/market.RemoteBarsProvider): when COSMU_BARS_URL is set the Modal
+    # screen/paper clock fetches OHLCV from the Binance-reachable Railway EU engine instead of a bundled cache —
+    # so the fleet is cacheless + account-swappable (no per-account bar cache to re-bundle). API_SECRET_KEY is the
+    # x-api-key the provider presents to the (authed) /market/bars route. Absent → unchanged (keyless Binance).
+    "COSMU_BARS_URL",
+    "API_SECRET_KEY",
 )
 
 

@@ -41,7 +41,15 @@ image = (
         str(ENGINE_DIR),
         remote_path="/root/engine",
         copy=True,  # materialize into the layer so the next run_commands can see it
-        ignore=["**/__pycache__", "**/*.pyc", "tests/**", "remote/**"],
+        # CACHELESS MODE: when COSMU_BARS_URL is set the screen fetches bars at RUNTIME from the Railway EU engine
+        # (RemoteBarsProvider), so the implicit `.cosmu/market_data` bar-cache bundle is BOTH unnecessary AND a
+        # liability — bundling it pins the image to one machine's cache (defeats account-swappable deploys) and a
+        # concurrent writer (e.g. a local screen run) trips Modal's "modified during build". So drop `.cosmu` from
+        # the build context in cacheless mode; legacy mode (no COSMU_BARS_URL) still bundles it as before.
+        ignore=[
+            "**/__pycache__", "**/*.pyc", "tests/**", "remote/**",
+            *(["**/.cosmu"] if os.environ.get("COSMU_BARS_URL") else []),
+        ],
     )
     .run_commands("pip install '/root/engine[lake,ops]'")  # [lake]=duckdb (DuckLake + R2 Parquet lake_* jobs), [ops]=boto3 (R2 backup upload)
 )
