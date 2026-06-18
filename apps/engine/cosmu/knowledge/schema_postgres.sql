@@ -50,6 +50,7 @@ create table if not exists universe_pairs (
   delisted_at text,
   active integer not null default 1,
   source text not null,                -- live | curated | vision
+  multiplier numeric,                  -- contract multiplier (USD/EUR per price point); null for spot/equity/perp
   fetched_at text not null
 );
 create index if not exists idx_universe_pairs_venue on universe_pairs(venue);

@@ -40,6 +40,7 @@ __all__ = [
     "fetch_all_venues",
     "binance_vision_spot_symbols",
     "binance_vision_symbol_window",
+    "IBKR_TICKER_MAP",
 ]
 
 # Tier sizes (operator spec): Tier-0 the ~20-30 deepest names, Tier-1 the next ~100-150, Tier-2 everything else.
@@ -147,6 +148,12 @@ class UniversePair:
     # Curated pairs (IBKR equities) have no measured USD liquidity — this hint keeps them out of Tier-2 by
     # default. Only used when liquidity_usd_24h <= 0; measured pairs always rank by their real liquidity.
     tier_hint: int | None = None
+
+    # Contract multiplier — ONLY meaningful for futures (the notional USD per 1 contract = price × multiplier).
+    # None for spot/equity/perp/prediction (those are unit-qty instruments). Stored so sizing logic can scale
+    # futures positions correctly (5–50× mis-scale without it). Set at ingest for curated futures; None for
+    # live-fetched crypto (their contract sizes vary and are handled per-symbol by the execution adapter).
+    multiplier: float | None = None
 
     @property
     def id(self) -> str:
@@ -316,43 +323,160 @@ def fetch_polymarket(get: GetJson | None = None, *, limit: int = 500, pages: int
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# IBKR / US equities — IBKR has NO keyless public instrument feed (it needs an authenticated TWS/Gateway session),
-# so the equity universe is a CURATED liquid US large-cap + ETF list. Tagged source="curated" and tiered by the
-# `tier_hint` here (NOT a measured USD volume) so the honesty is explicit: these are picked, not liquidity-ranked.
+# IBKR / multi-asset curated universe — IBKR has NO keyless public instrument feed (it needs an authenticated
+# TWS/Gateway session), so the universe is a CURATED list across 4 asset classes. Tagged source="curated" and
+# tiered by the `tier_hint` here (NOT a measured USD volume) — honest: these are picked, not liquidity-ranked.
+#
+# FUTURES carry a `multiplier` (USD per point per contract) critical for correct position sizing — without it
+# an ES contract ($50/pt × 4500pt = $225k notional) is sized like a 1-unit equity and over-leveraged ~225×.
+# The multiplier map is the IBKR_TICKER_MAP entry's `multiplier` key. Equities/ETFs have multiplier=None.
 # ---------------------------------------------------------------------------------------------------------------
-# Tier-0 equities: the deepest, most-liquid US tape (mega-caps + the broad-index/sector ETFs the deploy lane uses).
-_IBKR_TIER0 = (
-    "SPY", "QQQ", "IWM", "DIA", "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META",
-    "TSLA", "AMD", "NFLX", "AVGO", "JPM", "BRK B", "XLF", "XLK", "XLE", "GLD",
+
+# Tier-0: the deepest, most-liquid instruments the deploy lane actually uses (mega-caps, broad ETFs, first-row
+# equity-index futures, deep bond futures). Live deployment priority = lowest-friction first.
+_IBKR_TIER0_EQUITY: tuple[str, ...] = (
+    "SPY", "QQQ", "IWM", "DIA",
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "GOOG", "META", "AVGO",
+    "TSLA", "AMD", "NFLX", "JPM",
+    "XLF", "XLK", "XLE", "GLD",
 )
-# Tier-1 equities: the rest of the liquid S&P large-caps + the full sector/factor/bond ETF complex.
-_IBKR_TIER1 = (
-    "GOOG", "BAC", "WMT", "V", "MA", "UNH", "JNJ", "PG", "HD", "COST",
-    "XOM", "CVX", "KO", "PEP", "ABBV", "MRK", "LLY", "PFE", "TMO", "ABT",
-    "CRM", "ADBE", "ORCL", "INTC", "CSCO", "QCOM", "TXN", "IBM", "NOW", "INTU",
-    "DIS", "CMCSA", "VZ", "T", "NKE", "MCD", "SBUX", "LOW", "TGT", "BKNG",
-    "GS", "MS", "WFC", "C", "AXP", "BLK", "SCHW", "CAT", "BA", "GE",
-    "HON", "UPS", "RTX", "LMT", "DE", "MMM", "F", "GM", "PYPL", "SQ",
-    "PLTR", "COIN", "UBER", "ABNB", "SHOP", "SNOW", "MU", "AMAT", "LRCX", "ADI",
-    "EFA", "EEM", "VEA", "VWO", "AGG", "BND", "TLT", "IEF", "SHY", "LQD",
-    "HYG", "TIP", "BIL", "DBC", "SLV", "USO", "VNQ", "XLB", "XLC", "XLI",
-    "XLP", "XLRE", "XLU", "XLV", "XLY", "SMH", "SOXX", "ARKK", "VTI", "VOO",
+
+# Tier-1 US equities: rest of the Nasdaq-100 megas + top S&P 500 non-NDX + liquid fintech/growth.
+_IBKR_TIER1_EQUITY: tuple[str, ...] = (
+    # Nasdaq-100 (additional NDX members)
+    "COST", "PEP", "ADBE", "QCOM", "TXN", "INTC", "AMAT", "LRCX", "ADI", "MU",
+    "INTU", "NOW", "CSCO", "ORCL", "IBM", "PLTR",
+    # S&P 500 non-NDX large-caps (financials/health/consumer/industrials)
+    "BRK.B", "V", "MA", "UNH", "JNJ", "WMT", "PG", "HD", "XOM", "CVX",
+    "KO", "MRK", "ABBV", "PFE", "DIS", "CRM", "ACN", "MCD", "NKE", "BAC",
+    "JPM",  # also tier-0 but keep for completeness; upsert dedupes
+    "GS", "MS", "WFC", "C", "AXP", "BLK", "SCHW",
+    "CAT", "BA", "GE", "HON", "UPS", "RTX", "LMT", "DE", "MMM",
+    "SBUX", "LOW", "TGT", "BKNG", "NKE",
+    "F", "GM", "PYPL", "SQ", "COIN", "UBER", "ABNB", "SHOP", "SNOW",
+    "VZ", "T", "CMCSA",
 )
+
+# ETF complex: broad-market, factor, sector SPDR, bonds, commodities, international.
+_IBKR_TIER1_ETF: tuple[str, ...] = (
+    # Broad US market
+    "VOO", "VTI", "IVV",
+    # Factor / style
+    "VEA", "EEM", "EFA", "VWO",
+    # Sector SPDRs (all 11)
+    "XLK", "XLF", "XLE", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",
+    # Fixed income
+    "TLT", "IEF", "HYG", "LQD", "AGG", "SHY", "BND", "TIP",
+    # Commodities
+    "SLV", "USO",
+    # Other thematic
+    "SMH", "SOXX", "ARKK", "VNQ",
+)
+
+# ── US FUTURES (CME/CBOT/NYMEX/COMEX) ── multiplier = USD per price point per 1 contract.
+# Symbol is the IBKR root (continuous front-month) + IBKR exchange + currency.
+# Sizing formula: notional_USD = price × multiplier × contracts.
+_IBKR_US_FUTURES: tuple[tuple[str, str, str, float], ...] = (
+    # symbol          ibkr_exchange  currency  multiplier
+    ("ES",  "CME",    "USD",   50.0),       # E-mini S&P 500 ($50/pt)
+    ("NQ",  "CME",    "USD",   20.0),       # E-mini Nasdaq-100 ($20/pt)
+    ("YM",  "CBOT",   "USD",    5.0),       # E-mini Dow ($5/pt)
+    ("RTY", "CME",    "USD",   50.0),       # E-mini Russell 2000 ($50/pt)
+    ("CL",  "NYMEX",  "USD", 1000.0),       # WTI Crude Oil ($1000/bbl)
+    ("NG",  "NYMEX",  "USD", 10000.0),      # Natural Gas ($10000/mmBtu)
+    ("GC",  "COMEX",  "USD",  100.0),       # Gold ($100/oz)
+    ("SI",  "COMEX",  "USD", 5000.0),       # Silver ($5000/oz)
+    ("HG",  "COMEX",  "USD", 25000.0),      # Copper ($25000/lb)
+    ("ZB",  "CBOT",   "USD", 100000.0),     # 30Y T-Bond ($100k face)
+    ("ZN",  "CBOT",   "USD", 100000.0),     # 10Y T-Note ($100k face)
+    ("ZF",  "CBOT",   "USD", 100000.0),     # 5Y T-Note ($100k face)
+    ("ZT",  "CBOT",   "USD", 200000.0),     # 2Y T-Note ($200k face)
+    ("ZC",  "CBOT",   "USD", 5000.0),       # Corn (5000 bushels)
+    ("ZS",  "CBOT",   "USD", 5000.0),       # Soybeans (5000 bushels)
+    ("ZW",  "CBOT",   "USD", 5000.0),       # Wheat (5000 bushels)
+    ("6E",  "CME",    "USD", 125000.0),     # EUR/USD FX (125k EUR)
+    ("6J",  "CME",    "USD", 12500000.0),   # JPY/USD FX (12.5M JPY)
+    ("6B",  "CME",    "USD", 62500.0),      # GBP/USD FX (62.5k GBP)
+    ("6A",  "CME",    "USD", 100000.0),     # AUD/USD FX (100k AUD)
+)
+
+# ── EU FUTURES (Eurex) ── multiplier = EUR per price point (note EUR, not USD).
+_IBKR_EU_FUTURES: tuple[tuple[str, str, str, float], ...] = (
+    ("FDAX",  "EUREX", "EUR",   25.0),      # DAX (€25/pt)
+    ("FESX",  "EUREX", "EUR",   10.0),      # Euro Stoxx 50 (€10/pt)
+    ("FGBL",  "EUREX", "EUR", 1000.0),      # Bund 10Y (€1000/0.01%)
+    ("FGBM",  "EUREX", "EUR", 1000.0),      # Bobl 5Y (€1000/0.01%)
+)
+
+# ── French / Euronext Paris equities (SBF exchange in IBKR; FR FTT applies at 0.3% above €1B mkt cap) ──
+# CAC 40 + CAC Next 20 by index-native ticker (Bloomberg/IBKR SBF format).
+_IBKR_EU_EQUITY: tuple[str, ...] = (
+    # CAC 40 (index-native IBKR/SBF tickers)
+    "MC", "OR", "TTE", "SAN", "AIR", "SU", "AI", "EL", "RMS", "BNP",
+    "DG", "SAF", "CS", "KER", "ACA", "DSY", "BN", "ENGI", "STLAP", "CAP",
+    "GLE", "STMPA", "ORA", "HO", "RI", "VIE", "SGO", "ML", "LR", "PUB",
+    "RNO", "BVI", "EN", "CA", "EDEN", "ERF", "TEP", "URW", "AC", "MT",
+    # CAC Next 20 (first batch below CAC 40 by free-float mkt cap)
+    "AF", "AKE", "BIM", "FGR", "ENX", "EO", "GFC", "GET", "LI", "RCO",
+    "RXL", "DIM", "SW", "SOI", "UBI", "FR", "VIV", "AMUN", "WLN", "ALO",
+)
+
+# ── IBKR_TICKER_MAP — index ticker → {ibkr_symbol, exchange, currency, multiplier?} ──
+# This is the ingest-side map for strategies/execution that need to translate from an index ticker to
+# the IBKR TWS/Gateway symbol/exchange tuple. Equities don't need it (symbol == ticker); futures do.
+IBKR_TICKER_MAP: dict[str, dict] = {}
+for _sym, _exch, _ccy, _mult in _IBKR_US_FUTURES:
+    IBKR_TICKER_MAP[_sym] = {"ibkr_symbol": _sym, "exchange": _exch, "currency": _ccy, "multiplier": _mult}
+for _sym, _exch, _ccy, _mult in _IBKR_EU_FUTURES:
+    IBKR_TICKER_MAP[_sym] = {"ibkr_symbol": _sym, "exchange": _exch, "currency": _ccy, "multiplier": _mult}
+# EU equities (SBF/Euronext Paris)
+for _sym in _IBKR_EU_EQUITY:
+    IBKR_TICKER_MAP[_sym] = {"ibkr_symbol": _sym, "exchange": "SBF", "currency": "EUR", "multiplier": None}
 
 
 def ibkr_curated_pairs() -> list[UniversePair]:
-    """Curated liquid US equity/ETF universe for IBKR (no keyless enumeration). tier_hint is set, liquidity is 0
-    (unmeasured) — honest: these are picked names, not USD-liquidity-ranked like the crypto venues."""
+    """Curated multi-asset IBKR universe (~250 instruments across 4 asset classes). tier_hint is set,
+    liquidity_usd_24h is 0 (unmeasured) — honest: these are picked names, not USD-liquidity-ranked.
+    Futures carry a `multiplier` (USD/EUR per price point per contract) critical for position sizing."""
     out: list[UniversePair] = []
-    for tier, names in ((0, _IBKR_TIER0), (1, _IBKR_TIER1)):
-        for name in names:
-            out.append(
-                UniversePair(
-                    venue="ibkr", symbol=name, base=name, quote="USD",
-                    asset_class="equity", instrument_type="equity",
-                    liquidity_usd_24h=0.0, source="curated", tier_hint=tier,
-                )
+    seen: set[str] = set()
+
+    def _add(symbol: str, asset_class: str, instrument_type: str, tier: int,
+             quote: str = "USD", multiplier: float | None = None) -> None:
+        if symbol in seen:
+            return
+        seen.add(symbol)
+        out.append(
+            UniversePair(
+                venue="ibkr", symbol=symbol, base=symbol, quote=quote,
+                asset_class=asset_class, instrument_type=instrument_type,
+                liquidity_usd_24h=0.0, source="curated", tier_hint=tier,
+                multiplier=multiplier,
             )
+        )
+
+    # US equities
+    for sym in _IBKR_TIER0_EQUITY:
+        _add(sym, "equity", "equity", 0)
+    for sym in _IBKR_TIER1_EQUITY:
+        _add(sym, "equity", "equity", 1)
+
+    # US ETFs
+    for sym in _IBKR_TIER1_ETF:
+        _add(sym, "equity", "etf", 1)
+
+    # US futures (multiplier stored; quote is USD)
+    for sym, _exch, ccy, mult in _IBKR_US_FUTURES:
+        _add(sym, "futures", "future", 0, quote=ccy, multiplier=mult)
+
+    # EU futures (multiplier in EUR)
+    for sym, _exch, ccy, mult in _IBKR_EU_FUTURES:
+        _add(sym, "futures", "future", 1, quote=ccy, multiplier=mult)
+
+    # EU equities (Euronext Paris / SBF; quoted in EUR)
+    for sym in _IBKR_EU_EQUITY:
+        _add(sym, "equity", "equity", 1, quote="EUR")
+
     return out
 
 

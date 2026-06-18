@@ -133,9 +133,13 @@ class Providers:
     llm_index: AltDataProvider = field(
         default_factory=lambda: LlmIndexProvider(evidence=NewsEvidenceProvider(GdeltNewsProvider()))
     )
-    # Venue fees: key-gated (ccxt exchange needed for live reads). Default = Binance static-catalog fallback
-    # (offline-safe, no key). A live ccxt client can be injected at deploy time for account-specific rates.
+    # Venue fees: the PRIMARY source (binance). Default = static-catalog fallback (offline-safe, no key).
+    # A live ccxt client can be injected at deploy time for account-specific rates.
     venue_fees: AltDataProvider = field(default_factory=lambda: VenueFeesProvider("binance"))
+    # MULTI-VENUE fees: additional venues (kraken, krakenfutures, okx). Each is an independent VenueFeesProvider
+    # with its own ccxt exchange (public, no key needed for published rates). Empty by default → only binance
+    # static fallback runs. from_settings() injects live PUBLIC ccxt instances for all 4 venues.
+    venue_fees_multi: list[AltDataProvider] = field(default_factory=list)
     # Cross-asset daily price levels (free, no key). Stooq's free CSV endpoint now demands a captcha-gated
     # apikey (returns "Get your apikey" instead of data), so it degrades to [] — the documented drop-in
     # YahooDailyProvider is now the active free source. 5y range gives the gate real depth + an OOS holdout.
@@ -206,7 +210,45 @@ class Providers:
             # CryptoPanic only connects when CRYPTOPANIC_API_KEY is set; no key → the provider returns [] (honest).
             cryptopanic=CryptoPanicIngestProvider(api_key=settings.cryptopanic_api_key or ""),
             polymarket_token="risk_on",
+            # Multi-venue fees: inject PUBLIC ccxt exchange instances (no API key required — fetchTradingFees
+            # returns the published fee schedule without authentication). Graceful: if ccxt is not installed
+            # the provider falls back to the static catalog, never crashing the pass.
+            venue_fees=_build_venue_fees_provider("binance"),
+            venue_fees_multi=_build_venue_fees_multi(),
         )
+
+
+def _build_ccxt_exchange(exchange_id: str):  # noqa: ANN202 — returns ccxt exchange | None
+    """Build a PUBLIC ccxt exchange instance (no API key) for fee discovery. Returns None when ccxt is not
+    installed or the exchange id is unknown — the caller falls back to the static catalog (honest degradation).
+    PUBLIC means fetchTradingFees / describe() only — no private endpoint is ever called here."""
+    try:
+        import ccxt  # noqa: PLC0415 — optional heavy dep (not in the base image); lazy import so the pass works without it
+        klass = getattr(ccxt, exchange_id.lower(), None)
+        if klass is None:
+            return None
+        return klass()  # no API key — public (published fee schedule) only
+    except Exception:  # noqa: BLE001 — ccxt unavailable or exchange not found → None (static fallback)
+        return None
+
+
+def _build_venue_fees_provider(exchange_id: str) -> VenueFeesProvider:
+    """Build a VenueFeesProvider with a live PUBLIC ccxt instance (no key). Falls back to the static catalog
+    when ccxt is unavailable — the provider always returns a fee, just at catalog granularity."""
+    return VenueFeesProvider(exchange_id, ccxt_exchange=_build_ccxt_exchange(exchange_id))
+
+
+def _build_venue_fees_multi() -> list[VenueFeesProvider]:
+    """Build the extra-venue fee providers (kraken, krakenfutures, okx). Each gets a public ccxt instance
+    (no key required for the published fee schedule). Returns [] if none can be built — the main binance
+    provider already covers the highest-volume venue; missing others just means fewer fee snapshots."""
+    extra: list[VenueFeesProvider] = []
+    for eid in ("kraken", "krakenfutures", "okx"):
+        try:
+            extra.append(_build_venue_fees_provider(eid))
+        except Exception:  # noqa: BLE001 — one unavailable exchange never blocks the others
+            pass
+    return extra
 
 
 def _default_store():  # noqa: ANN202 - AltDataStore | PgAltDataStore
@@ -449,12 +491,18 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
                 store, p.multiasset, source_metric=m, stored_metric=m, provider_name="stooq"
             ),
         )
-    # Venue fees: account-specific maker/taker PIT snapshot. Key-gated: offline/no-key → static-catalog
-    # fallback is used, so the cron never crashes. Stored under provider="venue_fees",
-    # symbol="<venue_id>:<symbol>", metric="venue_fees_maker"|"venue_fees_taker".
+    # Venue fees: maker/taker PIT snapshot via ccxt fetchTradingFees (live) or static catalog (fallback).
+    # Runs for the PRIMARY venue (binance) + any EXTRA venues from venue_fees_multi (kraken/krakenfutures/okx).
+    # Key-gated: offline/no-key → static-catalog fallback, so the cron never crashes. Stored under
+    # provider="venue_fees", symbol="<venue_id>:<symbol>", metric="venue_fees_maker"|"venue_fees_taker".
     counts["venue_fees"] = _safe(
         "venue_fees", lambda: _ingest_venue_fees(store, p.venue_fees, symbols)
     )
+    for _extra in p.venue_fees_multi:
+        _eid = getattr(_extra, "exchange_id", "unknown")
+        counts[f"venue_fees_{_eid}"] = _safe(
+            f"venue_fees_{_eid}", lambda prov=_extra: _ingest_venue_fees(store, prov, symbols)
+        )
     return counts
 
 

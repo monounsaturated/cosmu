@@ -157,12 +157,14 @@ def _iso(dt: datetime | None) -> str | None:
 
 def persist_universe(store: Any, pairs: list[UniversePair], *, now: datetime | None = None) -> int:
     """Idempotent upsert of every pair into universe_pairs (one transaction). Re-running refreshes liquidity/tier/
-    rank/active/fetched_at for an existing id and inserts new ones. Returns the rows written."""
+    rank/active/fetched_at for an existing id and inserts new ones. Returns the rows written.
+    The `multiplier` column is included when present (futures sizing); NULL for spot/equity/perp."""
     now = now or datetime.now(UTC)
     stamp = now.isoformat()
     cols = (
         "id", "venue", "symbol", "base", "quote", "asset_class", "instrument_type",
-        "liquidity_usd_24h", "tier", "rank", "listed_at", "delisted_at", "active", "source", "fetched_at",
+        "liquidity_usd_24h", "tier", "rank", "listed_at", "delisted_at", "active", "source",
+        "multiplier", "fetched_at",
     )
     update = ", ".join(f"{c} = excluded.{c}" for c in cols if c != "id")
     sql = (
@@ -176,7 +178,8 @@ def persist_universe(store: Any, pairs: list[UniversePair], *, now: datetime | N
                 (
                     p.id, p.venue, p.symbol, p.base, p.quote, p.asset_class, p.instrument_type,
                     float(p.liquidity_usd_24h or 0.0), p.tier, p.rank,
-                    _iso(p.listed_at), _iso(p.delisted_at), int(p.active), p.source, stamp,
+                    _iso(p.listed_at), _iso(p.delisted_at), int(p.active), p.source,
+                    float(p.multiplier) if p.multiplier is not None else None, stamp,
                 ),
             )
     return len(pairs)
@@ -189,6 +192,7 @@ def _pair_to_dict(p: UniversePair) -> dict[str, Any]:
         "liquidity_usd_24h": p.liquidity_usd_24h, "tier": p.tier, "rank": p.rank,
         "listed_at": _iso(p.listed_at), "delisted_at": _iso(p.delisted_at),
         "active": p.active, "source": p.source,
+        "multiplier": p.multiplier,
     }
 
 
