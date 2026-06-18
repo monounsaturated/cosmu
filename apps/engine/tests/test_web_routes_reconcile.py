@@ -45,13 +45,22 @@ _SLOT = re.compile(r"\$\{[^}]*\}")
 
 
 def _engine_routes() -> set[tuple[str, ...]]:
-    """Ground-truth route templates as segment tuples, params normalized to the '{}' wildcard."""
+    """Ground-truth route templates as segment tuples, params normalized to the '{}' wildcard. Recurses into
+    nested routers/mounts so it stays correct across Starlette versions — newer Starlette represents an included
+    router as a nested object whose children carry the real `.path`, where a flat `app.routes` scan would see
+    only the docs routes and falsely flag every product call as a 404."""
     routes: set[tuple[str, ...]] = set()
-    for r in app_mod.app.routes:
-        path = getattr(r, "path", None)
-        if not path or not getattr(r, "methods", None) or path in _DOC_PATHS:
-            continue
-        routes.add(_segments(path))
+
+    def _walk(items: object) -> None:
+        for r in items or ():
+            path = getattr(r, "path", None)
+            if path and getattr(r, "methods", None) and path not in _DOC_PATHS:
+                routes.add(_segments(path))
+            sub = getattr(r, "routes", None)  # Mount / included sub-router → descend
+            if sub:
+                _walk(sub)
+
+    _walk(app_mod.app.routes)
     return routes
 
 

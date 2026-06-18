@@ -28,8 +28,10 @@ export async function getTriplet(
   if (venue !== undefined) qs.set("venue", venue); // "" addresses the NULL-venue sibling explicitly
   const q = qs.toString();
   const empty: TripletCardResponse = { strategy_id: "", strategy_version_id: versionId, strategy_name: "", cell: null };
+  // Flat single-template URL (no nested backtick) so the static web↔engine route-reconcile guard can parse the
+  // path; a trailing "?" when q is empty is harmless (FastAPI ignores an empty query string).
   const { data, connected } = await getJson<TripletCardResponse>(
-    `/strategies/${versionId}/triplet${q ? `?${q}` : ""}`,
+    `/strategies/${versionId}/triplet?${q}`,
     empty,
   );
   return { data: { ...empty, ...data, cell: data.cell ?? null }, connected };
