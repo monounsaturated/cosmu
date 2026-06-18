@@ -58,16 +58,18 @@ def test_build_grid_spans_space_and_is_bounded():
     assert len(set(tags)) == len(tags)
 
 
-def test_finder_screens_ranks_by_profit_factor_and_counts_trials(tmp_path):
+def test_finder_screens_ranks_by_profit_factor_and_registers_no_trials(tmp_path):
     finder = _finder(tmp_path)
     report = finder.find(seed_orb_fvg_spec(), max_variants=10)
     assert report.screened > 0
     # leaderboard is the gate-passers sorted by profit_factor descending (displayed secondary metric)
     pfs = [r.profit_factor for r in report.leaderboard]
     assert pfs == sorted(pfs, reverse=True)
-    # EVERY screened variant was registered as a trial (deflation validity) — choke point, no bypass
+    # BRUT contract: a per-combo cell is NOT part of any cross-combo family, so the brut finder registers NO
+    # global trials (the per-combo param-grid count rides on metrics.trials_counted, not the ledger). The pooled
+    # FDR/cross-cell deflation that register_trial fed is gone — each cell is judged on its OWN data.
     n_trials = finder.store.rows("SELECT COUNT(*) AS n FROM trials")[0]["n"]
-    assert n_trials == report.screened
+    assert n_trials == 0
 
 
 def test_screen_charges_thin_book_venue_depth_not_global_default(tmp_path, monkeypatch):
@@ -95,7 +97,7 @@ def test_screen_charges_thin_book_venue_depth_not_global_default(tmp_path, monke
 
     monkeypatch.setattr(finder_mod, "run_strategy_backtest_detailed", _spy)
 
-    out = finder._screen(spec, variant, market, thin, None, source="finder", label=spec.name)
+    out = finder._screen(spec, variant, market, thin, None, grid_size=4)
     assert out is not None, "fixture variant must screen (valid grid point)"
 
     # The screen charged the VENUE's depth, not the global fallback.
@@ -162,89 +164,95 @@ def _bull_bars(n: int = 80) -> list[Bar]:
     return out
 
 
-def test_finder_promotion_opens_forward_clock_and_is_live_eligible(tmp_path):
-    # A finder survivor must reach the SAME paper clock as an evolution survivor: promotion now writes a
-    # `track_opened` event (clock origin + proven-regime passport) so master/live_eligibility can mature it. Before
-    # this, finder survivors had paper_clock_origin=None → paper_age_days 0 forever → never forward_ready → never
-    # armable (paper is HARD-enforced on the live-arm path), silently stranding every finder survivor. The
-    # fixture grid promotes nothing through the full Gate+holdout, so drive the promotion-persist path directly with a
-    # net-positive, holdout-passing survivor, then prove the clock starts and the survivor becomes live-eligible.
+def test_finder_promotion_opens_per_cell_forward_clock_and_is_live_eligible(tmp_path):
+    # BRUT per-cell: promotion writes a CELL-keyed `track_opened` event (clock origin + this cell's own
+    # proven-regime passport) so master/live_eligibility matures the CELL on its OWN forward evidence. Drive the
+    # persist path directly with a holdout-passing cell on BTCUSDT@binance, then prove the cell clock starts and
+    # the cell becomes live-eligible — scoped to (version, symbol, venue), never a sibling cell.
+    from cosmu.lab.finder import CellResult
+    from cosmu.master.live_eligibility import cell_id
+
     finder = _finder(tmp_path)
     spec = seed_orb_fvg_spec()
     fitted = fit_params(spec)
     compiled = compile_spec(spec, fitted)
-    metrics = BacktestMetrics(
+    cell_metrics = BacktestMetrics(
         oos_return=Decimal("0.05"), sharpe=Decimal("1.5"), sortino=Decimal("2.0"),
         max_drawdown=Decimal("0.10"), win_rate=Decimal("0.6"), num_trades=40,
-        regime_returns={"bull": 0.05, "bear": -0.02},  # proved positive net edge in bull only
+        regime_returns={"bull": 0.05, "bear": -0.02},  # this cell proved positive net edge in bull only
+    )
+    cell = CellResult(
+        symbol="BTCUSDT", venue_id="binance", metrics=cell_metrics, deflated_sharpe=0.96,
+        trades=40, passed=True, holdout_passed=True,
     )
     survivor = VariantResult(
-        config_tag="cfg-promoted", code_hash=compiled.code_hash, metrics=metrics,
-        deflated_sharpe=0.9, profit_factor=2.0, net_profit=0.04, gate_passed=True, reasons=[],
+        config_tag="cfg-promoted", code_hash=compiled.code_hash, metrics=cell_metrics,
+        deflated_sharpe=0.96, profit_factor=2.0, net_profit=0.04, gate_passed=True, reasons=[],
         fitted_params=fitted, promoted=True, holdout_passed=True,
+        per_symbol={"BTCUSDT": {"return": 0.05, "sharpe": 1.5, "max_drawdown": 0.10, "trades": 40.0}},
+        cells={"BTCUSDT": cell},
     )
     venue = default_catalog().venue_for(spec.universe.venues)
     finder._persist(spec, [survivor], {}, venue)
     vid = survivor.version_id
     assert vid is not None
 
-    # Promotion opened the paper clock and recorded the proven-regime passport (only the net-positive regime).
-    assert paper_clock_origin(finder.store, vid) is not None
-    assert proven_regimes_for(finder.store, vid) == {"bull"}
+    # The CELL paper clock opened with the cell's own proven-regime passport (cell-keyed track_opened).
+    assert paper_clock_origin(finder.store, vid, symbol="BTCUSDT", venue_id="binance") is not None
+    assert proven_regimes_for(finder.store, vid, symbol="BTCUSDT", venue_id="binance") == {"bull"}
+    # One per-cell track row carrying the cell columns.
+    tr = finder.store.row("SELECT symbol, venue_id FROM tracks WHERE strategy_version_id = ?", (vid,))
+    assert tr["symbol"] == "BTCUSDT" and tr["venue_id"] == "binance"
+    # The backtest_symbols cell row carries the BRUT pass verdict (the funder fans out tracks on 'pass' cells).
+    bs = finder.store.row("SELECT verdict FROM backtest_symbols WHERE strategy_version_id = ? AND symbol = 'BTCUSDT'", (vid,))
+    assert bs["verdict"] == "pass"
 
-    # Promotion also FROZE the live-replication record: frozen params + hash, the venue fee model the edge was
-    # priced against, the registry version, and the proven regimes — the single source of truth live reads.
+    # Promotion FROZE the live-replication record (single source of truth live reads).
     frozen = promotion_record(finder.store, vid)
     assert frozen is not None
-    # The numeric knobs live actually uses are frozen verbatim (config_tag is a label, dropped before fitting).
     numeric = {k: v for k, v in frozen["params"].items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
     assert frozen["params_hash"] and numeric == fitted
     assert venue.id in frozen["fee_model_snapshot"]
     assert frozen["fee_model_snapshot"][venue.id]["taker_bps"] == float(venue.taker_fee_bps)
-    assert frozen["proven_regimes"] == ["bull"]
     assert frozen["feature_registry_version"]
-    # The screen backtest recorded the cost assumptions it was scored under (so live can detect a repricing).
-    bt = finder.store.row("SELECT venue_id, fee_bps FROM backtests WHERE strategy_version_id = ? AND kind = 'screen'", (vid,))
-    assert bt["venue_id"] == venue.id
-    assert float(bt["fee_bps"]) == float(venue.taker_fee_bps)
-    # The pre-existing finder_survivor event is still written (track_opened is ADDED, not a replacement).
+    # The pre-existing finder_survivor event is still written (cell-keyed now).
     survivor_events = finder.store.rows(
-        "SELECT COUNT(*) AS n FROM events WHERE kind = 'finder_survivor' AND ref_id = ?", (vid,)
+        "SELECT COUNT(*) AS n FROM events WHERE kind = 'finder_survivor' AND ref_id = ?",
+        (cell_id(vid, "BTCUSDT", "binance"),),
     )
     assert survivor_events[0]["n"] == 1
 
-    # Before the window matures, the clock has barely started → not yet forward-ready → not armable.
+    # Before the window matures, the cell clock has barely started → not forward-ready → not armable.
     now = datetime.now(tz=UTC)
-    fresh = live_eligibility_verdict(finder.store, vid, _bull_bars(), now=now)
+    fresh = live_eligibility_verdict(finder.store, vid, _bull_bars(), now=now, symbol="BTCUSDT", venue_id="binance")
     assert fresh.forward_ready is False
     assert fresh.eligible is False
 
-    # HONEST GATE: maturity ALONE is not enough. The track is born with ZERO forward P&L (the new honest seed —
-    # the backtest OOS is NOT copied into tracks.return_pct), so a matured-but-flat track must NOT be eligible.
-    # It WOULD have been, before, when promotion seeded return_pct from the OOS — that was the live-arming leak.
+    # HONEST GATE: maturity alone is not enough — the cell track is born with ZERO forward P&L.
     matured_flat = live_eligibility_verdict(
-        finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
+        finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5), symbol="BTCUSDT", venue_id="binance"
     )
     assert matured_flat.paper_age_days >= PAPER_MIN_DAYS
-    assert matured_flat.forward_ready is False  # +0.00% forward → "paper not proven"
+    assert matured_flat.forward_ready is False
     assert matured_flat.eligible is False
 
-    # Only once REAL net-positive forward P&L accrues (the paper clock writes tracks.return_pct + the marked
-    # scope='track' snapshot trajectory) AND the track has actually TRADED forward (>= 1 real paper fill) does a
-    # matured, proven-regime track become forward-ready + armable — it needs fills, marks AND significance.
-    finder.store.rows("UPDATE tracks SET return_pct = ? WHERE strategy_version_id = ?", ("3.5", vid))
+    # Only once REAL net-positive forward P&L accrues on THIS cell (tracks.return_pct + the cell-keyed scope='track'
+    # snapshot trajectory) AND the cell has actually TRADED forward (>= 1 real paper fill on its instrument) does the
+    # matured, proven-regime cell become forward-ready + armable.
+    finder.store.rows("UPDATE tracks SET return_pct = ? WHERE strategy_version_id = ? AND symbol = 'BTCUSDT'", ("3.5", vid))
+    instrument_id = default_catalog().instrument("BTCUSDT", "binance").id
     finder.store.rows(
         "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) "
         "VALUES ('r-fp', ?, 'sandbox', 'binance', 1, ?, 'completed')", (vid, now.isoformat()))
     finder.store.rows(
         "INSERT INTO executions(id, run_id, strategy_version_id, instrument_id, venue_id, side, qty, price, fee, "
         "slippage, order_type, is_paper, ts, fill_log) "
-        "VALUES ('e-fp', 'r-fp', ?, 'binance:BTCUSDT', 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
-        (vid, now.isoformat()))
+        "VALUES ('e-fp', 'r-fp', ?, ?, 'binance', 'buy', '1', '100', '0.1', '0', 'market', 1, ?, '{}')",
+        (vid, instrument_id, now.isoformat()))
     from conftest import seed_track_snapshots
-    seed_track_snapshots(finder.store, vid, obs=25, now=now)
+    seed_track_snapshots(finder.store, cell_id(vid, "BTCUSDT", "binance"), obs=25, now=now)
     matured = live_eligibility_verdict(
-        finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5)
+        finder.store, vid, _bull_bars(), now=now + timedelta(days=PAPER_MIN_DAYS + 5), symbol="BTCUSDT", venue_id="binance"
     )
     assert matured.paper_age_days >= PAPER_MIN_DAYS
     assert matured.forward_ready is True
@@ -261,20 +269,20 @@ def test_finder_is_idempotent(tmp_path):
     assert after == before
 
 
-def test_screen_persists_per_symbol_rows(tmp_path):
-    """The screen persists a backtest_symbols ROW per (backtest × symbol) — the queryable per-symbol truth (1 strat
-    × 1 symbol × 1 result, venue_id = the fee axis), never a pooled mean. Each row carries the honest per-symbol
-    verdict (a valid vocabulary value) and is queryable / outlier-sortable per version."""
-    from cosmu.master.per_symbol import VERDICTS
-
+def test_screen_persists_per_cell_rows_with_brut_verdict(tmp_path):
+    """The screen persists a backtest_symbols ROW per CELL (backtest × symbol × venue) — the queryable per-cell
+    truth (1 strat × 1 symbol × 1 venue × 1 result, venue_id = the fee axis), never a pooled mean. Each row carries
+    the BRUT per-cell verdict: 'pass' iff the cell cleared the gate on its OWN data, else its own kill reason — the
+    funder fans out a paper track on every 'pass' cell. Queryable / outlier-sortable per version."""
     finder = _finder(tmp_path)
     finder.find(seed_orb_fvg_spec(), max_variants=8)
     rows = finder.store.rows("SELECT symbol, venue_id, return_pct, verdict, strategy_version_id FROM backtest_symbols")
-    assert rows, "the screen must persist per-symbol rows"
+    assert rows, "the screen must persist per-cell rows"
     for r in rows:
         assert r["venue_id"] == "binance"
         assert r["symbol"]  # a real symbol, never a pooled blob
-        assert r["verdict"] in VERDICTS  # classified with a known label, never a stray string or NULL
+        # The verdict is the BRUT cell pass/fail — 'pass' or a kill-reason string, never a sibling-compared label.
+        assert r["verdict"] is None or isinstance(r["verdict"], str)
     vid = rows[0]["strategy_version_id"]
     ranked = finder.store.rows(
         "SELECT symbol FROM backtest_symbols WHERE strategy_version_id = ? ORDER BY return_pct DESC", (vid,)

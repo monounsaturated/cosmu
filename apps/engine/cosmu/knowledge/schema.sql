@@ -230,15 +230,21 @@ CREATE TABLE IF NOT EXISTS positions (
   updated_at TEXT NOT NULL
 );
 
+-- A track is one BRUT cell's forward-proof: a tradeable triple (strategy_version × symbol × venue), each judged
+-- and forward-tested on its OWN data. symbol/venue_id are nullable for legacy version-wide tracks; the cell
+-- UNIQUE index lets one version hold one track per passing cell (the old UNIQUE(strategy_version_id) is dropped).
 CREATE TABLE IF NOT EXISTS tracks (
   id TEXT PRIMARY KEY,
-  strategy_version_id TEXT NOT NULL UNIQUE REFERENCES strategy_versions(id),
+  strategy_version_id TEXT NOT NULL REFERENCES strategy_versions(id),
+  symbol TEXT,
+  venue_id TEXT,
   starting_capital NUMERIC NOT NULL DEFAULT 100000,
   equity NUMERIC NOT NULL,
   return_pct NUMERIC NOT NULL,
   target_vol REAL,
   updated_at TEXT NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tracks_cell ON tracks(strategy_version_id, symbol, venue_id);
 
 
 CREATE TABLE IF NOT EXISTS live_toggle (

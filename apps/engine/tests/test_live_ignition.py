@@ -69,12 +69,16 @@ def _persist_survivor(store: Store) -> str:
             "status": "paper", "created_at": now, "killed_at": None, "kill_reason": None,
         },
     )
-    store.insert("tracks", {"strategy_version_id": vid, "starting_capital": "1000", "equity": "1000",
-                            "return_pct": "0", "updated_at": now})
-    store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.2", "sharpe": "1.5",
+    store.insert("tracks", {"strategy_version_id": vid, "symbol": "BTCUSDT", "venue_id": "binance",
+                            "starting_capital": "1000", "equity": "1000", "return_pct": "0", "updated_at": now})
+    bt_id = store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.2", "sharpe": "1.5",
                                "sortino": "1.5", "deflated_sharpe": "1.5", "max_dd": "0.1", "win_rate": "0.6",
                                "num_trades": 30, "pbo": "0.0", "trials_counted": 1, "regime_label": "mixed",
                                "folds_positive": 5, "passed_gates": 1, "holdout_passed": 1, "created_at": now})
+    # BRUT: the funder fans out a track per backtest_symbols 'pass' cell — seed the proven cell on BTCUSDT@binance.
+    store.insert("backtest_symbols", {"backtest_id": bt_id, "strategy_version_id": vid, "symbol": "BTCUSDT",
+                                      "venue_id": "binance", "return_pct": "0.2", "sharpe": "1.5",
+                                      "max_drawdown": "0.1", "trades": 30, "verdict": "pass", "created_at": now})
     # A promoted survivor is FROZEN — live entries only open on this exact config (paper_step._frozen_config_ok).
     from cosmu.master.promotion import freeze_promotion
 

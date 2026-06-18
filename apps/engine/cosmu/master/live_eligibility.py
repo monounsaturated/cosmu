@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from cosmu.config.settings import PAPER_MIN_FORWARD_DSR, PAPER_MIN_FORWARD_OBS
-from cosmu.knowledge.store import Store
+from cosmu.knowledge.store import Store, tracks_has_cell_columns
 from cosmu.master.paper_maturity import PaperMaturity, maturity
 from cosmu.master.scorer import probabilistic_sharpe, sample_moments
 from cosmu.ml.regime import Regime, current_regime, regime_eligible
@@ -29,30 +29,60 @@ class LiveRegimeVerdict:
     reason: str
 
 
-def proven_regimes_for(store: Store, version_id: str) -> set[str]:
-    """Read a strategy version's proven-regime passport from its most recent track_opened event (written by
-    the evolution loop when the deterministic gate opened the track). Empty if the version never opened a
-    track — which the gate then treats as 'never proven anywhere' (blocked)."""
-    row = store.row(
-        "SELECT payload FROM events WHERE kind = 'track_opened' AND ref_id = ? ORDER BY id DESC LIMIT 1",
-        (version_id,),
-    )
-    if not row:
-        return set()
-    payload = row["payload"]
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except json.JSONDecodeError:
-            return set()
-    return set(payload.get("proven_regimes") or [])
+def cell_id(version_id: str, symbol: str | None, venue_id: str | None) -> str:
+    """The BRUT cell key — one tradeable triple (algorithm × asset × venue). The forward-proof readers below are
+    re-keyed to this so a per-cell paper track proves ITSELF: a (version,SOL,binance) cell's clock/fills/marks are
+    never read off a sibling (version,XRP,binance) cell. When symbol/venue are None the readers fall back to the
+    VERSION-only key (legacy rows written before the per-cell migration, and the pre-existing version-wide callers
+    in api/promotion which still pass version_id alone)."""
+    return f"{version_id}:{symbol}:{venue_id}"
 
 
-def live_regime_verdict(store: Store, version_id: str, reference_bars) -> LiveRegimeVerdict:
+def _ref_ids(store: Store, version_id: str, symbol: str | None, venue_id: str | None) -> tuple[str, ...]:
+    """Ref-id candidates for a cell-scoped portfolio_snapshots / events lookup, schema-aware.
+
+    POST-migration (the live `tracks` table carries the per-cell columns): a cell is scoped STRICTLY to its OWN
+    ref_id — ``(cell_id,)`` with NO version-only fallback. This is the Blocker-B fix: a fresh cell with no own
+    snapshots must read EMPTY history, never INHERIT a coexisting legacy version-only series (another population's
+    forward P&L) — empty history is the intended "no history → no premature defund / no inherited live-proof".
+
+    PRE-migration (no cell columns — current prod): the version-only shape is the ONLY one that exists, so we read
+    ``(version_id,)`` exactly as before this PR. When symbol/venue are both None (a version-wide caller) it always
+    collapses to ``(version_id,)`` regardless of schema."""
+    if symbol is None and venue_id is None:
+        return (version_id,)
+    if tracks_has_cell_columns(store):
+        return (cell_id(version_id, symbol, venue_id),)
+    return (version_id,)
+
+
+def proven_regimes_for(store: Store, version_id: str, *, symbol: str | None = None, venue_id: str | None = None) -> set[str]:
+    """Read a cell's proven-regime passport from its most recent track_opened event (written by the funder/loop
+    when the deterministic gate opened the cell's track). The event is keyed to the BRUT cell (version:symbol:venue)
+    with a version-only LEGACY fallback. Empty if the cell never opened a track — which the gate then treats as
+    'never proven anywhere' (blocked)."""
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
+        row = store.row(
+            "SELECT payload FROM events WHERE kind = 'track_opened' AND ref_id = ? ORDER BY id DESC LIMIT 1",
+            (ref,),
+        )
+        if not row:
+            continue
+        payload = row["payload"]
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                return set()
+        return set(payload.get("proven_regimes") or [])
+    return set()
+
+
+def live_regime_verdict(store: Store, version_id: str, reference_bars, *, symbol: str | None = None, venue_id: str | None = None) -> LiveRegimeVerdict:
     """Decide whether `version_id` may trade live RIGHT NOW: True only if the current regime (from the
     reference series) is one the strategy proved positive PnL in. Never promotes — only blocks; an empty
-    proven set is never eligible (fail-safe)."""
-    proven = proven_regimes_for(store, version_id)
+    proven set is never eligible (fail-safe). Cell-scoped (version:symbol:venue) with a version-only fallback."""
+    proven = proven_regimes_for(store, version_id, symbol=symbol, venue_id=venue_id)
     now = current_regime(reference_bars)
     eligible = regime_eligible(now, proven)
     if not proven:
@@ -70,22 +100,40 @@ def live_regime_verdict(store: Store, version_id: str, reference_bars) -> LiveRe
     )
 
 
-def paper_clock_origin(store: Store, version_id: str) -> str | None:
-    """A version's paper clock origin: the ts of its FIRST `track_opened` event (the moment the
-    deterministic gate opened the standalone track). None when the version never opened a track — which the
-    maturity reads as age 0 (never matured), the fail-safe."""
-    row = store.row(
-        "SELECT MIN(ts) AS funded_at FROM events WHERE kind = 'track_opened' AND ref_id = ?",
-        (version_id,),
-    )
-    return row["funded_at"] if row and row.get("funded_at") else None
+def paper_clock_origin(store: Store, version_id: str, *, symbol: str | None = None, venue_id: str | None = None) -> str | None:
+    """A cell's paper clock origin: the ts of its FIRST `track_opened` event (the moment the deterministic gate
+    opened the standalone cell track), keyed to the BRUT cell (version:symbol:venue) with a version-only LEGACY
+    fallback. None when the cell never opened a track — which the maturity reads as age 0 (never matured),
+    the fail-safe."""
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
+        row = store.row(
+            "SELECT MIN(ts) AS funded_at FROM events WHERE kind = 'track_opened' AND ref_id = ?",
+            (ref,),
+        )
+        if row and row.get("funded_at"):
+            return row["funded_at"]
+    return None
 
 
-def paper_net_return_pct(store: Store, version_id: str) -> float:
-    """The paper track's net-of-fee return % — the strategy's own per-version FORWARD evidence
-    (tracks.return_pct, the standalone track that proves itself on real closes). 0.0 when no track exists yet,
-    which the gate reads as 'not net-positive' (fail-safe)."""
-    row = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ?", (version_id,))
+def paper_net_return_pct(store: Store, version_id: str, *, symbol: str | None = None, venue_id: str | None = None) -> float:
+    """The paper track's net-of-fee return % — the cell's own FORWARD evidence (tracks.return_pct, the standalone
+    track that proves itself on real closes). Schema-aware:
+
+    POST-migration (the live tracks table has the per-cell columns) AND a cell is requested (symbol/venue given):
+    scope STRICTLY to (version,symbol,venue) — NO version-only fallback (Blocker B: a fresh cell with no own track
+    row must NOT inherit a coexisting legacy version-wide track's return as its own forward proof).
+
+    PRE-migration (no cell columns — current prod), OR a version-wide caller (symbol/venue None): the version-only
+    lookup, byte-for-byte as before this PR (the cell-keyed SQL would raise UndefinedColumn on a pre-migration
+    table). 0.0 when no matching track exists, which the gate reads as 'not net-positive' (fail-safe)."""
+    cell_scoped = (symbol is not None or venue_id is not None) and tracks_has_cell_columns(store)
+    if cell_scoped:
+        row = store.row(
+            "SELECT return_pct FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+            (version_id, symbol, venue_id),
+        )
+    else:
+        row = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ?", (version_id,))
     if not row or row.get("return_pct") is None:
         return 0.0
     try:
@@ -101,46 +149,66 @@ def paper_net_return_pct(store: Store, version_id: str) -> float:
 MIN_FORWARD_FILLS = 1
 
 
-def forward_fill_count(store: Store, version_id: str, *, since: str | None = None) -> int:
-    """Count of REAL forward paper fills (executions is_paper=1) for a version, restricted to those AFTER the
-    paper clock origin when `since` is given. Zero ⇒ the track never actually traded forward (a re-validation
-    seed or a funded-but-unfilled registration is NOT forward evidence)."""
+def forward_fill_count(
+    store: Store,
+    version_id: str,
+    *,
+    since: str | None = None,
+    instrument_id: str | None = None,
+    venue_id: str | None = None,
+) -> int:
+    """Count of REAL forward paper fills (executions is_paper=1) for a CELL, restricted to those AFTER the paper
+    clock origin when `since` is given. The BRUT cell scope adds the cell's instrument + venue to the WHERE so a
+    (version,SOL,binance) cell's fills are never counted off a sibling (version,XRP,binance) cell. When
+    instrument_id/venue_id are None it falls back to the VERSION-only count (legacy / version-wide callers). Zero ⇒
+    the cell never actually traded forward (a re-validation seed or a funded-but-unfilled registration is NOT
+    forward evidence)."""
+    clauses = ["strategy_version_id = ?", "CAST(is_paper AS INTEGER) = 1"]
+    params: list[object] = [version_id]
+    if instrument_id is not None:
+        clauses.append("instrument_id = ?")
+        params.append(instrument_id)
+    if venue_id is not None:
+        clauses.append("venue_id = ?")
+        params.append(venue_id)
     if since is not None:
-        row = store.row(
-            "SELECT COUNT(*) AS n FROM executions WHERE strategy_version_id = ? "
-            "AND CAST(is_paper AS INTEGER) = 1 AND ts >= ?",
-            (version_id, since),
-        )
-    else:
-        row = store.row(
-            "SELECT COUNT(*) AS n FROM executions WHERE strategy_version_id = ? AND CAST(is_paper AS INTEGER) = 1",
-            (version_id,),
-        )
+        clauses.append("ts >= ?")
+        params.append(since)
+    row = store.row(
+        f"SELECT COUNT(*) AS n FROM executions WHERE {' AND '.join(clauses)}",
+        tuple(params),
+    )
     return int(row["n"]) if row and row.get("n") is not None else 0
 
 
-def forward_evidence(store: Store, version_id: str, *, now: datetime | None = None) -> PaperMaturity:
-    """The paper maturity for a version, read from the store: paper_age_days from its track's clock
-    origin + net_return_pct from its track. `live_ready` = matured (>= PAPER_MIN_DAYS) AND net-positive —
-    the SAME deterministic condition the leaderboard surfaces advisorily, here consulted as a HARD gate."""
+def forward_evidence(store: Store, version_id: str, *, now: datetime | None = None, symbol: str | None = None, venue_id: str | None = None) -> PaperMaturity:
+    """The paper maturity for a CELL, read from the store: paper_age_days from its track's clock origin +
+    net_return_pct from its track. Scoped to the BRUT cell (version,symbol,venue) with a version-only fallback.
+    `live_ready` = matured (>= PAPER_MIN_DAYS) AND net-positive — the SAME deterministic condition the leaderboard
+    surfaces advisorily, here consulted as a HARD gate."""
     return maturity(
-        paper_clock_origin(store, version_id),
-        paper_net_return_pct(store, version_id),
+        paper_clock_origin(store, version_id, symbol=symbol, venue_id=venue_id),
+        paper_net_return_pct(store, version_id, symbol=symbol, venue_id=venue_id),
         now=now,
     )
 
 
-def forward_daily_returns(store: Store, version_id: str, *, limit: int = 4000) -> list[float]:
-    """The track's FORWARD marked-return series, resampled to ONE return per UTC calendar day. Reads the
-    scope='track' portfolio_snapshots (the paper clock's marked-equity trajectory) and keeps the LAST equity of
-    each day, so the marking FREQUENCY (a held basket may be re-marked several times a day by the tick) can NOT
-    inflate the observation count or manufacture significance — the forward Sharpe is computed on NON-overlapping
-    daily returns, the same non-overlap discipline the deploy lane uses. Empty when the track has no snapshot
-    history yet (a never-marked track has no forward evidence, the honest fail-safe)."""
-    rows = store.rows(
-        "SELECT ts, equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
-        (version_id, limit),
-    )
+def forward_daily_returns(store: Store, version_id: str, *, limit: int = 4000, symbol: str | None = None, venue_id: str | None = None) -> list[float]:
+    """The cell's FORWARD marked-return series, resampled to ONE return per UTC calendar day. Reads the
+    scope='track' portfolio_snapshots (the paper clock's marked-equity trajectory) keyed to the BRUT cell
+    (version:symbol:venue, version-only LEGACY fallback) and keeps the LAST equity of each day, so the marking
+    FREQUENCY (a held basket may be re-marked several times a day by the tick) can NOT inflate the observation
+    count or manufacture significance — the forward Sharpe is computed on NON-overlapping daily returns, the same
+    non-overlap discipline the deploy lane uses. Empty when the track has no snapshot history yet (a never-marked
+    track has no forward evidence, the honest fail-safe)."""
+    rows: list[dict] = []
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
+        rows = store.rows(
+            "SELECT ts, equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
+            (ref, limit),
+        )
+        if rows:
+            break
     if not rows:
         return []
     by_day: dict[str, float] = {}
@@ -170,15 +238,16 @@ class ForwardSignificance:
     significant: bool
 
 
-def forward_significance(store: Store, version_id: str) -> ForwardSignificance:
-    """Is the track's FORWARD trajectory significantly positive, or just net-positive by a coin-flip? Computes the
-    Probabilistic-Sharpe floor on the DAILY-resampled marked returns and checks it clears PAPER_MIN_FORWARD_DSR
-    with at least PAPER_MIN_FORWARD_OBS observations. Fails safe to NOT significant on too-few obs (the PSR
-    estimate is then too noisy to trust — the track is blocked from AUTO-arming, but the human override still
-    applies). Deterministic + LLM-free; reuses the SAME scorer PSR the cohort gate uses, so the forward bar speaks
-    the gate's language. A zero-edge random walk clears 'net-positive' ~48% of the time but this floor only ~35%
-    (Monte-Carlo, repo PSR machinery) — it carves the coin-flip down without blocking a genuine forward edge."""
-    rets = forward_daily_returns(store, version_id)
+def forward_significance(store: Store, version_id: str, *, symbol: str | None = None, venue_id: str | None = None) -> ForwardSignificance:
+    """Is the cell's FORWARD trajectory significantly positive, or just net-positive by a coin-flip? Computes the
+    Probabilistic-Sharpe floor on the DAILY-resampled marked returns (scoped to the BRUT cell) and checks it clears
+    PAPER_MIN_FORWARD_DSR with at least PAPER_MIN_FORWARD_OBS observations. Fails safe to NOT significant on too-few
+    obs (the PSR estimate is then too noisy to trust — the track is blocked from AUTO-arming, but the human
+    override still applies). Deterministic + LLM-free; reuses the SAME scorer PSR the cohort gate uses, so the
+    forward bar speaks the gate's language. A zero-edge random walk clears 'net-positive' ~48% of the time but this
+    floor only ~35% (Monte-Carlo, repo PSR machinery) — it carves the coin-flip down without blocking a genuine
+    forward edge."""
+    rets = forward_daily_returns(store, version_id, symbol=symbol, venue_id=venue_id)
     n = len(rets)
     if n < PAPER_MIN_FORWARD_OBS:
         return ForwardSignificance(n_obs=n, forward_dsr=0.0, significant=False)
@@ -213,6 +282,20 @@ class LiveEligibilityVerdict:
     reason: str
 
 
+def _cell_instrument_id(symbol: str | None, venue_id: str | None) -> str | None:
+    """The catalog instrument id for a cell (symbol@venue), used to scope forward fills to the cell's own
+    executions. None when symbol/venue aren't both given (version-wide call) or the instrument isn't in the
+    catalog (then forward_fill_count falls back to venue-only / version-only scoping — never over-counts)."""
+    if symbol is None or venue_id is None:
+        return None
+    try:
+        from cosmu.spine.venue import default_catalog
+
+        return default_catalog().instrument(symbol, venue_id).id
+    except Exception:  # noqa: BLE001 — catalog miss → no instrument scope (fail-safe back-compat)
+        return None
+
+
 def live_eligibility_verdict(
     store: Store,
     version_id: str,
@@ -220,6 +303,8 @@ def live_eligibility_verdict(
     *,
     override: bool = False,
     now: datetime | None = None,
+    symbol: str | None = None,
+    venue_id: str | None = None,
 ) -> LiveEligibilityVerdict:
     """Compose the HARD live-eligibility preconditions: forward evidence AND regime. Forward evidence is now THREE
     jointly-required facts — paper maturity (>= PAPER_MIN_DAYS), a net-positive return, AND a SIGNIFICANTLY positive
@@ -227,15 +312,20 @@ def live_eligibility_verdict(
     when forward evidence AND regime both pass — UNLESS `override` is set, which waives ONLY the paper preconditions
     (a human's explicit override-launch of an unproven strategy, logged by the caller) and NEVER the regime gate.
     Deterministic, LLM-free; an unproven/underwater/insignificant/out-of-regime strategy fails safe to not-eligible."""
-    regime = live_regime_verdict(store, version_id, reference_bars)
-    evidence = forward_evidence(store, version_id, now=now)
-    sig = forward_significance(store, version_id)
+    regime = live_regime_verdict(store, version_id, reference_bars, symbol=symbol, venue_id=venue_id)
+    evidence = forward_evidence(store, version_id, now=now, symbol=symbol, venue_id=venue_id)
+    sig = forward_significance(store, version_id, symbol=symbol, venue_id=venue_id)
     # Forward-ready UNIONS two complementary hardenings of the same gate: the track must have actually TRADED
     # forward (>= MIN_FORWARD_FILLS real paper fills since the clock origin — not a re-validation seed) AND its
     # forward trajectory must be SIGNIFICANTLY positive (forward_dsr floor — not a net-positive coin-flip), on top of
-    # calendar maturity + net-positive. The human `override` waives ALL forward preconditions (the data-backed-risk
-    # valve); the regime gate is never waived.
-    traded_forward = forward_fill_count(store, version_id, since=paper_clock_origin(store, version_id)) >= MIN_FORWARD_FILLS
+    # calendar maturity + net-positive. All scoped to the BRUT cell (version,symbol,venue) with a version-only
+    # fallback. The human `override` waives ALL forward preconditions (the data-backed-risk valve); the regime gate
+    # is never waived.
+    traded_forward = forward_fill_count(
+        store, version_id,
+        since=paper_clock_origin(store, version_id, symbol=symbol, venue_id=venue_id),
+        instrument_id=_cell_instrument_id(symbol, venue_id), venue_id=venue_id,
+    ) >= MIN_FORWARD_FILLS
     forward_ready = evidence.live_ready and traded_forward and sig.significant
     eligible = (forward_ready or override) and regime.eligible
     overridden = bool(override) and not forward_ready and eligible

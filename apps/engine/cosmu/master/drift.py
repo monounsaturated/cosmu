@@ -77,7 +77,7 @@ def fit_edge_decay(edge_series: list[float]) -> EdgeDecay:
     mean_x = sum(xs) / n
     mean_y = sum(s) / n
     sxx = sum((x - mean_x) ** 2 for x in xs)
-    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, s))
+    sxy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, s, strict=True))
     slope = sxy / sxx if sxx > 0 else 0.0
     current = (mean_y - slope * mean_x) + slope * (n - 1)
     if slope >= 0 or current <= 0:
@@ -172,7 +172,7 @@ def assess_drift(
 
 def _returns_from_equity(equities: list[float]) -> list[float]:
     out: list[float] = []
-    for prev, cur in zip(equities, equities[1:]):
+    for prev, cur in zip(equities, equities[1:], strict=False):
         if prev > 0 and math.isfinite(prev) and math.isfinite(cur):
             out.append((cur - prev) / prev)
     return out
@@ -186,12 +186,20 @@ def aggregate_return_series(store: Store, *, limit: int = 500) -> list[float]:
     return _returns_from_equity([float(r["equity"]) for r in rows])
 
 
-def track_return_series(store: Store, version_id: str, *, limit: int = 500) -> list[float]:
-    rows = store.rows(
-        "SELECT equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
-        (version_id, limit),
-    )
-    return _returns_from_equity([float(r["equity"]) for r in rows])
+def track_return_series(store: Store, version_id: str, *, limit: int = 500, symbol: str | None = None, venue_id: str | None = None) -> list[float]:
+    """The realized per-period return series for ONE track, read from scope='track' portfolio_snapshots. Scoped to
+    the BRUT cell (version:symbol:venue) with a version-only LEGACY fallback so the anticipatory auto-defund reads
+    the CELL'S OWN trajectory — never a sibling cell's, which would defund the wrong triple."""
+    from cosmu.master.live_eligibility import _ref_ids
+
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
+        rows = store.rows(
+            "SELECT equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
+            (ref, limit),
+        )
+        if rows:
+            return _returns_from_equity([float(r["equity"]) for r in rows])
+    return []
 
 
 def batch_track_return_series(store: Store, version_ids: list[str], *, limit: int = 500) -> dict[str, list[float]]:

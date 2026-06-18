@@ -89,15 +89,21 @@ def _persist_survivor(
     )
     store.insert(
         "tracks",
-        {"strategy_version_id": version_id, "starting_capital": "1000", "equity": "1000",
-         "return_pct": "0", "updated_at": now},
+        {"strategy_version_id": version_id, "symbol": "BTCUSDT", "venue_id": "binance",
+         "starting_capital": "1000", "equity": "1000", "return_pct": "0", "updated_at": now},
     )
-    store.insert(
+    bt_id = store.insert(
         "backtests",
         {"strategy_version_id": version_id, "kind": "screen", "oos_return": "0.2", "sharpe": "1.5",
          "sortino": "1.5", "deflated_sharpe": "1.5", "max_dd": "0.1", "win_rate": "0.6", "num_trades": 30,
          "pbo": "0.0", "trials_counted": 1, "regime_label": "mixed", "folds_positive": 5,
          "passed_gates": 1, "holdout_passed": 1, "created_at": now},
+    )
+    # BRUT: the funder fans out a track per backtest_symbols 'pass' cell — seed the proven cell on BTCUSDT@binance.
+    store.insert(
+        "backtest_symbols",
+        {"backtest_id": bt_id, "strategy_version_id": version_id, "symbol": "BTCUSDT", "venue_id": "binance",
+         "return_pct": "0.2", "sharpe": "1.5", "max_drawdown": "0.1", "trades": 30, "verdict": "pass", "created_at": now},
     )
     return version_id
 
@@ -343,10 +349,15 @@ def test_closed_track_keeps_realized_pnl_in_equity_and_trajectory(tmp_path):
         "SELECT realized_pnl FROM positions WHERE strategy_version_id = ?", (vid,))["realized_pnl"]))
     assert realized < Decimal("-30")  # size_fraction=0.5 → ~$500 deployed, ~7% stop → ~-$35 net
     assert abs(float(snap["equity"]) - (float(store.settings.sim_bankroll) + float(realized))) < 0.05
+    # BRUT: the per-track snapshot is keyed to the CELL (version:symbol:venue), and tracks.return_pct lives on the
+    # cell row — the closed cell's realized loss must stay booked on ITS OWN trajectory.
+    from cosmu.master.live_eligibility import cell_id
+
+    cid = cell_id(vid, "BTCUSDT", "binance")
     tsnap = store.row(
-        "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1", (vid,))
+        "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1", (cid,))
     assert abs(float(tsnap["equity"]) - (1000.0 + float(realized))) < 0.05
-    tr = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ?", (vid,))
+    tr = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ? AND symbol = 'BTCUSDT'", (vid,))
     assert float(tr["return_pct"]) < 0
 
 

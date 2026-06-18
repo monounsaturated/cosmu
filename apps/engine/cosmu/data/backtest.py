@@ -85,6 +85,19 @@ class BacktestResult:
     # short (< 21 bars after warmup). The paper/live executor uses this to scale position size dynamically;
     # NULL in the DB → T0 static sizing (max_position_pct × conviction).
     target_vol: float | None = None
+    # PER-SYMBOL validation RUNS — the full SymbolRun per symbol (its OWN bar_returns + fold_returns + trades +
+    # moments), the streams the BRUT per-combo gate scores ON: each cell's own DSR from its bar_returns AND its own
+    # PBO from its fold_returns, never the cross-symbol pool (val.bar_returns/fold_returns). Additive + default-empty
+    # (existing callers + the empty-result paths untouched). The scalar `per_symbol` above stays for display; this
+    # carries what's needed to judge a triplet on its OWN data. NEVER re-pool by reusing val.* per cell.
+    per_symbol_runs: dict[str, SymbolRun] = field(default_factory=dict)
+    # PER-SYMBOL HOLDOUT RUNS — each cell's OWN untouched holdout SymbolRun (empty when include_holdout=False, the
+    # screen path). metrics_for_run takes the cell's holdout_run so the brut per-combo gate confirms a champion on
+    # ITS OWN holdout, never the pooled basket holdout. Additive + default-empty.
+    per_symbol_holdout_runs: dict[str, SymbolRun] = field(default_factory=dict)
+    # PER-SYMBOL BUY-AND-HOLD — each cell's OWN net-of-fee buy-and-hold over its validation window, so the brut
+    # gate's beat-buy-and-hold check compares a cell against ITS OWN benchmark (not the pooled basket average).
+    per_symbol_buy_and_hold: dict[str, float] = field(default_factory=dict)
 
     @property
     def min_symbol_trades(self) -> int:
@@ -200,6 +213,9 @@ def run_strategy_backtest_detailed(
     holdout_runs: list[SymbolRun] = []
     symbol_trades: dict[str, int] = {}
     per_symbol: dict[str, dict[str, float]] = {}
+    per_symbol_runs: dict[str, SymbolRun] = {}  # the full per-symbol run streams (for the brut per-combo gate)
+    per_symbol_holdout_runs: dict[str, SymbolRun] = {}  # each cell's own holdout run (brut champion confirmation)
+    per_symbol_buy_and_hold: dict[str, float] = {}      # each cell's own B&H benchmark (brut beat-B&H check)
     val_price_returns: list[float] = []  # T1: pooled price returns from ALL validation windows
     for symbol, bars in market.items():
         if len(bars) < 80:
@@ -235,8 +251,14 @@ def run_strategy_backtest_detailed(
             "max_drawdown": round(v_run.max_drawdown, 6),
             "trades": float(len(v_run.trades)),
         }
+        per_symbol_runs[symbol] = v_run  # keep the full stream (bar_returns + fold_returns) for the brut gate
+        # Each cell's OWN net-of-fee buy-and-hold over ITS validation slice (same window as v_run) — the brut gate
+        # beats THIS symbol's benchmark, not the pooled basket average. Uses the cell's own per-venue fee.
+        per_symbol_buy_and_hold[symbol] = _symbol_buy_and_hold(val_bars, sym_fee)
         if holdout_bars and include_holdout:
-            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy))
+            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy)
+            holdout_runs.append(h_run)
+            per_symbol_holdout_runs[symbol] = h_run  # this cell's OWN holdout (brut champion confirmation)
 
     if not validation_runs:
         return BacktestResult(_empty_metrics(spec), [], [], {})
@@ -296,7 +318,57 @@ def run_strategy_backtest_detailed(
         holdout_returns=list(holdout.bar_returns),
         symbol_trades=symbol_trades,
         per_symbol=per_symbol,
+        per_symbol_runs=per_symbol_runs,
+        per_symbol_holdout_runs=per_symbol_holdout_runs,
+        per_symbol_buy_and_hold=per_symbol_buy_and_hold,
         target_vol=compute_target_vol(val_price_returns),
+    )
+
+
+def metrics_for_run(
+    run: SymbolRun,
+    *,
+    trials: int,
+    buy_and_hold: float,
+    holdout_run: SymbolRun | None = None,
+) -> BacktestMetrics:
+    """Build a BacktestMetrics for ONE combo (algorithm × asset × venue) from its OWN validation run — the BRUT
+    per-combo gate input. Identical formulas to the pooled path (sample_moments / _pbo_proxy / probabilistic_sharpe
+    / win_rate / profit_factor), but on a SINGLE symbol's streams: no cross-symbol pool, and n_obs is this combo's
+    OWN observation count (no cross-symbol effective-obs haircut — that haircut only exists to discount pooling
+    correlated symbols, which the brut model doesn't do).
+
+    `trials` deflates the combo's OWN param-search overfit (how many param variants were tried ON this combo) —
+    this is the legitimate per-combo Deflated-Sharpe guard, NEVER a cross-combo/family count. `buy_and_hold` is THIS
+    symbol's buy-and-hold over its validation window (caller computes it for the one symbol). `holdout_run` is this
+    combo's untouched holdout run (None → the no-evidence sentinel, exactly like the pooled empty-holdout path)."""
+    sr_obs, skew, kurt, n_obs = sample_moments(run.bar_returns)
+    pbo = _pbo_proxy(run, trials)
+    win_rate = _win_rate(run.trades)
+    profit_factor = _profit_factor(run.trades)
+    folds_positive = sum(1 for value in run.fold_returns if value > 0)
+    folds_pct = folds_positive / len(run.fold_returns) if run.fold_returns else 0.0
+    hr = holdout_run if holdout_run is not None else _empty_symbol_run()
+    h_sr, h_skew, h_kurt, h_n = sample_moments(hr.bar_returns)
+    holdout_dsr = probabilistic_sharpe(h_sr, h_n, h_skew, h_kurt, 0.0) - 0.5
+    return BacktestMetrics(
+        oos_return=Decimal(str(round(run.total_return, 8))),
+        buy_and_hold_return=Decimal(str(round(buy_and_hold, 8))),
+        sharpe=Decimal(str(round(run.sharpe, 6))),
+        sortino=Decimal(str(round(run.sortino, 6))),
+        max_drawdown=Decimal(str(round(run.max_drawdown, 6))),
+        win_rate=Decimal(str(round(win_rate, 6))),
+        num_trades=len(run.trades),
+        sharpe_per_obs=Decimal(str(round(sr_obs, 8))),
+        skew=Decimal(str(round(skew, 6))),
+        kurtosis=Decimal(str(round(kurt, 6))),
+        n_obs=n_obs,
+        pbo=pbo,
+        trials_counted=trials,
+        folds_positive_pct=Decimal(str(round(folds_pct, 6))),
+        holdout_deflated_sharpe=Decimal(str(round(holdout_dsr, 6))),
+        regime_returns={k: round(v, 8) for k, v in run.regime_pnl.items()},
+        profit_factor=Decimal(str(round(profit_factor, 6))),
     )
 
 
@@ -403,6 +475,20 @@ def _buy_and_hold_return(
         if first:
             rets.append(last / first - 1.0 - 2.0 * sym_fee)  # entry + exit fee = one round trip
     return statistics.fmean(rets) if rets else 0.0
+
+
+def _symbol_buy_and_hold(val_bars: list[Bar], fee_bps: float | Decimal) -> float:
+    """Net-of-fee buy-and-hold over ONE symbol's VALIDATION slice (already-split val_bars) — buy at the first
+    close, sell at the last, charged one round-trip fee. The brut per-combo gate beats THIS cell's own benchmark
+    (not the pooled basket average). 0.0 when there is no usable price. Same formula as `_buy_and_hold_return`'s
+    per-symbol step, given the already-split window so the benchmark matches the cell's val_run exactly."""
+    if not val_bars:
+        return 0.0
+    fee = float(fee_bps) / 10000.0
+    first, last = float(val_bars[0].close), float(val_bars[-1].close)
+    if not first:
+        return 0.0
+    return last / first - 1.0 - 2.0 * fee
 
 
 def _effective_obs(n_obs: int, n_symbols: int, rho_sym: float) -> int:

@@ -19,7 +19,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any, Protocol
 
-from cosmu.knowledge.store import utcnow
+from cosmu.knowledge.store import Store, tracks_has_cell_columns, utcnow
 
 _CENTS = Decimal("0.01")
 
@@ -37,6 +37,9 @@ def open_paper_track(
     version_id: str,
     starting_capital: Decimal | str | float,
     target_vol: float | None = None,
+    symbol: str | None = None,
+    venue_id: str | None = None,
+    store: Store | None = None,
 ) -> str:
     """Insert a forward paper track seeded HONESTLY: ``equity = starting_capital``, ``return_pct = 0``.
 
@@ -45,6 +48,19 @@ def open_paper_track(
 
     ``target_vol`` (T1 sizing): median EWMA realized vol from the strategy's backtest validation price
     returns, frozen at funding. None → T0 static sizing (max_position_pct × conviction).
+
+    ``symbol`` / ``venue_id`` (BRUT per-cell tracks): the tradeable triple (algorithm × asset × venue) this
+    track proves. Back-compatible defaults None → a version-wide track (legacy / pre-migration). When given,
+    the row carries the cell columns so the per-cell forward-proof readers (master/live_eligibility) scope to
+    THIS cell, and the per-cell UNIQUE(version,symbol,venue) lets one version hold one track per passing cell.
+
+    ``store`` (schema probe): when a per-cell ``symbol``/``venue_id`` is given against a ``writer`` that is a batch
+    ``Writer`` (no schema introspection), pass the owning ``Store`` so the insert can check whether the live
+    ``tracks`` table actually CARRIES the cell columns. Pre-migration (current prod — columns absent) the cell
+    fields are DROPPED from the row so the insert never references a column the table lacks (it degrades to a
+    version-wide track, the legacy shape the readers fall back to); post-migration / fresh schema they are kept.
+    None ⇒ assume the columns exist (fresh-schema default), preserving the pre-existing behaviour for callers that
+    don't pass a store.
     """
     cap = Decimal(str(starting_capital))
     row: dict = {
@@ -56,4 +72,10 @@ def open_paper_track(
     }
     if target_vol is not None:
         row["target_vol"] = float(target_vol)
+    cell_cols_live = tracks_has_cell_columns(store) if store is not None else True
+    if cell_cols_live:
+        if symbol is not None:
+            row["symbol"] = symbol
+        if venue_id is not None:
+            row["venue_id"] = venue_id
     return writer.insert("tracks", row)
