@@ -264,6 +264,12 @@ class StrategyFinder:
     settings: Settings
     store: Store
     market_data: MarketDataProvider | None = None
+    # Injectable alt-data store (the per-market odds + the alt-feature join). None → resolved the SAME way ingest/
+    # the loop do (resolve_alt_store): postgres → PgAltDataStore, else JSONL. Set only by tests for hermetic odds.
+    alt_store: object | None = None
+
+    def _resolve_alt_store(self) -> object:
+        return self.alt_store if self.alt_store is not None else resolve_alt_store(self.settings, self.store)
 
     def _symbols(self, spec: StrategySpec) -> list[str]:
         """Crypto symbols for this spec — the full PERP_UNIVERSE when binance+crypto are enabled."""
@@ -305,7 +311,7 @@ class StrategyFinder:
         from cosmu.adapters.data.prediction import Market, PredictionDataAdapter
         from cosmu.adapters.data.prediction import instrument_id as pm_instrument_id
 
-        alt_store = resolve_alt_store(self.settings, self.store)
+        alt_store = self._resolve_alt_store()
         markets = [Market(symbol=cid, token=cid) for cid in condition_ids]  # odds stored under the conditionId
         adapter = PredictionDataAdapter(markets, alt_reader=alt_store, metric="odds")
         # A wide [start, end] so the adapter returns the full ingested odds history; the backtest slices to need.
@@ -397,7 +403,7 @@ class StrategyFinder:
         fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(spec, market, catalog)
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params.
-        alt = build_alt_by_symbol(resolve_alt_store(self.settings, self.store), spec, market)
+        alt = build_alt_by_symbol(self._resolve_alt_store(), spec, market)
 
         results: list[VariantResult] = []
 
