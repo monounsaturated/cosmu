@@ -1,0 +1,31 @@
+{
+  "name": "News-event positive-shock drift — enter at the moment good news breaks",
+  "rationale": "ECONOMIC MECHANISM (distinct from llm-narrative-pressure-long, which enters when news_event_score is ABOVE a level — a sustained-state read; this enters on the CROSS UP through a magnitude floor — the discrete MOMENT a bullish catalyst breaks, capturing the post-announcement drift): markets under-react to genuine catalysts because attention diffuses gradually; a typed positive news shock (approval, listing, adoption, partnership — sign + magnitude in [-1,+1]) is incrementally priced over several days (post-event drift / under-reaction, documented in equities and crypto event studies). Entering at the cross harvests the drift between the headline and full diffusion. Entry: news_event_score crosses UP through a fitted positive-magnitude floor (a fresh bullish catalyst) AND price not in a downtrend (the catalyst confirms, the tape doesn't fight it). Exit: news_event_score crosses DOWN back toward neutral (the catalyst is fully priced / narrative fading) or stop/TP/time. Disconfirmer 1: if entering on the news_event_score LEVEL (gt) does as well, the cross adds no timing edge and this is llm-narrative-pressure-long re-skinned. Disconfirmer 2: if an unconditional momentum long matches the deflated Sharpe, the news shock adds nothing — the edge must be the catalyst, not generic trend. Disconfirmer 3 (LLM-on-path guard): the LLM only standardizes headline text at ingest, NEVER on the gate/money path — the score is a frozen PIT feature. Disconfirmer 4 (cost): the drift must clear ~20bps round-trip net. tier1 news feature, low-confidence until OOS.",
+  "catalyst": "the moment a typed positive news catalyst breaks — captured at the cross, ridden through its drift",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "news_event_score" }, "op": "cross_up", "threshold": { "param": "shock_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "news_event_score" }, "op": "cross_down", "threshold": { "param": "fade_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "shock_floor": { "kind": "float", "lo": 0.2, "hi": 0.6 },
+    "fade_exit":   { "kind": "float", "lo": -0.1, "hi": 0.2 },
+    "trend_lb":    { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 },
+    "trend_floor": { "kind": "float", "lo": -0.04, "hi": 0.03 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.24 },
+    "time_stop":   { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

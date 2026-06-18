@@ -1,0 +1,31 @@
+{
+  "name": "News-sentiment capitulation contrarian — buy crypto into an extreme bad-news washout",
+  "rationale": "ECONOMIC MECHANISM (the CONTRARIAN counterpart to llm-narrative-pressure-long, which rides POSITIVE news pressure; this FADES extreme NEGATIVE news, and uses news_sentiment, a feature no inbox spec uses): aggregate crypto news sentiment (LLM/lexicon-standardized headline tone in [-1,+1]) spikes deeply negative around shock events (hacks, bans, exchange failures). At those extremes the bad news is already in the tape — the marginal panic seller has sold into the headline, and price tends to mean-revert as the shock is digested (the documented over-reaction-to-bad-news reversal). Buying the sentiment extreme harvests that over-reaction. Entry: news_sentiment below a fitted deeply-negative floor (a bad-news washout) AND price not in structural freefall (a trend floor = the knife guard). Exit: news_sentiment crosses UP back above a neutral threshold (the shock is digested, narrative normalizing) or stop/TP/time. Disconfirmer 1: if an unconditional dip-buy matches the deflated Sharpe, the sentiment extreme adds nothing. Disconfirmer 2: news_sentiment and news_event_score are sibling LLM tone reads; if substituting news_event_score does as well this carries no distinct sentiment-level information. Disconfirmer 3: some bad news is STRUCTURAL (a coin that genuinely dies) — if the edge is only on survivors, that is survivorship, not a reversal edge; the universe must be PIT-honest. Disconfirmer 4 (cost): the bounce must clear ~20bps round-trip net. tier1 news feature, low-confidence until OOS.",
+  "catalyst": "an extreme negative news-sentiment washout — bad-news over-reaction crypto reverts from",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "news_sentiment" }, "op": "lt", "threshold": { "param": "bad_news_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "news_sentiment" }, "op": "cross_up", "threshold": { "param": "neutral_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bad_news_floor": { "kind": "float", "lo": -0.6, "hi": -0.2 },
+    "neutral_exit":   { "kind": "float", "lo": -0.1, "hi": 0.2 },
+    "trend_lb":       { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "trend_floor":    { "kind": "float", "lo": -0.2,  "hi": -0.02 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":      { "kind": "int",   "lo": 4,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
