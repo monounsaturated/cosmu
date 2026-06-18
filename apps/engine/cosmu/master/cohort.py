@@ -179,3 +179,55 @@ def promote_cohort(
         persist_cohort_verdict(persist, candidates, promotions)
 
     return promotions
+
+
+@dataclass(frozen=True)
+class BrutPromotion:
+    """The verdict for ONE brut cell (algorithm × asset × venue). `promoted` == `passed`: a cell that clears the
+    locked stats gate on its OWN streams is promoted. There is NO cross-cell rank, NO FDR survival, NO family —
+    each cell stands alone (the forward/paper test, not a sibling comparison, is the fluke safeguard)."""
+
+    candidate_id: str
+    promoted: bool
+    deflated_sharpe_prob: float
+    reasons: list[str] = field(default_factory=list)
+
+
+def promote_brut(
+    candidates: list[Candidate],
+    gates: GateSettings,
+    *,
+    trials: TrialStats | None = None,
+    min_trades: int | None = None,
+) -> list[BrutPromotion]:
+    """The BRUT per-combo gate: judge each cell ON ITS OWN DATA, never pooled across symbols, never deflated by
+    siblings, never compared to siblings. Each candidate is ONE cell whose metrics already come from its OWN
+    per_symbol_run (own bar_returns AND own fold_returns) with its OWN per-combo trial count baked into
+    metrics.trials_counted (the legitimate own-overfit deflation; the locked DSR/PBO math is untouched — only the
+    INPUTS are one cell).
+
+    Deliberately DROPPED vs promote_cohort: NO register_trial (a brut cell isn't part of any family), NO
+    Benjamini-Hochberg FDR (no multiple-testing family to control across cells), NO cluster_representatives (no
+    near-duplicate dedupe across siblings), NO net-profit rank (cells aren't ranked against each other). A cell
+    passes iff it clears the locked stats gate on its own streams; `promoted == passed`.
+
+    `trials` defaults to TrialStats(count=1) — the FAMILY count is 1 because a brut cell has no siblings in its
+    test. The per-combo param-search deflation rides entirely on metrics.trials_counted (set by metrics_for_run),
+    so the cell's deflated-Sharpe is INVARIANT to how many OTHER cells the sweep produced. `min_trades` (when
+    given) overrides the gate's min_trades floor for this cell's OWN trade count — the brut per-cell pre-paper bar.
+    Pure + deterministic; no DB, no I/O; the LLM cannot touch it."""
+    trials = trials if trials is not None else TrialStats(count=1)
+    if min_trades is not None:
+        gates = gates.model_copy(update={"min_trades": min_trades})
+    out: list[BrutPromotion] = []
+    for c in candidates:
+        verdict = score(c.metrics, gates, trials=trials, check_holdout=False)
+        out.append(
+            BrutPromotion(
+                candidate_id=c.id,
+                promoted=verdict.passed,
+                deflated_sharpe_prob=float(verdict.deflated_sharpe_prob),
+                reasons=list(verdict.reasons),
+            )
+        )
+    return out

@@ -91,6 +91,13 @@ class BacktestResult:
     # (existing callers + the empty-result paths untouched). The scalar `per_symbol` above stays for display; this
     # carries what's needed to judge a triplet on its OWN data. NEVER re-pool by reusing val.* per cell.
     per_symbol_runs: dict[str, SymbolRun] = field(default_factory=dict)
+    # PER-SYMBOL HOLDOUT RUNS — each cell's OWN untouched holdout SymbolRun (empty when include_holdout=False, the
+    # screen path). metrics_for_run takes the cell's holdout_run so the brut per-combo gate confirms a champion on
+    # ITS OWN holdout, never the pooled basket holdout. Additive + default-empty.
+    per_symbol_holdout_runs: dict[str, SymbolRun] = field(default_factory=dict)
+    # PER-SYMBOL BUY-AND-HOLD — each cell's OWN net-of-fee buy-and-hold over its validation window, so the brut
+    # gate's beat-buy-and-hold check compares a cell against ITS OWN benchmark (not the pooled basket average).
+    per_symbol_buy_and_hold: dict[str, float] = field(default_factory=dict)
 
     @property
     def min_symbol_trades(self) -> int:
@@ -207,6 +214,8 @@ def run_strategy_backtest_detailed(
     symbol_trades: dict[str, int] = {}
     per_symbol: dict[str, dict[str, float]] = {}
     per_symbol_runs: dict[str, SymbolRun] = {}  # the full per-symbol run streams (for the brut per-combo gate)
+    per_symbol_holdout_runs: dict[str, SymbolRun] = {}  # each cell's own holdout run (brut champion confirmation)
+    per_symbol_buy_and_hold: dict[str, float] = {}      # each cell's own B&H benchmark (brut beat-B&H check)
     val_price_returns: list[float] = []  # T1: pooled price returns from ALL validation windows
     for symbol, bars in market.items():
         if len(bars) < 80:
@@ -243,8 +252,13 @@ def run_strategy_backtest_detailed(
             "trades": float(len(v_run.trades)),
         }
         per_symbol_runs[symbol] = v_run  # keep the full stream (bar_returns + fold_returns) for the brut gate
+        # Each cell's OWN net-of-fee buy-and-hold over ITS validation slice (same window as v_run) — the brut gate
+        # beats THIS symbol's benchmark, not the pooled basket average. Uses the cell's own per-venue fee.
+        per_symbol_buy_and_hold[symbol] = _symbol_buy_and_hold(val_bars, sym_fee)
         if holdout_bars and include_holdout:
-            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy))
+            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy)
+            holdout_runs.append(h_run)
+            per_symbol_holdout_runs[symbol] = h_run  # this cell's OWN holdout (brut champion confirmation)
 
     if not validation_runs:
         return BacktestResult(_empty_metrics(spec), [], [], {})
@@ -305,6 +319,8 @@ def run_strategy_backtest_detailed(
         symbol_trades=symbol_trades,
         per_symbol=per_symbol,
         per_symbol_runs=per_symbol_runs,
+        per_symbol_holdout_runs=per_symbol_holdout_runs,
+        per_symbol_buy_and_hold=per_symbol_buy_and_hold,
         target_vol=compute_target_vol(val_price_returns),
     )
 
@@ -459,6 +475,20 @@ def _buy_and_hold_return(
         if first:
             rets.append(last / first - 1.0 - 2.0 * sym_fee)  # entry + exit fee = one round trip
     return statistics.fmean(rets) if rets else 0.0
+
+
+def _symbol_buy_and_hold(val_bars: list[Bar], fee_bps: float | Decimal) -> float:
+    """Net-of-fee buy-and-hold over ONE symbol's VALIDATION slice (already-split val_bars) — buy at the first
+    close, sell at the last, charged one round-trip fee. The brut per-combo gate beats THIS cell's own benchmark
+    (not the pooled basket average). 0.0 when there is no usable price. Same formula as `_buy_and_hold_return`'s
+    per-symbol step, given the already-split window so the benchmark matches the cell's val_run exactly."""
+    if not val_bars:
+        return 0.0
+    fee = float(fee_bps) / 10000.0
+    first, last = float(val_bars[0].close), float(val_bars[-1].close)
+    if not first:
+        return 0.0
+    return last / first - 1.0 - 2.0 * fee
 
 
 def _effective_obs(n_obs: int, n_symbols: int, rho_sym: float) -> int:
