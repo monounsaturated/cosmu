@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from cosmu.adapters.data.alpaca import AlpacaDailyBarsProvider
 from cosmu.adapters.exec.registry import EXEC_ADAPTER_VENUES
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
+from cosmu.data.price_cells import alt_ingest_symbol
 
 if TYPE_CHECKING:
     from cosmu.config.settings import Settings
@@ -660,14 +661,22 @@ def _accrue_neutral_funding(
 def _funding_rate_asof(store: Store, symbol: str) -> Decimal | None:
     """The latest point-in-time funding rate for a perp symbol from the central alt_data store (the same series
     the ingest pass fills: provider 'binance', metric 'funding_rate'). None when no rate is on file — accrue
-    nothing this tick (offline-safe)."""
+    nothing this tick (offline-safe).
+
+    The symbol is mapped canonical→bare (alt_ingest_symbol) BEFORE the exact `WHERE symbol = ?` lookup: after the
+    universal price layer (#338) a universe-path perp cell stamps the CANONICAL slash pair (BTC/USDT) on its
+    position, but ingest keys funding by the BARE full-pair Binance perp symbol (BTCUSDT) — without the map the
+    exact match misses on the prod Postgres store and the short-perp leg silently UNDER-ACCRUES funding P&L,
+    distorting the forward record. Idempotent on an already-bare symbol (the empty-universe fallback path), so
+    both screen paths read the identical key — mirrors the #341 fix on the screen path (_alt_by_cell)."""
+    ingest_symbol = alt_ingest_symbol(symbol)
     # COLLATE "C" so the "latest available" pick is binary/chronological on Postgres (its en_US.UTF-8 collation
     # would otherwise mis-order a fractional-second available_at — see PgAltDataStore.read_asof). Postgres-only.
     c = ' COLLATE "C"' if getattr(store, "_is_pg", False) else ""
     row = store.row(
         "SELECT value FROM alt_data WHERE provider = 'binance' AND symbol = ? AND metric = 'funding_rate' "
         f"ORDER BY available_at{c} DESC, id DESC LIMIT 1",
-        (symbol,),
+        (ingest_symbol,),
     )
     return Decimal(str(row["value"])) if row else None
 
