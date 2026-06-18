@@ -221,16 +221,15 @@ body{
    timing match `.side-panel` (var(--panel-w) capped at 54vw). */
 .screener-wrap.panel-open{margin-right:min(var(--panel-w),54vw)}
 .screener-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
-.col-name{width:215px;min-width:155px}
-.col-stage{width:92px}
-.col-life{width:104px}
-.col-days{width:52px}
-.col-pnl{width:110px}
-.col-dsr{width:94px}
-.col-pbo{width:68px}
-.col-dd{width:84px}
-.col-oos{width:68px}
-.col-venue{width:72px}
+/* Per-column widths (table-layout:fixed honours these). The identity .col-strat is left WITHOUT a fixed width so
+   it absorbs all the slack and the default set fits ~1280px with NO horizontal scroll on load; toggling extra
+   columns adds the JS min-width floor (symbols-table.tsx) which is what introduces the scroll. */
+.col-strat{min-width:200px}
+.col-sym{width:96px}
+.col-venue{width:88px}
+.col-num{width:80px}
+.col-num-sm{width:64px}
+.col-status{width:96px}
 .col-hidden{display:none!important}
 .screener-table thead th{
   position:sticky;top:0;z-index:10;
@@ -1207,10 +1206,13 @@ select.search-input{cursor:pointer}
 /* The filter dropdowns sit inline (the Columns wrap keeps its own margin-left:auto to push the right cluster). */
 .screener-toolbar .ms-wrap{margin-left:0}
 .screener-toolbar .ms-wrap,.screener-toolbar .col-picker-wrap{flex-shrink:0}
-/* small stable algorithm number — a calm iris pill before the strategy title */
-.strat-num{display:inline-block;margin-right:6px;padding:0 5px;border-radius:3px;font-size:9.5px;font-weight:700;
+/* COMBO number — the PRIMARY identity (per algo × symbol × venue cell): a prominent iris pill, leftmost. */
+.combo-num{display:inline-block;margin-right:6px;padding:0 6px;border-radius:4px;font-size:10.5px;font-weight:800;
   font-variant-numeric:tabular-nums;letter-spacing:.02em;color:var(--iris-s);background:var(--iris-dim);
-  border:1px solid var(--iris-mid);vertical-align:middle;line-height:16px}
+  border:1px solid var(--iris-mid);vertical-align:middle;line-height:18px}
+/* SECONDARY algorithm number — small, muted, low-contrast; reads as clearly less important than the combo pill. */
+.strat-num-sub{display:inline-block;margin-right:6px;font-size:9px;font-weight:600;font-variant-numeric:tabular-nums;
+  letter-spacing:.02em;color:var(--quiet);vertical-align:middle;line-height:16px;opacity:.8}
 /* multi-select: a caret on the button; the menu opens DOWN-LEFT (left:0) so an inline trigger reads naturally */
 .ms-caret{font-size:8px;opacity:.6;margin-left:1px}
 .ms-wrap .col-picker-menu{transform-origin:top left}

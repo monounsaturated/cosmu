@@ -4,8 +4,11 @@
 // strategy on one symbol at one venue, ranked by standalone net-of-fee return. Restores the OG strategies-page UX
 // on the granular rows: row click → right SIDE PANEL with the full strategy sheet; a COLUMN PICKER; the DARK-MODE
 // toggle; plus multi-select STRATEGY / SYMBOL / VENUE / STATUS filters (search + checkbox + selected-first). Rows
-// are PAGINATED (100 max per page) and each algorithm carries a small stable "#n" number so the same algo is
-// recognisable across its asset/venue cells. Visibility only — the deterministic Gate alone funds.
+// are PAGINATED (100 max per page). Each row's IDENTITY is its stable COMBO "#n" — assigned per distinct
+// (algo × symbol × venue) cell via a deterministic key sort, so a combo keeps its number across any sort / filter
+// / page; a fainter algorithm "#n" rides behind it for recognising the same algo across its cells. Clicking a row
+// selects only THAT cell (per-triplet highlight) while the side panel opens the whole VERSION. Visibility only —
+// the deterministic Gate alone funds.
 //
 // HONESTY: return_pct / max_drawdown are stored as FRACTIONS (0.21 = 21%) → ×100 for display. The per-row badge is
 // the LIFECYCLE stage (Backtest / Paper / Live / Killed), BADGE-ONLY — the money path reads forward evidence, not
@@ -19,7 +22,7 @@ import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { LIFE_BADGE_CLASS, LIFE_LABEL, type LifeStatus } from "@/lib/lifecycle";
 import { engineGetJson, enginePeek } from "@/lib/engine";
-import { cn, formatPct, isKilled, isPaper } from "@/lib/utils";
+import { cn, formatPct, formatVenue, isKilled, isPaper } from "@/lib/utils";
 
 // Rows shown per page — never render more than this many <tr> at once (keeps the DOM lean on a fat universe).
 const PAGE_SIZE = 100;
@@ -32,6 +35,25 @@ export function tripletHref(r: { strategy_version_id: string; symbol: string; ve
 }
 
 export type TripletKey = { strategy_version_id: string; symbol: string; venue_id: string | null };
+
+// The canonical (algo × symbol × venue) identity of a cell — the unit the operator tracks. venue_id is
+// normalised to "" so a NULL-venue cell has ONE stable key everywhere (the combo-number map, the row React
+// key, the highlight/selection compare). Single source of triplet identity.
+function comboKeyOf(r: { strategy_version_id: string; symbol: string; venue_id: string | null }): string {
+  return `${r.strategy_version_id} ${r.symbol} ${r.venue_id ?? ""}`;
+}
+
+// Triplet equality — the FULL (version × symbol × venue) compare with the same `?? ""` NULL-venue normalisation
+// on both sides. Used for BOTH the comparison-grid highlight and the screener's per-cell self-selection so the
+// two never drift (the prior bug: selection compared version-id only, lighting every sibling cell of the algo).
+function sameTriplet(a: TripletKey | null | undefined, b: { strategy_version_id: string; symbol: string; venue_id: string | null }): boolean {
+  return (
+    a != null &&
+    a.strategy_version_id === b.strategy_version_id &&
+    a.symbol === b.symbol &&
+    (a.venue_id ?? "") === (b.venue_id ?? "")
+  );
+}
 
 type VerdictKey = "robust" | "fragile" | "thin" | "negative";
 const VERDICT_META: Record<VerdictKey, { label: string; color: string; dim: string }> = {
@@ -89,6 +111,19 @@ const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
   { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
 ];
 const DEFAULT_VISIBLE: Record<ColKey, boolean> = { symbol: true, venue: true, return: true, sharpe: true, dd: true, trades: true, status: true };
+const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
+
+// Per-column CSS width class (table-layout:fixed honours these). The identity column (.col-strat) absorbs slack
+// so the default set fits ~1280px with no horizontal scroll; toggling extra columns adds the min-width floor.
+const COL_CLASS: Record<ColKey, string> = {
+  symbol: "col-sym",
+  venue: "col-venue",
+  return: "col-num",
+  sharpe: "col-num",
+  dd: "col-num",
+  trades: "col-num-sm",
+  status: "col-status",
+};
 
 // VerdictBadge is retained ONLY because the fiche triplet-card still renders a per-cell verdict; the screener
 // table no longer uses it (filtering is via the dropdowns, the row badge is the lifecycle stage).
@@ -132,8 +167,18 @@ export function SymbolsTable({
   navigateOnClick?: boolean; // comparison grid: a row navigates to the sibling triplet fiche; omitted → side panel
 }) {
   const router = useRouter();
-  // Deep-link: ?v=<version_id> opens that strategy's sheet on load (a link from any dashboard lands on it).
+  // Deep-link: ?v=<version_id> opens that strategy's sheet on load; optional ?symbol=&venue= PIN the exact
+  // (algo × symbol × venue) combo so the matching row is selected + highlighted + scrolled into view (and its
+  // page jumped to). A link from /paper / any dashboard lands on the precise cell, not just the algorithm.
   const searchParams = useSearchParams();
+  const deepLink = useMemo(() => {
+    const v = searchParams.get("v");
+    if (!v) return null;
+    return { version_id: v, symbol: searchParams.get("symbol"), venue: searchParams.get("venue") };
+    // Read once at mount (the URL is the initial intent). No re-sync effect — consistent with the prior code.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [strategySel, setStrategySel] = useState<Set<string>>(new Set());
   const [symbolSel, setSymbolSel] = useState<Set<string>>(new Set());
   const [venueSel, setVenueSel] = useState<Set<string>>(new Set());
@@ -142,9 +187,18 @@ export function SymbolsTable({
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "return", dir: "desc" });
   const [visible, setVisible] = useState<Record<ColKey, boolean>>({ ...DEFAULT_VISIBLE });
   const [showPicker, setShowPicker] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("v"));
+  // Two DISTINCT pieces of selection: the per-VERSION sheet id (the side panel shows the whole Version) and the
+  // per-CELL triplet highlight (only the clicked row lights up). The deep-link opens the sheet by version; the
+  // triplet is pinned only when ?symbol= (and optionally ?venue=) is present.
+  const [sheetVersionId, setSheetVersionId] = useState<string | null>(deepLink?.version_id ?? null);
+  const [selectedTriplet, setSelectedTriplet] = useState<TripletKey | null>(
+    deepLink && deepLink.symbol != null
+      ? { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "" }
+      : null,
+  );
   const [page, setPage] = useState(0);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const selectedRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     if (!showPicker) return;
@@ -155,9 +209,31 @@ export function SymbolsTable({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [showPicker]);
 
-  // ── Stable algorithm number: assign #1, #2, … to each DISTINCT strategy_name (sorted), computed once over ALL
-  // rows so the number is identical regardless of paging, sort or the active filters. A small additive badge in
-  // the Strategy cell so the operator recognises the same algorithm across its asset/venue cells. ──
+  // ── COMBO NUMBER (the PRIMARY identity the operator tracks): a stable #N for each DISTINCT (algo × symbol ×
+  // venue) triplet, assigned via a DETERMINISTIC sort of the triplet key — by strategy_name, then symbol, then
+  // venue — computed once over ALL rows. A combo therefore keeps its number regardless of the current sort,
+  // filter or page. This is the prominent leftmost pill. ──
+  const comboNumber = useMemo(() => {
+    const seen = new Map<string, { strategy_name: string; symbol: string; venue: string }>();
+    for (const r of rows) {
+      const k = comboKeyOf(r);
+      if (!seen.has(k)) seen.set(k, { strategy_name: r.strategy_name, symbol: r.symbol, venue: r.venue_id ?? "" });
+    }
+    const ordered = Array.from(seen.entries()).sort(([, a], [, b]) => {
+      const byName = a.strategy_name.localeCompare(b.strategy_name);
+      if (byName !== 0) return byName;
+      const bySym = a.symbol.localeCompare(b.symbol);
+      if (bySym !== 0) return bySym;
+      return a.venue.localeCompare(b.venue);
+    });
+    const map = new Map<string, number>();
+    ordered.forEach(([k], i) => map.set(k, i + 1));
+    return map;
+  }, [rows]);
+
+  // ── Stable algorithm number (SECONDARY, subtle): #1, #2, … per DISTINCT strategy_name (sorted), computed once
+  // over ALL rows so the number is identical regardless of paging, sort or the active filters. Rendered muted —
+  // it helps recognise the same algorithm across its cells, but the combo number above is the identity. ──
   const strategyNumber = useMemo(() => {
     const names = Array.from(new Set(rows.map((r) => r.strategy_name))).sort((a, b) => a.localeCompare(b));
     const map = new Map<string, number>();
@@ -205,22 +281,73 @@ export function SymbolsTable({
   useEffect(() => {
     setPage(0);
   }, [strategySel, symbolSel, venueSel, statusSel, query, sort]);
+
+  // The position (in the global filtered+sorted order) of the deep-linked combo, so we can jump to its PAGE and
+  // scroll it into view. Pin precision degrades gracefully with what the link carries:
+  //   ?v=&symbol=&venue=  → the EXACT (algo × symbol × venue) cell
+  //   ?v=&venue=          → the version's first row AT that venue (a /paper link with no traded symbol field)
+  //   ?v=                 → the version's first row
+  // -1 when nothing is pinned or the combo isn't in the current set.
+  const deepLinkIndex = useMemo(() => {
+    if (!deepLink) return -1;
+    if (deepLink.symbol != null) {
+      const want: TripletKey = { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "" };
+      return filtered.findIndex((r) => sameTriplet(want, r));
+    }
+    if (deepLink.venue) {
+      const idx = filtered.findIndex((r) => r.strategy_version_id === deepLink.version_id && (r.venue_id ?? "") === deepLink.venue);
+      if (idx >= 0) return idx;
+    }
+    return filtered.findIndex((r) => r.strategy_version_id === deepLink.version_id);
+  }, [deepLink, filtered]);
+
+  // Once at mount: if a deep link resolves to a row, jump to its page and pin the per-cell highlight (so ONLY
+  // that row lights up, even on a ?v=-only link → its first row). The scroll-into-view happens in a SEPARATE
+  // effect below, once the target row is actually committed to the DOM on the (possibly newly-set) page.
+  const deepLinkDone = useRef(false);
+  const deepLinkScrolled = useRef(false);
+  useEffect(() => {
+    if (deepLinkDone.current || deepLinkIndex < 0) return;
+    deepLinkDone.current = true;
+    setPage(Math.floor(deepLinkIndex / PAGE_SIZE));
+    const r = filtered[deepLinkIndex];
+    if (r) setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
+  }, [deepLinkIndex, filtered]);
+
   const safePage = Math.min(page, pageCount - 1);
   const pageStart = safePage * PAGE_SIZE;
   const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
   const rangeFrom = filtered.length === 0 ? 0 : pageStart + 1;
   const rangeTo = Math.min(pageStart + PAGE_SIZE, filtered.length);
 
+  // Scroll the deep-linked row into view ONCE, after the page-jump + highlight have rendered it into the DOM
+  // (the ref is attached only to the selected <tr>). Depends on pageRows so it re-checks once the target page
+  // commits. Guarded so a later manual click never re-triggers a scroll.
+  useEffect(() => {
+    if (deepLinkScrolled.current || deepLinkIndex < 0 || !selectedRowRef.current) return;
+    deepLinkScrolled.current = true;
+    selectedRowRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [deepLinkIndex, selectedTriplet, pageRows]);
+
   const visibleCols = COLS.filter((c) => visible[c.key]);
-  const minWidth = 200 + visibleCols.length * 96;
+  // DEFAULT columns are sized to FIT the container with no horizontal scroll on load (explicit per-column
+  // widths via table-layout:fixed, see globals.css). Only force a min-width — triggering the scroll — when the
+  // operator toggles ON more than the default set, so the extra columns get room rather than crushing.
+  const minWidth = visibleCols.length > DEFAULT_COL_COUNT ? 200 + visibleCols.length * 96 : undefined;
 
   function toggleSort(key: SortKey) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "strategy" || key === "symbol" || key === "venue" ? "asc" : "desc" }));
   }
 
   function handleRow(r: LabSymbolRow) {
-    if (navigateOnClick) router.push(tripletHref(r));
-    else setSelectedId(r.strategy_version_id);
+    if (navigateOnClick) {
+      router.push(tripletHref(r));
+      return;
+    }
+    // Per-cell selection (the highlight) + per-version sheet (the side panel shows the whole Version). The two
+    // are DISTINCT: clicking one cell highlights only THAT row, never every sibling cell of the same algo.
+    setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
+    setSheetVersionId(r.strategy_version_id);
   }
 
   function renderCell(r: LabSymbolRow, key: ColKey) {
@@ -228,7 +355,7 @@ export function SymbolsTable({
       case "symbol":
         return <td key={key}>{r.symbol}</td>;
       case "venue":
-        return <td key={key} className={r.venue_id ? undefined : "quiet"}>{r.venue_id ?? "—"}</td>;
+        return <td key={key} className={r.venue_id ? undefined : "quiet"}>{formatVenue(r.venue_id)}</td>;
       case "return":
         return <td key={key} style={{ textAlign: "right", color: r.return_pct >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct * 100)}</td>;
       case "sharpe":
@@ -256,7 +383,7 @@ export function SymbolsTable({
           renderOption={(o) => `#${strategyNumber.get(o) ?? "?"} ${o}`}
         />
         <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
-        <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} formatValue={(v) => v || "—"} />
+        <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} renderOption={(v) => formatVenue(v)} formatValue={(v) => formatVenue(v)} />
         <MultiSelect
           label="status"
           options={statusOptions}
@@ -294,15 +421,15 @@ export function SymbolsTable({
         </p>
       ) : null}
 
-      <div className={cn("screener-wrap", selectedId && "panel-open")}>
+      <div className={cn("screener-wrap", sheetVersionId && "panel-open")}>
         {filtered.length === 0 ? (
           <p className="quiet" style={{ fontSize: 12, padding: "24px 4px", textAlign: "center" }}>No strategies match these filters.</p>
         ) : (
-          <table className="screener-table" style={{ minWidth }}>
+          <table className="screener-table" style={minWidth !== undefined ? { minWidth } : undefined}>
             <colgroup>
-              <col style={{ width: 200 }} />
+              <col className="col-strat" />
               {visibleCols.map((c) => (
-                <col key={c.key} />
+                <col key={c.key} className={COL_CLASS[c.key]} />
               ))}
             </colgroup>
             <thead>
@@ -322,23 +449,25 @@ export function SymbolsTable({
             </thead>
             <tbody>
               {pageRows.map((r, i) => {
-                const isCurrent =
-                  highlight !== undefined &&
-                  highlight.strategy_version_id === r.strategy_version_id &&
-                  highlight.symbol === r.symbol &&
-                  (highlight.venue_id ?? "") === (r.venue_id ?? "");
-                const isSelected = selectedId === r.strategy_version_id;
-                const num = strategyNumber.get(r.strategy_name);
+                // Comparison-grid highlight (the clicked sibling, from the `highlight` prop) AND the screener's
+                // own per-cell selection both use the SAME full-triplet compare — only THIS row, never every
+                // sibling cell of the algo.
+                const isCurrent = sameTriplet(highlight ?? null, r);
+                const isSelected = sameTriplet(selectedTriplet, r);
+                const comboNum = comboNumber.get(comboKeyOf(r));
+                const stratNum = strategyNumber.get(r.strategy_name);
                 return (
                   <tr
                     key={`${r.strategy_version_id}-${r.symbol}-${r.venue_id ?? ""}-${pageStart + i}`}
+                    ref={isSelected ? selectedRowRef : undefined}
                     onClick={() => handleRow(r)}
                     className={cn(isCurrent && "row-current", isSelected && "sel")}
                     style={{ cursor: "pointer", ...(isCurrent ? { background: "var(--iris-dim, rgba(120,120,255,0.08))" } : {}) }}
                     title="Open this strategy"
                   >
                     <td>
-                      {num !== undefined ? <span className="strat-num" title={`Algorithm #${num}`}>#{num}</span> : null}
+                      {comboNum !== undefined ? <span className="combo-num" title={`Combo #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
+                      {stratNum !== undefined ? <span className="strat-num-sub" title={`Algorithm #${stratNum}`}>#{stratNum}</span> : null}
                       {r.strategy_name}
                       {r.kind === "llm" ? <span className="badge badge-iris" style={{ marginLeft: 6 }}>LLM</span> : null}
                     </td>
@@ -383,7 +512,9 @@ export function SymbolsTable({
         </div>
       ) : null}
 
-      <SheetPanel id={selectedId} onClose={() => setSelectedId(null)} />
+      {/* The side panel stays keyed by VERSION (it shows the whole Version). Closing it drops both the sheet and
+          the per-cell row highlight so the table returns to a clean unselected state. */}
+      <SheetPanel id={sheetVersionId} onClose={() => { setSheetVersionId(null); setSelectedTriplet(null); }} />
     </>
   );
 }

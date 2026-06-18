@@ -15,6 +15,15 @@ import { cn, formatPct, formatUsd, numOrNull, signedUsd } from "@/lib/utils";
 // finite-number guard (the shared honest-"—" helper).
 const num = numOrNull;
 
+// The /strategies deep-link for a closed paper row → opens the screener with that Version's sheet and pins the
+// matching row. LeaderboardRow carries no traded symbol, so pass only `venue` when present (the screener then
+// highlights the version's first row at that venue, else its first row). Mirrors track-card.tsx::strategyHref.
+function strategyHref(r: LeaderboardRow): string {
+  const params = new URLSearchParams({ v: r.version_id });
+  if (r.venue && r.venue !== "—") params.set("venue", r.venue);
+  return `/strategies?${params.toString()}`;
+}
+
 export function ClosedTracks({ rows }: { rows: LeaderboardRow[] }) {
   // Funded (deposit) ≈ value_usd − pnl_usd; both only when real marks exist. Order: biggest |P&L| first
   // (the moves that matter), then name — a stable, decision-relevant read of the closed book.
@@ -68,7 +77,7 @@ export function ClosedTracks({ rows }: { rows: LeaderboardRow[] }) {
                 return (
                   <tr key={row.version_id}>
                     <td className="pos-strat">
-                      <Link href={`/strategies?v=${row.version_id}`} className="strat-link" data-tip={row.name}>
+                      <Link href={strategyHref(row)} className="strat-link" data-tip={row.name}>
                         {row.name}
                       </Link>
                     </td>
