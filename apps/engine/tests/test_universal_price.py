@@ -410,6 +410,47 @@ def test_alt_by_cell_shares_one_funding_fetch_across_a_pairs_venue_cells(tmp_pat
     assert joined["BTC/USDT@kraken"]["funding_rate"] == joined["BTC/USDT"]["funding_rate"], "kraken cell shares it"
 
 
+# ----------------------------------------------------------- the MONEY path: neutral funding-accrual bare-key fix
+
+
+def test_funding_rate_asof_resolves_canonical_perp_cell_to_bare_ingest_key(tmp_path):
+    """REGRESSION (LIVE/PAPER money path, parallel to the #341 screen-path fix): after the universal price layer
+    (#338) a neutral short-perp track on the POPULATED-universe path stamps the CANONICAL slash pair (BTC/USDT) on
+    its perp position, but ingest keys funding by the BARE full-pair Binance perp symbol (BTCUSDT). _funding_rate_asof
+    does an EXACT `WHERE symbol = ?` match, so without the canonical→bare map (alt_ingest_symbol) the lookup misses on
+    the prod Postgres store and the short-perp leg silently UNDER-ACCRUES funding P&L — distorting the forward record.
+    Uses an EXACT-MATCH store (PgAltDataStore over SQLite, like prod Postgres): the JSONL store would MASK the bug by
+    stripping '/' in its file path. (Mirrors test_alt_by_cell_maps_canonical_pair_to_bare_ingest_key on the screen path.)"""
+    from cosmu.data.altdata import PgAltDataStore
+    from cosmu.data.providers._types import AltDataPoint
+    from cosmu.orchestrator.loop import _funding_rate_asof
+
+    store = _store(tmp_path)
+    store.migrate()
+    alt = PgAltDataStore(store)
+
+    bars = _bars(_walk(8, seed=51))  # _walk(n) -> n+1 closes/bars
+    # Ingest banks funding under the BARE symbol. Two appends — an OLD then a NEWER rate (later available_at) — so
+    # the asof pick (ORDER BY available_at DESC) must return the latest, exactly as on the prod money path.
+    alt.append("binance", "BTCUSDT", "funding_rate",
+               [AltDataPoint(ts=bars[0].ts, available_at=bars[0].ts, value=0.0001)])
+    alt.append("binance", "BTCUSDT", "funding_rate",
+               [AltDataPoint(ts=bars[-1].ts, available_at=bars[-1].ts, value=0.0005)])
+
+    # Sanity: the store is EXACT-MATCH (prod Postgres semantics) — the canonical slash key alone finds NOTHING, the
+    # bare key does. This mismatch is what made the regression bite: the perp cell carried 'BTC/USDT' but the series
+    # lives under 'BTCUSDT'. (The JSONL store strips '/' in its file path and would hide this — hence PG-backed here.)
+    _sql = "SELECT value FROM alt_data WHERE provider = 'binance' AND symbol = ? AND metric = 'funding_rate'"
+    assert store.row(_sql, ("BTC/USDT",)) is None
+    assert store.row(_sql, ("BTCUSDT",)) is not None
+
+    # THE fix: the canonical-keyed perp cell resolves to the bare ingest key and reads the LATEST real rate.
+    # Pre-fix this returned None (the exact match on 'BTC/USDT' missed) → funding silently under-accrued every tick.
+    assert _funding_rate_asof(store, "BTC/USDT") == Decimal("0.0005")
+    # Parity: the empty-universe FALLBACK path (a bare-symbol perp leg) is a no-op map → reads the IDENTICAL rate.
+    assert _funding_rate_asof(store, "BTCUSDT") == Decimal("0.0005")
+
+
 # --------------------------------------------------------------------------- funding preserves the cell venue
 
 
