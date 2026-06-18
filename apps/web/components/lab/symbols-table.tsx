@@ -238,11 +238,25 @@ export function SymbolsTable({
     return map;
   }, [rows]);
 
-  // ── Stable algorithm number (SECONDARY, subtle): #1, #2, … per DISTINCT strategy_name (sorted), computed once
-  // over ALL rows so the number is identical regardless of paging, sort or the active filters. Rendered muted —
-  // it helps recognise the same algorithm across its cells, but the combo number above is the identity. ──
+  // ── Stable algorithm number (SECONDARY, subtle): #1, #2, … per DISTINCT strategy_name, computed once over ALL
+  // rows so the number is identical regardless of paging, sort or the active filters. Numbered by AUTHORING ORDER
+  // (each strategy's EARLIEST cell created_at): #1 = first authored, #N = latest. So a HIGHER number = a NEWER
+  // strategy, which is what the Strategies dropdown's number-descending order (latest first) relies on. Ties on
+  // created_at fall back to name for determinism. Rendered muted — the combo number above is the identity. ──
   const strategyNumber = useMemo(() => {
-    const names = Array.from(new Set(rows.map((r) => r.strategy_name))).sort((a, b) => a.localeCompare(b));
+    const firstSeen = new Map<string, number>();
+    for (const r of rows) {
+      const t = Date.parse(r.created_at);
+      const ts = Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+      const prev = firstSeen.get(r.strategy_name);
+      if (prev === undefined || ts < prev) firstSeen.set(r.strategy_name, ts);
+    }
+    const names = Array.from(firstSeen.keys()).sort((a, b) => {
+      const ta = firstSeen.get(a)!;
+      const tb = firstSeen.get(b)!;
+      if (ta !== tb) return ta - tb;
+      return a.localeCompare(b);
+    });
     const map = new Map<string, number>();
     names.forEach((n, i) => map.set(n, i + 1));
     return map;
@@ -393,6 +407,9 @@ export function SymbolsTable({
           selected={strategySel}
           onChange={setStrategySel}
           renderOption={(o) => `#${strategyNumber.get(o) ?? "?"} ${o}`}
+          // Unselected strategies ordered by NUMBER DESCENDING (highest = latest authored first) so new
+          // strategies surface at the top, not buried under the alphabetical run.
+          orderUnselected={(a, b) => (strategyNumber.get(b) ?? 0) - (strategyNumber.get(a) ?? 0)}
         />
         <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
         <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} renderOption={(v) => formatVenue(v)} formatValue={(v) => formatVenue(v)} />
@@ -590,7 +607,9 @@ function SheetPanel({ id, cell, onClose }: { id: string | null; cell?: LabSymbol
 // A multi-select dropdown — click the button, search the options, click rows to toggle several. Selected options
 // FLOAT TO THE TOP (selected-first, then the rest) so the picks are visible at a glance; each option carries a
 // real checkbox. `renderOption`/`formatValue` let a caller show a friendlier label than the raw option value
-// (e.g. "#3 momentum" for a strategy, "Paper" for a status lane).
+// (e.g. "#3 momentum" for a strategy, "Paper" for a status lane). `orderUnselected` overrides how the UNSELECTED
+// items are ordered (selected-first is always honoured first) — the Strategies dropdown passes a number-DESC
+// comparator (latest #N first); Symbols/Venues keep the default A→Z label sort.
 function MultiSelect({
   label,
   options,
@@ -598,6 +617,7 @@ function MultiSelect({
   onChange,
   renderOption,
   formatValue,
+  orderUnselected,
 }: {
   label: string;
   options: string[];
@@ -605,6 +625,7 @@ function MultiSelect({
   onChange: (next: Set<string>) => void;
   renderOption?: (o: string) => string;
   formatValue?: (o: string) => string;
+  orderUnselected?: (a: string, b: string) => number;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -622,20 +643,22 @@ function MultiSelect({
   const optLabel = (o: string) => (renderOption ? renderOption(o) : o || "—");
   const valLabel = (o: string) => (formatValue ? formatValue(o) : o || "—");
 
-  // Filter by the rendered label OR the raw value, then SELECTED-FIRST so picks float to the top.
+  // Filter by the rendered label OR the raw value, then SELECTED-FIRST so picks float to the top. Within each
+  // group the order is `orderUnselected` if provided (Strategies → number-desc), else A→Z by rendered label.
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const matched = options.filter(
       (o) => optLabel(o).toLowerCase().includes(needle) || o.toLowerCase().includes(needle),
     );
+    const within = orderUnselected ?? ((a: string, b: string) => optLabel(a).localeCompare(optLabel(b)));
     return matched.slice().sort((a, b) => {
       const sa = selected.has(a) ? 0 : 1;
       const sb = selected.has(b) ? 0 : 1;
       if (sa !== sb) return sa - sb;
-      return optLabel(a).localeCompare(optLabel(b));
+      return within(a, b);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, q, selected, renderOption]);
+  }, [options, q, selected, renderOption, orderUnselected]);
 
   // Button label: "All X" when empty (clickable opener); the single value when one is picked; else "n X".
   const btnLabel =
