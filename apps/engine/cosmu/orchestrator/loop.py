@@ -110,14 +110,22 @@ class TrackFundingReport:
 
 
 def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Track, str, str]]:
-    """BRUT fan-out: read the real config-library / research survivors and emit one funding entry PER PASSING CELL.
+    """BRUT fan-out: read the real config-library / research survivors and emit one funding entry PER FUNDABLE CELL.
 
-    A cell is a tradeable triple (strategy_version × symbol × venue) the gate passed ON ITS OWN data — joined off
-    backtest_symbols WHERE verdict='pass' (written per cell by the finder/loop). Each passing cell funds on the
-    EXACT symbol it was proven on (never a round-robin index, never a sibling-compared pick — the brut model has no
-    siblings to compare). UNCAPPED, no human, no cross-cell logic: the gate already disposed each cell and the
-    forward/paper test is the fluke safeguard (live stays human-only). Returns (version_id, Track, symbol,
-    funding_venue_id) — one tuple per passing cell. `rolling_dsr` = the cell's deflated Sharpe (decays as edge dies).
+    A cell is a tradeable triple (strategy_version × symbol × venue). TWO generous-paper lanes both fund the SAME
+    standalone zero-real-capital paper track:
+      • GATE lane — verdict='pass': the gate passed it ON ITS OWN data (version-level passed_gates=1 + holdout=1).
+        These are the live-arming survivors.
+      • WATCH lane — verdict='watch': a gate-FAILED near-miss (sharpe>1 / trades>=30 / return>0, tagged by the
+        finder/loop). Routed to paper INSTEAD of killed so the forward test separates real from lucky. A watch cell
+        is NOT a gate pass — its version is 'killed' with passed_gates=0, so the version gate flags are NOT required
+        for it (only for the gate lane). It is never live-armable (live-eligibility reads the per-cell pass passport,
+        which a watch cell lacks); it just paper-trades + defunds on drift like any paper cell.
+
+    Each cell funds on the EXACT symbol it was proven/near-missed on (never a round-robin index, never a sibling-
+    compared pick — the brut model has no siblings to compare). UNCAPPED, no human, no cross-cell logic: the forward/
+    paper test is the fluke safeguard (live stays human-only, and watch never reaches it). Returns (version_id,
+    Track, symbol, funding_venue_id) — one tuple per fundable cell. `rolling_dsr` = the cell's deflated Sharpe.
 
     The funding venue is the cell's asset-class EXECUTION venue (crypto → Binance, equity → Alpaca — the venue with
     a real exec adapter), independent of the SCREEN venue stored on the cell row. A cell whose asset class has no
@@ -125,11 +133,15 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
     rows = store.rows(
         f"""
         SELECT sv.id AS version_id, sv.spec AS spec,
-               bs.symbol AS symbol, b.deflated_sharpe AS deflated_sharpe
+               bs.symbol AS symbol, b.deflated_sharpe AS deflated_sharpe, bs.verdict AS verdict
         FROM strategy_versions sv
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
-        JOIN backtest_symbols bs ON bs.strategy_version_id = sv.id AND bs.verdict = 'pass'
-        WHERE sv.status IN {sql_in_list(ALIVE_STATUSES)} AND b.passed_gates = 1 AND b.holdout_passed = 1
+        JOIN backtest_symbols bs ON bs.strategy_version_id = sv.id
+        WHERE sv.status IN {sql_in_list(ALIVE_STATUSES)}
+          AND (
+            (bs.verdict = 'pass' AND b.passed_gates = 1 AND b.holdout_passed = 1)
+            OR bs.verdict = 'watch'
+          )
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
         """
     )

@@ -23,6 +23,34 @@ from cosmu.knowledge.store import Store, tracks_has_cell_columns, utcnow
 
 _CENTS = Decimal("0.01")
 
+# GENEROUS-PAPER (watch) lane verdict. A cell that did NOT clear the strict brut gate but is genuinely promising
+# is tagged 'watch' on its backtest_symbols row (vs 'pass' for a gate survivor, vs its kill reason otherwise) and
+# funded on the SAME zero-real-capital, born-honest paper lane survivors use — so the forward/paper test, not the
+# in-sample scan, separates a real edge from a lucky one. A 'watch' cell is NOT a gate pass: the gate verdict and
+# the kill reasons are untouched (live-eligibility still reads the per-cell pass passport, never 'watch'); this is
+# a parallel generous-paper lane that defunds on drift like any paper cell. (Operator-approved 2026-06-18.)
+WATCH_VERDICT = "watch"
+
+# NEAR-MISS criterion (operator-specified, net of fees). A gate-FAILED cell that meets ALL three is promising
+# enough to forward-test rather than kill: a real Sharpe, enough of its OWN trades to be judgeable, and money made.
+# e.g. DeFi-flow on SOL: sharpe 1.37 / 114 trades / +6.1% return — sub-0.95 DSR but clearly worth watching.
+NEAR_MISS_MIN_SHARPE = 1.0
+NEAR_MISS_MIN_TRADES = 30
+NEAR_MISS_MIN_RETURN_PCT = 0.0
+
+
+def is_near_miss_cell(*, sharpe: float, trades: int, return_pct: float) -> bool:
+    """True iff a (gate-failed) cell is a generous-paper NEAR-MISS: ``sharpe > 1.0`` AND ``trades >= 30`` AND
+    ``return_pct > 0`` — all on the cell's OWN net-of-fees validation metrics (the same numbers persisted on its
+    ``backtest_symbols`` row). The caller is responsible for only applying this to cells that did NOT pass the gate
+    (a passer is already a survivor); this predicate alone never decides pass/fail, it only routes the leftovers
+    to the watch lane. ``return_pct`` here is the fractional return (0.061 = +6.1%), matching ``per_symbol['return']``."""
+    return (
+        float(sharpe) > NEAR_MISS_MIN_SHARPE
+        and int(trades) >= NEAR_MISS_MIN_TRADES
+        and float(return_pct) > NEAR_MISS_MIN_RETURN_PCT
+    )
+
 
 class _Inserter(Protocol):
     """Anything with ``Store.insert`` / ``Writer.insert`` — composes with both the per-arm Store and the
