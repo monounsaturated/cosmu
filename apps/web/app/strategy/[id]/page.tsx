@@ -10,29 +10,46 @@
 import { Suspense } from "react";
 import type { Backtest } from "@cosmu/contracts-ts";
 import { engineConfigured, getStrategy } from "../../data";
+import { getComparison, getTriplet } from "../../data/lab";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
 import { StrategyHeader } from "@/components/strategies/strategy-header";
 import { StrategySheet, bestOosPct } from "@/components/strategy/strategy-sheet";
 import { SpecView } from "@/components/strategy/spec-view";
 import { GateChips } from "@/components/strategy/gate-chips";
+import { TripletCard } from "@/components/strategy/triplet-card";
+import { SymbolsTable } from "@/components/lab/symbols-table";
 
 export const dynamic = "force-dynamic";
 
-export default async function StrategyPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function StrategyPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ symbol?: string; venue?: string }>;
+}) {
   const { id } = await params;
+  const { symbol, venue } = await searchParams;
   return (
     <Page>
       <Toolbar title="Version" />
       <Suspense fallback={<div className="skel" style={{ height: 460 }} />}>
-        <StrategyDetail id={id} />
+        <StrategyDetail id={id} symbol={symbol} venue={venue} />
       </Suspense>
     </Page>
   );
 }
 
-async function StrategyDetail({ id }: { id: string }) {
-  const { strategy, connected } = await getStrategy(id);
+async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: string; venue?: string }) {
+  // The version sheet AND the triplet view share this one Version. The triplet card focuses the clicked
+  // (symbol, venue) cell; the comparison grid is the WHOLE algo across assets/venues. All from the engine —
+  // honest empties when a strategy has no per-symbol cells yet.
+  const [{ strategy, connected }, { data: triplet }, { data: comparison }] = await Promise.all([
+    getStrategy(id),
+    getTriplet(id, symbol, venue),
+    getComparison(id),
+  ]);
 
   if (!connected || !strategy.version_id) {
     return (
@@ -64,6 +81,12 @@ async function StrategyDetail({ id }: { id: string }) {
         thesis={summaryLane.thesis}
         bestOos={bestOos}
       />
+
+      {/* The triplet header — the clicked (algo × asset × venue) cell + the asset/venue selector that
+          navigates to a sibling triplet. Only shown when this algo has per-symbol cells. */}
+      {comparison.rows.length > 0 ? (
+        <TripletCard cell={triplet.cell} comparison={comparison.rows} />
+      ) : null}
 
       {/* The shared sheet body — identical to the screener's side panel. */}
       <StrategySheet strategy={strategy} />
@@ -107,6 +130,28 @@ async function StrategyDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {/* Comparison — this algo across every asset & venue, one row per triplet, never pooled. The clicked
+          cell is highlighted; a row opens its own fiche. Same SymbolsTable the merged Strategies surface uses. */}
+      {comparison.rows.length > 0 ? (
+        <div className="card">
+          <div className="card-hdr">
+            <span className="card-lbl" data-tip="Every (asset × venue) cell of THIS algo — each with its own P&L/verdict. Nothing averaged; the pooled column is advisory only.">
+              Comparison · {comparison.rows.length}
+            </span>
+          </div>
+          <div className="card-body">
+            <SymbolsTable
+              rows={comparison.rows}
+              symbols={comparison.symbols}
+              venues={comparison.venues}
+              title="Comparison"
+              caption={false}
+              highlight={triplet.cell ? { strategy_version_id: triplet.cell.strategy_version_id, symbol: triplet.cell.symbol, venue_id: triplet.cell.venue_id } : undefined}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

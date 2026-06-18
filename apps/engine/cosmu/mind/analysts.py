@@ -23,6 +23,28 @@ from cosmu.mind.rubric import RUBRICS
 # A market Stance leans one of these. "abstain" is the honest answer when the feed isn't ingested yet.
 LEANS = ("bullish", "bearish", "neutral", "abstain")
 
+# The metrics whose latest value is SYMBOL-SPECIFIC: BTC funding ≠ ETH funding, DOGE social ≠ SOL social, each
+# asset's perp/leverage state and crowd/headline flow are its own. The observe loop resolves THESE per symbol
+# (from alt_data, filtered by symbol). Every OTHER metric the panel reads — fear_greed (one global crowd index),
+# macro_regime + the FRED curve/rates/liquidity block, OSINT air activity — is MARKET-WIDE: a single shared value
+# gathered once. Per-symbolising a global fear/greed index would be a lie, so the split is deliberate (don't
+# par-symbolise the shared metrics). See docs/epics/agentic-lane.md.
+PER_SYMBOL_METRICS: frozenset[str] = frozenset(
+    {
+        # positioning — per-asset perp/leverage state (the Positioning analyst)
+        "funding_rate",
+        "open_interest",
+        "perp_spot_basis",
+        "liquidation_cascade",
+        "exchange_netflow",
+        # social / news — per-asset crowd mood + headline flow (the Sentiment + Social & News analysts)
+        "news_sentiment",
+        "social_sentiment",
+        "social_volume",
+        "reddit_sentiment",
+    }
+)
+
 
 @dataclass(frozen=True)
 class Stance:
@@ -84,6 +106,27 @@ def gather_context(store: Store, *, reference_bars=None) -> MindContext:
         if available_at and (as_of is None or available_at > as_of):
             as_of = available_at
     return MindContext(regime=regime, values=values, ml=ml, memory=memory, as_of=as_of)
+
+
+def context_for_symbol(store: Store, base: MindContext, symbol: str) -> MindContext:
+    """Derive the per-PRODUCT context for one `symbol` from the shared market-wide `base` (gathered ONCE via
+    gather_context). Keep the market-wide metrics as-is, but STRIP the per-symbol metrics out of the shared
+    values — the market-wide read carries whichever symbol's per-symbol row was newest, so without this strip a
+    per-symbol metric with no data for THIS symbol would silently inherit another symbol's value — and overlay
+    this symbol's own latest per-symbol values read from alt_data. regime / ml / memory are market-wide / process
+    self-knowledge and pass through unchanged. as_of is recomputed over the merged values so it reflects the
+    actual product context. Offline-safe: a cold store yields the market-wide base minus per-symbol metrics (an
+    honest abstain for funding/sentiment), never a fabricated or cross-symbol value."""
+    from cosmu.ingest.alt_summary import latest_value_per_metric_for_symbol
+
+    shared = {m: v for m, v in base.values.items() if m not in PER_SYMBOL_METRICS}
+    per_symbol = latest_value_per_metric_for_symbol(store, symbol, sorted(PER_SYMBOL_METRICS))
+    merged = {**shared, **per_symbol}
+    as_of: str | None = None
+    for _, available_at in merged.values():
+        if available_at and (as_of is None or available_at > as_of):
+            as_of = available_at
+    return replace(base, values=merged, as_of=as_of)
 
 
 def _latest_values(store: Store) -> dict[str, tuple[float, str | None]]:

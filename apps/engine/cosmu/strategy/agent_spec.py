@@ -35,7 +35,10 @@ class AgentSpec(BaseModel):
     # The assets it watches / may trade. A SINGLE symbol is fine (small social markets are the point); a single
     # source is caution, never an auto-discard.
     symbols: list[str] = Field(min_length=1)
-    venues: list[str] = Field(default_factory=lambda: ["binance"])
+    # The venues it trades each symbol on — the OTHER half of the product axis (symbol × venue). At least one
+    # (mirrors symbols): the observe loop runs over every (symbol, venue) PRODUCT and stamps the venue on each
+    # Decision so a per-venue fee/funding/legality read is attributable later.
+    venues: list[str] = Field(default_factory=lambda: ["binance"], min_length=1)
     exit: AgentExitPolicy  # MANDATORY — no exit-less LLM strategy
     # Sizing cap; the unified per-strategy caps still clamp it when live (see docs/epics/agentic-lane.md).
     max_position_pct: float = Field(default=0.05, gt=0, le=1)
@@ -50,6 +53,10 @@ class Decision(BaseModel):
     reasoning so the operator can SEE the agentic process step by step."""
 
     symbol: str
+    # The PRODUCT axis: which venue this intent is for (symbol × venue). The LLM does NOT propose it — the
+    # observe loop stamps it as it iterates an agent's venues — so it is None on a freshly-proposed Decision and
+    # carries the venue once recorded. Kept on the Decision so each recorded read is attributable to a product.
+    venue: str | None = None
     side: Literal["long", "short", "flat"]
     confidence: float = Field(ge=0, le=1)
     # The price zone the signal is valid in — past it the signal is stale (the operator/agent can skip a late fill).

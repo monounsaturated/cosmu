@@ -127,6 +127,7 @@ from cosmu.api.models.finder import (  # noqa: F401
 from cosmu.api.models.lab_symbols import (  # noqa: F401
     LabSymbolRow,
     LabSymbolsResponse,
+    TripletCardResponse,
 )
 from cosmu.api.models.flywheel import (  # noqa: F401
     MemoryInsight,
@@ -398,4 +399,8 @@ __all__ = [
     "IndexSpec",
     "IndexStrategyRef",
     "IndexesResponse",
+    # lab_symbols (granular triplet view)
+    "LabSymbolRow",
+    "LabSymbolsResponse",
+    "TripletCardResponse",
 ]

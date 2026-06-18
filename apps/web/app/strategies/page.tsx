@@ -1,7 +1,8 @@
-// Strategies — the v18 "Iris Bento" landing surface (mockup id=page-strategies). It answers ONE question:
-// which Versions deserve my attention/capital, on what edge? Every Version runs on its own standalone track,
-// ranked by risk-adjusted % (deflated OOS Sharpe). The page leads with the live MONEY-SPLIT `.summary-ribbon`
-// + the population shape, then the sortable/column-pickable bento screener; rows open the per-Version sheet.
+// Strategies — the v18 "Iris Bento" landing surface, now the ONE GRANULAR surface (the old per-symbol Lab is
+// folded in here). It answers the question the operator insisted on: how does each strategy do on EACH symbol
+// and EACH venue — never a pooled mean? Every row is one (algo × asset × venue) triplet, outlier-ranked and
+// verdict-labelled; the parent backtest's pooled number rides along as advisory only. The page leads with the
+// live MONEY-SPLIT `.summary-ribbon`, then the sortable/filterable triplet grid; a row opens its triplet fiche.
 //
 // LOADING UX: a SYNC server component returns the instant chrome (Page + Toolbar) and streams the data
 // region under <Suspense> so the toolbar paints immediately while the engine read resolves.
@@ -9,12 +10,13 @@
 import { Suspense } from "react";
 import type { LeaderboardRow, PortfolioSummaryResponse } from "@cosmu/contracts-ts";
 import { engineConfigured, getLeaderboard } from "../data";
+import { getLabSymbols } from "../data/lab";
 // getPortfolioSummary is ambiguous through the barrel — import it from its canonical module to bind the
 // live MONEY SPLIT into the ribbon.
 import { getPortfolioSummary } from "../data/portfolio";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
-import { StrategiesTable } from "@/components/research/strategies-table";
+import { SymbolsTable } from "@/components/lab/symbols-table";
 import { cn, formatPct, formatUsd, isPaperRow, numOrNull, signedUsd } from "@/lib/utils";
 
 // Always render on-demand with fresh engine data — never statically pre-render (the engine may be offline
@@ -39,7 +41,13 @@ export default function StrategiesPage() {
 }
 
 async function StrategiesData() {
-  const [{ leaderboard, connected }, { summary }] = await Promise.all([getLeaderboard(), getPortfolioSummary()]);
+  // The triplet grid is the surface; the leaderboard + portfolio summary feed ONLY the money-split ribbon
+  // (live equity / P&L / paper count) — an overview, not a competing table.
+  const [{ data: lab, connected }, { leaderboard }, { summary }] = await Promise.all([
+    getLabSymbols(),
+    getLeaderboard(),
+    getPortfolioSummary(),
+  ]);
   const rows = leaderboard.rows as LeaderboardRow[];
 
   if (!connected) {
@@ -48,21 +56,21 @@ async function StrategiesData() {
         <Toolbar title="Strategies" />
         <NotConnected
           configured={engineConfigured}
-          what="Every Version is judged in net-of-fee % on its own track — no pooled wallet. The faceted, ranked screener appears here once the engine is connected — no demo rows."
+          what="Every strategy is shown at the (algo × asset × venue) triplet — one row per cell, never a pooled mean. Each carries an honest robust/fragile verdict; the pooled number is advisory only. Appears once the engine is connected — no demo rows."
         />
       </>
     );
   }
 
-  if (rows.length === 0) {
+  if (lab.rows.length === 0) {
     return (
       <>
         <Toolbar title="Strategies" />
         <div className="card">
           <div className="card-body">
             <EmptyState
-              title="No Versions yet — the Lab hasn't produced any."
-              hint="Once the Lab authors a batch (or you drop an idea in the inbox) and Versions reach Paper, they show up here grouped by stage."
+              title="No per-symbol results yet."
+              hint="Once the Lab backtests a strategy (or the autonomous discovery tick runs), every (symbol × venue) cell shows up here — outlier-ranked, verdict-labelled, each with its own P&L. The deterministic Gate alone decides funding."
             />
           </div>
         </div>
@@ -70,10 +78,18 @@ async function StrategiesData() {
     );
   }
 
-  // v18 page-strategies: the `.summary-ribbon` bento cell, then the screener (its own toolbar-row + table
-  // bento cells) — nothing else. No population strip, no realtime badge (the sidebar engine dot carries
-  // liveness); none of those are in the reference.
-  return <StrategiesTable rows={rows} ribbon={<SummaryRibbon summary={summary} rows={rows} />} />;
+  // The one granular surface: the live money-split ribbon, then the (algo × asset × venue) triplet grid (its
+  // own toolbar-row + table). A row opens its triplet fiche. Reuses the same SymbolsTable the fiche's
+  // comparison grid renders, so the granular truth is shown ONE way everywhere.
+  return (
+    <SymbolsTable
+      rows={lab.rows}
+      symbols={lab.symbols}
+      venues={lab.venues}
+      title="Strategies"
+      ribbon={<SummaryRibbon summary={summary} rows={rows} />}
+    />
+  );
 }
 
 // The v18 `.summary-ribbon` — a calm, dense strip that surfaces the LIVE money split (real capital, real

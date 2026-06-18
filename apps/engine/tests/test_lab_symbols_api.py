@@ -24,15 +24,17 @@ def _client(monkeypatch, store):
 
 
 def _seed_cell(store: Store, *, name: str, symbol: str, venue: str, return_pct: float, verdict: str,
-               trades: int = 40, kind: str = "quant", status: str = "screened") -> None:
-    """Persist one (strategy → version → backtest → backtest_symbols) chain the way the finder/loop do."""
+               trades: int = 40, kind: str = "quant", status: str = "screened",
+               oos_return: str = "0.1") -> tuple[str, str]:
+    """Persist one (strategy → version → backtest → backtest_symbols) chain the way the finder/loop do.
+    Returns (strategy_id, version_id) so the triplet/comparison tests can address the seeded algo + version."""
     sid = store.insert("strategies", {"name": name, "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
     vid = store.insert("strategy_versions", {
         "strategy_id": sid, "spec": {"name": name}, "generated_code": "", "code_hash": "h", "params": {},
         "origin": "test", "status": status, "kind": kind, "created_at": "2026-06-17T00:00:00Z",
     })
     bt_id = store.insert("backtests", {
-        "strategy_version_id": vid, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0",
+        "strategy_version_id": vid, "kind": "screen", "oos_return": oos_return, "sharpe": "1.0", "sortino": "1.0",
         "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": trades, "pbo": "0.2",
         "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "created_at": "2026-06-17T00:00:00Z",
     })
@@ -41,6 +43,7 @@ def _seed_cell(store: Store, *, name: str, symbol: str, venue: str, return_pct: 
         "return_pct": str(return_pct), "sharpe": "1.2", "max_drawdown": "0.08", "trades": trades,
         "verdict": verdict, "created_at": "2026-06-17T00:00:00Z",
     })
+    return sid, vid
 
 
 def test_honest_empty_state(tmp_path, monkeypatch):
@@ -83,8 +86,8 @@ def test_filters_by_symbol_venue_verdict(tmp_path, monkeypatch):
 
 
 def test_dedup_keeps_latest_backtest_per_version_symbol(tmp_path, monkeypatch):
-    """A re-run fans out a second backtest for the same (version, symbol). The endpoint keeps ONE cell — the
-    latest — so the leaderboard never double-counts a single edge."""
+    """A re-run fans out a second backtest for the same (version, symbol, venue). The endpoint keeps ONE cell —
+    the latest — so the leaderboard never double-counts a single edge."""
     store = _store(tmp_path)
     sid = store.insert("strategies", {"name": "R", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
     vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "R"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
@@ -94,3 +97,39 @@ def test_dedup_keeps_latest_backtest_per_version_symbol(tmp_path, monkeypatch):
     rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
     assert len(rows) == 1
     assert rows[0]["return_pct"] == 0.25  # the later re-run, not the earlier 0.10
+
+
+def test_two_venues_same_version_symbol_are_distinct_cells(tmp_path, monkeypatch):
+    """The venue-aware dedup fix: the SAME version on the SAME symbol at TWO venues is TWO cells (the fee axis
+    differs) — never collapsed into one. The old (version, symbol) key hid one venue's P&L behind its sibling's."""
+    store = _store(tmp_path)
+    sid = store.insert("strategies", {"name": "V", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+    vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "V"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
+    bt = store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0", "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 30, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "created_at": "2026-06-17T00:00:00Z"})
+    for venue, ret in [("binance", 0.20), ("hyperliquid", 0.05)]:
+        store.insert("backtest_symbols", {"backtest_id": bt, "strategy_version_id": vid, "symbol": "BTCUSDT", "venue_id": venue, "return_pct": str(ret), "sharpe": "1.0", "max_drawdown": "0.05", "trades": 30, "verdict": "robust", "created_at": "2026-06-17T00:00:00Z"})
+    rows = _client(monkeypatch, store).get("/lab/symbols?symbol=BTCUSDT").json()["rows"]
+    assert len(rows) == 2
+    assert {r["venue_id"] for r in rows} == {"binance", "hyperliquid"}
+
+
+def test_version_id_filter_narrows_to_one_version(tmp_path, monkeypatch):
+    """?version_id= narrows to a single Version's cells — what the fiche/comparison plumbing relies on."""
+    store = _store(tmp_path)
+    _, vid_a = _seed_cell(store, name="A", symbol="BTCUSDT", venue="binance", return_pct=0.30, verdict="robust")
+    _seed_cell(store, name="B", symbol="ETHUSDT", venue="binance", return_pct=0.10, verdict="robust")
+    client = _client(monkeypatch, store)
+    assert len(client.get("/lab/symbols").json()["rows"]) == 2
+    only = client.get(f"/lab/symbols?version_id={vid_a}").json()["rows"]
+    assert {r["strategy_version_id"] for r in only} == {vid_a}
+    assert {r["symbol"] for r in only} == {"BTCUSDT"}
+
+
+def test_pooled_return_is_advisory_not_an_average_of_cells(tmp_path, monkeypatch):
+    """pooled_return_pct carries the PARENT backtest's pooled OOS return (advisory), distinct from the cell's own
+    standalone return_pct — it is NEVER an average of the per-symbol cells."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="A", symbol="BTCUSDT", venue="binance", return_pct=0.42, verdict="fragile", oos_return="0.07")
+    row = _client(monkeypatch, store).get("/lab/symbols").json()["rows"][0]
+    assert row["return_pct"] == 0.42       # the granular truth on THIS cell
+    assert row["pooled_return_pct"] == 0.07  # the parent backtest's pooled number, NOT 0.42

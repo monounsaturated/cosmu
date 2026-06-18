@@ -8,16 +8,21 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _json, oos_window_days, store
+from cosmu.api._shared import _json, _metric, oos_window_days, store
 from cosmu.api.models import (
     Backtest,
     Execution,
+    LabSymbolsResponse,
     Point,
     StrategyDetailResponse,
     StrategySummaryPutRequest,
     StrategySummaryPutResponse,
     SummaryFactsResponse,
+    TripletCardResponse,
 )
+# The granular triplet cell is built ONE way, in the lab router — reuse its SELECT + row/dedup helpers so the
+# strategy-triplet routes here can never drift from /lab/symbols (same columns, same pooled-advisory join).
+from cosmu.api.routers.lab import _CELL_SELECT, _cell_row, _dedup_cells
 from cosmu.api.routers.leaderboard import _money_or_none  # the shared finite-or-None money coercion (never null→0)
 from cosmu.knowledge.store import utcnow
 from cosmu.research.summary_facts import facts_hash, summary_facts
@@ -169,3 +174,67 @@ def put_strategy_summary(version_id: str, request: StrategySummaryPutRequest) ->
     )
     store.append_event(actor="operator", kind="summary_written", ref_type="strategy_version", ref_id=version_id, payload=structured)
     return StrategySummaryPutResponse(ok=True)
+
+
+@router.get("/strategies/{version_id}/triplet", response_model=TripletCardResponse)
+def strategy_triplet(version_id: str, symbol: str | None = None, venue: str | None = None) -> TripletCardResponse:
+    """The 'fiche triplet' — ONE focused (algo × asset × venue) backtest cell. The web links here from a clicked
+    cell with ?symbol=&venue=; `cell` is the granular standalone result for THAT exact triplet (latest backtest),
+    or None when no such cell exists (honest empty — never a fabricated row, never a pooled mean). `strategy_id`
+    is the algo the comparison grid groups on, so the asset/venue selector can navigate to a sibling triplet.
+    Pure read — the pooled number rides on the cell as advisory only; the deterministic Gate alone funds."""
+    with store.reading():
+        sv = store.row(
+            "SELECT sv.strategy_id, s.name AS strategy_name FROM strategy_versions sv "
+            "JOIN strategies s ON s.id = sv.strategy_id WHERE sv.id = ?",
+            (version_id,),
+        )
+        if sv is None:
+            raise HTTPException(status_code=404, detail="strategy version not found")
+        conds = ["bs.strategy_version_id = ?"]
+        params: list[object] = [version_id]
+        if symbol:
+            conds.append("bs.symbol = ?")
+            params.append(symbol)
+        # venue None → don't constrain (pick the latest cell for the symbol); "" → the NULL-venue cell explicitly;
+        # a real id → that venue. So a sibling whose venue_id is NULL is still addressable, never silently skipped.
+        if venue is not None:
+            if venue == "":
+                conds.append("bs.venue_id IS NULL")
+            else:
+                conds.append("bs.venue_id = ?")
+                params.append(venue)
+        where = " WHERE " + " AND ".join(conds)
+        rows = store.rows(f"{_CELL_SELECT}{where} ORDER BY bs.created_at DESC LIMIT 1", tuple(params))
+    cell = _cell_row(rows[0]) if rows else None
+    return TripletCardResponse(
+        strategy_id=sv["strategy_id"],
+        strategy_version_id=version_id,
+        strategy_name=sv["strategy_name"],
+        cell=cell,
+    )
+
+
+@router.get("/strategies/{version_id}/comparison", response_model=LabSymbolsResponse)
+def strategy_comparison(version_id: str, limit: int = 500) -> LabSymbolsResponse:
+    """The 'table de comparaison' — EVERY backtest_symbols cell of the SAME algo (strategy_id) across its assets
+    and venues, one row per (version × symbol × venue), outlier-sorted. This is how the fiche shows the clicked
+    cell's siblings side by side WITHOUT averaging — each cell keeps its own P&L/verdict. The distinct symbols +
+    venues drive the asset/venue selector. Resolves the algo from any one of its versions. Pure read."""
+    with store.reading():
+        sv = store.row("SELECT strategy_id FROM strategy_versions WHERE id = ?", (version_id,))
+        if sv is None:
+            raise HTTPException(status_code=404, detail="strategy version not found")
+        strategy_id = sv["strategy_id"]
+        rows = store.rows(
+            f"{_CELL_SELECT} WHERE sv.strategy_id = ? ORDER BY bs.created_at DESC LIMIT 5000",
+            (strategy_id,),
+        )
+    deduped = _dedup_cells(rows)
+    deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
+    out = [_cell_row(r) for r in deduped[: max(1, limit)]]
+    # Distinct symbols/venues are derived from THIS algo's cells (not the whole DB) so the selector only ever
+    # offers triplets that actually exist for this strategy.
+    symbols = sorted({r["symbol"] for r in deduped})
+    venues = sorted({r["venue_id"] for r in deduped if r.get("venue_id")})
+    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
