@@ -275,6 +275,37 @@ def test_empty_universe_table_is_byte_identical_binance_only(tmp_path):
     assert all(c.venue_id == REFERENCE_VENUE and c.reuses_reference and c.key == c.symbol for c in cells)
 
 
+def test_curated_cap_widens_venues_not_the_pair_long_tail(tmp_path):
+    """COMPUTE-EXPLOSION GUARD: load_universe returns the FULL ~4000-row crypto table, but the universal layer must
+    widen the VENUE axis, NOT the pair axis — it screens only the caller's CURATED set (fallback_symbols) across
+    venues, never the illiquid long tail. Here universe_pairs carries a curated pair (BTC) AND an off-list pair
+    (DOGE), both on 2 venues; only BTC may screen, and it DOES fan across both venues."""
+    store = _store(tmp_path)
+    store.migrate()
+    _seed_universe(store, [
+        ("binance", "BTCUSDT", "BTC", "USDT"),
+        ("kraken", "XBTUSD", "XBT", "ZUSD"),
+        ("binance", "DOGEUSDT", "DOGE", "USDT"),  # in universe_pairs but OFF the curated screen list
+        ("kraken", "DOGEUSD", "DOGE", "ZUSD"),
+    ])
+    closes = _walk(150, seed=20)
+    reference = _StubProvider({"BTCUSDT": _bars(closes), "DOGEUSDT": _bars(closes)})
+    venue_bars = {"XBTUSD": _bars([c * 1.0005 for c in closes]), "DOGEUSD": _bars([c * 1.0005 for c in closes])}
+    import cosmu.data.price_cells as pc
+    orig = pc._fallback_provider
+    pc._fallback_provider = lambda v: _StubProvider(venue_bars) if v == "kraken" else orig(v)
+    try:
+        from cosmu.data.market import UniversalOHLCVProvider
+        # Curated set = ONLY BTC. DOGE is in universe_pairs on both venues but off the caller's screen list.
+        cells = build_crypto_cells(store, timeframe="1d", limit=200, enabled_venues={"binance", "kraken"},
+                                   reference=UniversalOHLCVProvider(reference), fallback_symbols=("BTCUSDT",))
+    finally:
+        pc._fallback_provider = orig
+
+    assert {c.symbol for c in cells} == {"BTC/USDT"}          # the off-list DOGE pair never screens
+    assert {c.venue_id for c in cells} == {"binance", "kraken"}  # the curated pair DOES fan across venues
+
+
 # --------------------------------------------------------------------------- the fee overlay (cheaper venue wins)
 
 
