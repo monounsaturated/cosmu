@@ -1,0 +1,35 @@
+{
+  "name": "DVOL-expansion breakout momentum — ride the trend that follows an IV expansion",
+  "rationale": "ECONOMIC MECHANISM (distinct from dvol-calm-regime-momentum, which requires LOW, falling crypto IV; this requires RISING IV crossing UP out of a calm band): a volatility regime change is itself tradeable. When Deribit DVOL (crypto-native 30d implied vol) crosses UP out of a quiet range, options dealers are repricing for a bigger move — and that vol expansion historically PRECEDES directional trends, not just chop, because the same flows that bid vol (leverage, new positioning, a catalyst) push price. The 'long gamma into an expansion' read: catch the IV breakout while it is still moderate (above a fitted expansion floor but below the panic ceiling where dvol-spike-iv-capitulation takes over), confirmed by price momentum so we ride expansion-WITH-trend, not expansion-into-a-crash. Entry: dvol crosses UP through a fitted expansion floor AND dvol below a fitted panic ceiling AND price in an uptrend. Exit: dvol crosses UP into the panic zone (hand off to the capitulation-reversion regime) OR price momentum rolls over; plus stop/TP/time. Disconfirmer 1: if an unconditional momentum long matches the deflated Sharpe, the IV-expansion trigger adds nothing. Disconfirmer 2: IV expansions are SYMMETRIC — they precede down-trends as often as up-trends; if the up-only confirmation (trend floor) is doing all the work, the dvol cross is noise. Disconfirmer 3: this partitions the dvol axis with dvol-calm (low) and dvol-spike (extreme) — the three must NOT be double-counted (same feature, different regime bands). Disconfirmer 4 (data depth): only ~148 DVOL points — low-confidence, paper-only until it deepens. Disconfirmer 5 (cost): must clear ~20bps round-trip net. tier0 crypto-native vol feature.",
+  "catalyst": "DVOL crossing up out of a calm range — an IV expansion that precedes a directional trend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "cross_up", "threshold": { "param": "expansion_floor" } },
+    { "feature": { "name": "dvol" }, "op": "lt", "threshold": { "param": "panic_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "dvol" }, "op": "cross_up", "threshold": { "param": "panic_exit" } },
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "expansion_floor": { "kind": "float", "lo": 42.0, "hi": 52.0 },
+    "panic_ceiling":   { "kind": "float", "lo": 55.0, "hi": 68.0 },
+    "panic_exit":      { "kind": "float", "lo": 58.0, "hi": 69.0 },
+    "trend_lb":        { "kind": "int",   "lo": 7,    "hi": 30,  "step": 1 },
+    "trend_floor":     { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "mom_exit":        { "kind": "float", "lo": -0.08, "hi": -0.01 },
+    "stop":            { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":              { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":       { "kind": "int",   "lo": 4,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

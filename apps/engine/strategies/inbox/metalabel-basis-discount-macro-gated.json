@@ -1,0 +1,40 @@
+{
+  "name": "Triple-barrier meta-labeled basis-discount reversion — macro-gated sizing",
+  "rationale": "ECONOMIC MECHANISM (distinct from both existing meta-label specs — metalabel-momentum [primary = momentum] and metalabel-reversion [primary = RSI]; here the PRIMARY is a perp-spot basis discount and the SECONDARY model reads a MACRO+vol feature set, so both the side-signal and the gating context are new): meta-labeling (Lopez de Prado) keeps a permissive primary and learns when to act. The primary is the basis-discount contrarian long (perp_spot_basis below a fitted discount floor = over-short crowd, a short-squeeze setup on spot) — a real but regime-dependent edge. The secondary regularized logistic is trained expanding-window, point-in-time, on which barrier (stop/take/time) each past basis-discount entry hit first net of cost, reading at entry: the basis itself, realized vol, perp funding, equity VIX and crypto DVOL. The thesis the secondary tests: basis-squeeze reversions PAY in calm macro/low-IV regimes and FAIL when a deflating discount is just the front edge of a systemic risk-off cascade — so it should size UP the squeeze when macro is calm and SKIP it when VIX/DVOL/funding flag stress. Proportional sizing scales conviction by the predicted win probability. It only sizes/skips, never flips direction. Disconfirmer 1 (honest prior): meta-labeling only amplifies an edge the primary already has — if the bare basis-discount long has no edge after ~20bps, this is a powered FAIL, which is the point of running it cleanly. Disconfirmer 2: if the macro features in the secondary carry no information (dropping VIX/DVOL leaves the gate unchanged), the macro-gating thesis is unsupported and this reduces to a vol-gated basis spec. Disconfirmer 3: the secondary must be ungated until META_MIN_TRAIN resolved events exist, so it can only ever SUBTRACT primary trades — no look-ahead. tier0 basis + tier0 macro features.",
+  "catalyst": "secondary model green-lights a basis-discount squeeze in a calm macro/low-IV regime",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "perp_spot_basis" }, "op": "lt", "threshold": { "param": "discount_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "perp_spot_basis" }, "op": "cross_up", "threshold": { "param": "basis_exit" } }
+    ]
+  },
+  "meta_label": {
+    "features": [
+      { "name": "perp_spot_basis" },
+      { "name": "vol_realized", "lookback": 14 },
+      { "name": "funding_rate" },
+      { "name": "vix_level" },
+      { "name": "dvol" }
+    ],
+    "prob_threshold": { "param": "meta_thr" },
+    "sizing": "proportional"
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "discount_floor": { "kind": "float", "lo": -0.0025, "hi": -0.0005 },
+    "basis_exit":     { "kind": "float", "lo": -0.0005, "hi": 0.0003 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":      { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 },
+    "meta_thr":       { "kind": "float", "lo": 0.45, "hi": 0.65 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

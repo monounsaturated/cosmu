@@ -1,0 +1,35 @@
+{
+  "name": "Macro dual-calm regime — long crypto only when BOTH equity vol AND credit are calm",
+  "rationale": "ECONOMIC MECHANISM (a CONFLUENCE filter distinct from the single-gate macro specs macro-vix-calm-riskon-long and macro-credit-spread-stress-derisk): equity-implied vol (VIX) and corporate credit spreads measure DIFFERENT facets of systemic stress — VIX is the equity options market's fear, credit spreads are the bond market's default/liquidity risk. They can diverge: a VIX spike on a transient equity wobble with credit still tight is a false alarm; credit widening while VIX is asleep is a slow-burn stress the equity crowd hasn't priced. Requiring BOTH to be calm is a higher-conviction risk-on regime tag — the macro all-clear that precedes the cleanest crypto up-legs and filters out the single-gauge head-fakes. The cost is fewer trades (the AND is strict), which is the right trade-off for the highest-beta risk asset. Entry: vix_level below a fitted calm ceiling AND credit_spread below a fitted calm ceiling AND price in a non-broken uptrend. Exit: EITHER macro gauge crosses up into stress (VIX up through a panic threshold OR credit up through a widening threshold) or stop/TP/time. Disconfirmer 1: if EITHER single macro gate alone (the existing specs) matches the deflated Sharpe, the confluence adds no value and is just a trade-count reducer. Disconfirmer 2: VIX and credit are correlated; if their joint information is no more than VIX alone, the credit leg is redundant here. Disconfirmer 3: the AND must not so thin the sample that there are too few trades for the gate's min-trades floor — if it fails on count, that is honest evidence the confluence is too rare to trade. Disconfirmer 4 (cost): must beat buy-and-hold deflated Sharpe net of ~20bps. tier0 macro features.",
+  "catalyst": "equity vol AND credit BOTH calm — a high-conviction macro all-clear for a crypto long",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 30 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_ceiling" } },
+    { "feature": { "name": "credit_spread" }, "op": "lt", "threshold": { "param": "spread_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_up", "threshold": { "param": "vix_stress_exit" } },
+      { "feature": { "name": "credit_spread" }, "op": "cross_up", "threshold": { "param": "spread_stress_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_ceiling":        { "kind": "float", "lo": 14.0, "hi": 22.0 },
+    "vix_stress_exit":    { "kind": "float", "lo": 22.0, "hi": 33.0 },
+    "spread_ceiling":     { "kind": "float", "lo": 2.7,  "hi": 3.0 },
+    "spread_stress_exit": { "kind": "float", "lo": 3.0,  "hi": 3.5 },
+    "trend_lb":           { "kind": "int",   "lo": 20,   "hi": 80,  "step": 1 },
+    "trend_floor":        { "kind": "float", "lo": -0.03, "hi": 0.05 },
+    "stop":               { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                 { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":          { "kind": "int",   "lo": 7,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
