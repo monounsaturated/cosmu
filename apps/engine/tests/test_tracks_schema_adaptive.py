@@ -294,6 +294,36 @@ def _prodify(store: Store) -> None:
     store.rows("CREATE UNIQUE INDEX IF NOT EXISTS uq_tracks_version ON tracks(strategy_version_id)")
 
 
+def test_repromoted_cell_is_idempotent_post_migration(tmp_path):
+    """Item 1: post-migration, RE-PROMOTING the same brut cell (same version × symbol × venue) must NOT crash on
+    uq_tracks_cell — open_paper_track's ON CONFLICT DO NOTHING makes the second open a no-op that returns the
+    EXISTING track id. Exactly one row survives."""
+    store = _store(tmp_path, "repromote")
+    assert tracks_has_cell_columns(store) is True
+    vid = _seed_version(store)
+    first = open_paper_track(store, version_id=vid, starting_capital="10000", symbol=_SYM, venue_id=_VENUE, store=store)
+    # The re-promotion: same triple, again — must return the SAME id, never raise.
+    second = open_paper_track(store, version_id=vid, starting_capital="10000", symbol=_SYM, venue_id=_VENUE, store=store)
+    assert second == first
+    rows = store.rows("SELECT id FROM tracks WHERE strategy_version_id = ?", (vid,))
+    assert len(rows) == 1  # the unique held; no duplicate, no crash
+
+
+def test_repromoted_version_wide_track_does_not_crash_post_migration(tmp_path):
+    """A version-wide (symbol/venue NULL) brut row is NOT deduped by uq_tracks_cell — both Postgres and SQLite
+    treat NULLs in a UNIQUE index as DISTINCT, so two NULL-keyed rows never collide (by design: legacy version-
+    wide rows must coexist with cell rows). The point of the ON CONFLICT path is only that it never RAISES: a
+    re-open with no symbol/venue is a plain non-colliding insert, not an IntegrityError."""
+    store = _store(tmp_path, "repromote_nullkey")
+    assert tracks_has_cell_columns(store) is True
+    vid = _seed_version(store)
+    first = open_paper_track(store, version_id=vid, starting_capital="10000", store=store)  # no symbol/venue
+    second = open_paper_track(store, version_id=vid, starting_capital="10000", store=store)
+    assert first and second  # neither raised
+    # NULL conflict columns are distinct → two rows (the documented DB semantics, not deduped by the cell unique).
+    assert len(store.rows("SELECT id FROM tracks WHERE strategy_version_id = ?", (vid,))) == 2
+
+
 def test_multi_cell_fanout_collides_without_guard_pre_migration(tmp_path):
     """The hazard the finder/loop guard prevents: pre-migration tracks enforces UNIQUE(strategy_version_id), so a
     version that passes the gate on >1 symbol would open a SECOND version-wide track and COLLIDE. Pin that the raw
