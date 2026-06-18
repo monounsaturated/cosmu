@@ -713,9 +713,11 @@ export interface LabSymbolRow {
   created_at: string;
   kind: string;
   max_drawdown: number;
+  pooled_return_pct: number | null;
   return_pct: number;
   sharpe: number;
   status: string;
+  strategy_id: string;
   strategy_name: string;
   strategy_version_id: string;
   symbol: string;
@@ -1334,6 +1336,13 @@ export interface ToggleResponse {
   promoted: string[];
   reason?: string | null;
   requires_confirm?: boolean;
+}
+
+export interface TripletCardResponse {
+  cell: LabSymbolRow | null;
+  strategy_id: string;
+  strategy_name: string;
+  strategy_version_id: string;
 }
 
 export interface UniverseResponse {

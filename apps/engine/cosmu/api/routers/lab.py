@@ -61,13 +61,66 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
     return _draft_to_response(draft)
 
 
+# The per-cell SELECT — one row per backtest_symbols, carrying the algo id (sv.strategy_id) the comparison table
+# groups on AND the parent backtest's pooled OOS return (b.oos_return) as the ADVISORY pooled number. Shared by
+# /lab/symbols and the strategy-triplet routes so every granular cell is built the SAME way, from the SAME columns.
+_CELL_SELECT = (
+    "SELECT bs.strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
+    "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, "
+    "b.oos_return AS pooled_return, bs.created_at "
+    "FROM backtest_symbols bs "
+    "JOIN strategy_versions sv ON sv.id = bs.strategy_version_id "
+    "JOIN strategies s ON s.id = sv.strategy_id "
+    "LEFT JOIN backtests b ON b.id = bs.backtest_id"
+)
+
+
+def _cell_row(r: dict) -> LabSymbolRow:
+    """Build one granular triplet cell from a `_CELL_SELECT` row. return_pct is the standalone truth on THIS
+    (symbol, venue); pooled_return_pct rides along as advisory only (NULL when the parent backtest is missing)."""
+    pooled = r.get("pooled_return")
+    return LabSymbolRow(
+        strategy_version_id=r["strategy_version_id"],
+        strategy_name=r["strategy_name"],
+        strategy_id=r["strategy_id"],
+        kind=r.get("kind") or "quant",
+        status=r.get("status") or "",
+        symbol=r["symbol"],
+        venue_id=r.get("venue_id"),
+        return_pct=_metric(r["return_pct"]),
+        sharpe=_metric(r["sharpe"]),
+        max_drawdown=_metric(r["max_drawdown"]),
+        trades=int(_metric(r["trades"])),
+        verdict=r.get("verdict"),
+        pooled_return_pct=_metric(pooled) if pooled is not None else None,
+        created_at=r["created_at"],
+    )
+
+
+def _dedup_cells(rows: list[dict]) -> list[dict]:
+    """Keep ONE cell per (version, symbol, venue) — the triplet IS the unit. A re-run fans out a fresh backtest
+    for the same triplet; rows arrive created_at DESC so the FIRST seen is the latest. Crucially the key carries
+    venue_id: the SAME edge on the SAME symbol at two venues is two DISTINCT cells (the fee axis differs) and must
+    NEVER be collapsed into one — that was the bug that hid a venue's P&L behind its sibling's."""
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[dict] = []
+    for r in rows:
+        key = (r["strategy_version_id"], r["symbol"], r.get("venue_id") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    return deduped
+
+
 @router.get("/lab/symbols", response_model=LabSymbolsResponse)
 def lab_symbols(symbol: str | None = None, venue: str | None = None,
-                verdict: str | None = None, limit: int = 500) -> LabSymbolsResponse:
+                verdict: str | None = None, version_id: str | None = None,
+                limit: int = 500) -> LabSymbolsResponse:
     """Per-symbol backtest cells — one row per (strategy × symbol × venue), the granular truth the pooled
     leaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with
     the honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not
-    celebrated. Optional filters narrow by symbol / venue / verdict. Pure read; never a funding signal."""
+    celebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal."""
     conds: list[str] = []
     params: list[object] = []
     if symbol:
@@ -79,52 +132,22 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
     if verdict:
         conds.append("bs.verdict = ?")
         params.append(verdict)
+    if version_id:
+        conds.append("bs.strategy_version_id = ?")
+        params.append(version_id)
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
     with store.reading():
-        # Fetch latest-first so the per-(version,symbol) dedup below keeps the most recent backtest, then we
+        # Fetch latest-first so the per-triplet dedup below keeps the most recent backtest, then we
         # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
-        rows = store.rows(
-            "SELECT bs.strategy_version_id, s.name AS strategy_name, sv.kind, sv.status, "
-            "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, bs.created_at "
-            "FROM backtest_symbols bs "
-            "JOIN strategy_versions sv ON sv.id = bs.strategy_version_id "
-            "JOIN strategies s ON s.id = sv.strategy_id"
-            f"{where} ORDER BY bs.created_at DESC LIMIT 5000",
-            tuple(params),
-        )
+        rows = store.rows(f"{_CELL_SELECT}{where} ORDER BY bs.created_at DESC LIMIT 5000", tuple(params))
         symbols = [r["symbol"] for r in store.rows("SELECT DISTINCT symbol FROM backtest_symbols ORDER BY symbol")]
         venues = [
             r["venue_id"]
             for r in store.rows("SELECT DISTINCT venue_id FROM backtest_symbols WHERE venue_id IS NOT NULL ORDER BY venue_id")
         ]
-    # One cell per (version, symbol): a re-run fans out multiple backtests — keep the latest (rows are created_at
-    # DESC), then rank by standalone return so the strongest outlier leads.
-    seen: set[tuple[str, str]] = set()
-    deduped: list[dict] = []
-    for r in rows:
-        key = (r["strategy_version_id"], r["symbol"])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(r)
+    deduped = _dedup_cells(rows)
     deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
-    out = [
-        LabSymbolRow(
-            strategy_version_id=r["strategy_version_id"],
-            strategy_name=r["strategy_name"],
-            kind=r.get("kind") or "quant",
-            status=r.get("status") or "",
-            symbol=r["symbol"],
-            venue_id=r.get("venue_id"),
-            return_pct=_metric(r["return_pct"]),
-            sharpe=_metric(r["sharpe"]),
-            max_drawdown=_metric(r["max_drawdown"]),
-            trades=int(_metric(r["trades"])),
-            verdict=r.get("verdict"),
-            created_at=r["created_at"],
-        )
-        for r in deduped[: max(1, limit)]
-    ]
+    out = [_cell_row(r) for r in deduped[: max(1, limit)]]
     return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
 
 

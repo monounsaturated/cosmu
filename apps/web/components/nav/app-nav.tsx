@@ -2,7 +2,9 @@
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
 // frontend — SEVEN surfaces: Strategies · Paper · Live · Indexes · Costs · Keys · Commands
-// (landing = Strategies). Indexes (2026-06-15) is the operator-defined, deterministically-scored
+// (landing = Strategies). Strategies is now the ONE granular surface: every (algo × asset × venue)
+// triplet, never pooled — the old per-symbol "Lab" tab was folded into it (its route now redirects).
+// Indexes (2026-06-15) is the operator-defined, deterministically-scored
 // signal-index registry that strategies later key off. (The old Research/experiment-memory route was
 // dropped from the nav to declutter — its gate_verdicts data stays in the DB + /verdicts API and is
 // meant to become a generated report, not a daily surface.) There is no mobile bottom-dock: the bento
@@ -72,7 +74,6 @@ const ICONS: Record<string, ReactNode> = {
 // The primary surfaces — the entire app, in canonical sidebar order.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
-  { href: "/lab", key: "lab", label: "Lab", icon: ICONS.research },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
