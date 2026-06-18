@@ -1201,3 +1201,27 @@ a.btn-col-picker,a.seeall-btn{text-decoration:none}
 .idx-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--quiet)}
 textarea.search-input{width:100%;resize:vertical;font-family:inherit;line-height:1.45;padding:6px 9px}
 select.search-input{cursor:pointer}
+
+/* ── Screener rework: one-row toolbar (title + filter dropdowns + search + columns + theme), the per-row
+   algorithm "#n" number badge, the multi-select dropdowns (left-anchored menu + caret), and the bottom pager. ── */
+/* The filter dropdowns sit inline (the Columns wrap keeps its own margin-left:auto to push the right cluster). */
+.screener-toolbar .ms-wrap{margin-left:0}
+.screener-toolbar .ms-wrap,.screener-toolbar .col-picker-wrap{flex-shrink:0}
+/* small stable algorithm number — a calm iris pill before the strategy title */
+.strat-num{display:inline-block;margin-right:6px;padding:0 5px;border-radius:3px;font-size:9.5px;font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:.02em;color:var(--iris-s);background:var(--iris-dim);
+  border:1px solid var(--iris-mid);vertical-align:middle;line-height:16px}
+/* multi-select: a caret on the button; the menu opens DOWN-LEFT (left:0) so an inline trigger reads naturally */
+.ms-caret{font-size:8px;opacity:.6;margin-left:1px}
+.ms-wrap .col-picker-menu{transform-origin:top left}
+/* bottom pager — page X / Y + visible range + prev/next arrows */
+.screener-pager{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:8px 4px 0;font-size:11px;color:var(--muted)}
+.screener-pager .quiet{font-variant-numeric:tabular-nums}
+.pager-ctrl{display:flex;align-items:center;gap:8px}
+.pager-pos{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.pager-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--r-xs);
+  border:1px solid var(--border);background:transparent;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;
+  font-family:inherit;transition:all var(--tr)}
+.pager-btn:hover:not(:disabled){border-color:var(--border-s);color:var(--fg);background:var(--surf2)}
+.pager-btn:disabled{opacity:.35;cursor:default}
