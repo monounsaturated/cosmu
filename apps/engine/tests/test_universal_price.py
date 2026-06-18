@@ -90,6 +90,17 @@ def test_pair_for_normalizes_base_and_quote_across_venues():
     assert kraken.id == binance.id == "BTC/USDT"
 
 
+def test_alt_ingest_symbol_strips_slash_and_is_idempotent():
+    """The canonical→bare alt key: the canonical slash pair (BTC/USDT, stamped on populated-universe cells) maps to
+    the BARE ingest key (BTCUSDT) the alt store actually uses; an already-bare key (the empty-universe fallback
+    path) is a no-op, so both screen paths fetch alt by the identical key."""
+    from cosmu.data.price_cells import alt_ingest_symbol
+
+    assert alt_ingest_symbol("BTC/USDT") == "BTCUSDT"
+    assert alt_ingest_symbol("BTCUSDT") == "BTCUSDT"  # idempotent on the bare fallback-path key
+    assert alt_ingest_symbol("1000PEPE/USDT") == "1000PEPEUSDT"
+
+
 def test_quote_normalization_is_explicit():
     """USDT/USD/USDC all collapse to the canonical USDT bucket (deliberate + visible); an unbucketed quote (EUR)
     keeps its own spelling (no silent collapse)."""
@@ -322,6 +333,81 @@ def test_single_venue_crypto_cost_context_is_none(tmp_path):
     out = build_cost_context(spec, market, default_catalog(),
                              crypto_cell_venues={"BTCUSDT": "binance", "ETHUSDT": "binance"})
     assert out == (None, None, None, None)
+
+
+# --------------------------------------------------------------------------- alt fetch resolves the bare ingest key
+
+
+def _seed_funding(alt_store, symbol: str, bars: list[Bar], *, value: float = 0.0005) -> None:
+    """Append one immutable funding_rate point per bar (available_at == ts, PIT-honest) under `symbol` — exactly
+    how ingest/run.py keys funding: provider 'binance', the BARE full-pair symbol (BTCUSDT), metric 'funding_rate'."""
+    from cosmu.data.providers._types import AltDataPoint
+
+    pts = [AltDataPoint(ts=b.ts, available_at=b.ts, value=value) for b in bars]
+    alt_store.append("binance", symbol, "funding_rate", pts)
+
+
+def test_alt_by_cell_maps_canonical_pair_to_bare_ingest_key(tmp_path):
+    """REGRESSION (universal-price layer): a crypto cell on the POPULATED-universe screen path carries the CANONICAL
+    slash pair (BTC/USDT), but ingest keys funding/OI/on-chain by the BARE full-pair symbol (BTCUSDT). _alt_by_cell
+    must map canonical→bare (alt_ingest_symbol) BEFORE the alt fetch — otherwise fetch_series('BTC/USDT',
+    'funding_rate') misses and funding silently reads None for every crypto cell, making funding/alt edges
+    untestable on the universe path. Uses an EXACT-MATCH store (PgAltDataStore over SQLite, like prod Postgres):
+    the JSONL store would MASK the bug by stripping '/' in its file path."""
+    from cosmu.data.altdata import PgAltDataStore, StoreBackedAltProvider
+    from cosmu.evolution.seeder import seed_funding_squeeze_spec
+    from cosmu.lab.finder import _alt_by_cell
+
+    store = _store(tmp_path)
+    store.migrate()
+    alt = PgAltDataStore(store)
+    spec = seed_funding_squeeze_spec()  # entry feature funding_rate → spec_alt_feature_names includes it
+
+    bars = _bars(_walk(120, seed=42))
+    _seed_funding(alt, "BTCUSDT", bars)  # ingest banks funding under the BARE symbol
+
+    # Sanity: the store is EXACT-MATCH (prod Postgres semantics) — the slash key alone finds nothing, the bare key
+    # does. This mismatch is what made the regression bite: the cell carried 'BTC/USDT' but the series lives under
+    # 'BTCUSDT'. (The JSONL store strips '/' in its file path and would hide this — hence the PG-backed store here.)
+    provider = StoreBackedAltProvider(alt)
+    assert provider.fetch_series("BTC/USDT", "funding_rate", limit=10_000) == []
+    assert provider.fetch_series("BTCUSDT", "funding_rate", limit=10_000)
+
+    # The POPULATED-universe path: the cell key + canonical symbol are the slash pair, the venue is binance.
+    market = {"BTC/USDT": bars}
+    cell_meta = {"BTC/USDT": ("BTC/USDT", "binance")}
+    joined = _alt_by_cell(alt, spec, market, cell_meta)
+    assert joined is not None, "the funding spec must produce an alt join (the regression returned None)"
+    funding = joined.get("BTC/USDT", {}).get("funding_rate")
+    assert funding, "the canonical cell must see REAL funding (bare-key ingest resolved), not an empty series"
+    assert len(funding) == len(bars)  # one PIT value per bar
+
+    # Parity: the empty-universe FALLBACK path (bare-symbol cells, always unaffected) sees the IDENTICAL funding.
+    bare = _alt_by_cell(alt, spec, {"BTCUSDT": bars}, {"BTCUSDT": ("BTCUSDT", "binance")})
+    assert bare["BTCUSDT"]["funding_rate"] == funding
+
+
+def test_alt_by_cell_shares_one_funding_fetch_across_a_pairs_venue_cells(tmp_path):
+    """A pair's funding is a property of the ASSET, not the venue cell: a 'BTC/USDT@kraken' cell must read the SAME
+    bare-key funding as its 'BTC/USDT' binance sibling (one dedup'd fetch, replicated under each cell key) — the
+    venue axis must NOT split the alt series."""
+    from cosmu.data.altdata import PgAltDataStore
+    from cosmu.evolution.seeder import seed_funding_squeeze_spec
+    from cosmu.lab.finder import _alt_by_cell
+
+    store = _store(tmp_path)
+    store.migrate()
+    alt = PgAltDataStore(store)
+    spec = seed_funding_squeeze_spec()
+    bars = _bars(_walk(120, seed=43))
+    _seed_funding(alt, "BTCUSDT", bars)
+
+    market = {"BTC/USDT": bars, "BTC/USDT@kraken": bars}
+    cell_meta = {"BTC/USDT": ("BTC/USDT", "binance"), "BTC/USDT@kraken": ("BTC/USDT", "kraken")}
+    joined = _alt_by_cell(alt, spec, market, cell_meta)
+    assert joined is not None
+    assert joined["BTC/USDT"]["funding_rate"], "binance cell sees funding"
+    assert joined["BTC/USDT@kraken"]["funding_rate"] == joined["BTC/USDT"]["funding_rate"], "kraken cell shares it"
 
 
 # --------------------------------------------------------------------------- funding preserves the cell venue

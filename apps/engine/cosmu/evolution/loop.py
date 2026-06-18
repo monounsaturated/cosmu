@@ -16,7 +16,7 @@ from cosmu.data.backtest import (
     run_strategy_backtest_detailed,
 )
 from cosmu.data.market import MarketDataProvider, UniversalOHLCVProvider
-from cosmu.data.price_cells import build_crypto_cells
+from cosmu.data.price_cells import alt_ingest_symbol, build_crypto_cells
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
@@ -861,21 +861,25 @@ class FarmLoop:
     def _alt_by_cell(
         self, spec: StrategySpec, market: dict[str, list], cell_meta: dict[str, tuple[str, str]]
     ) -> dict | None:
-        """The alt-data join keyed by CELL KEY but FETCHED by each cell's CANONICAL symbol (alt data is a property
-        of the pair, not the venue cell — a 'BTC/USDT@kraken' cell reads BTC/USDT's funding). Builds the join once
-        per canonical symbol (deduped across a pair's venue cells) and replicates under each cell key. None exactly
-        when _alt_by_symbol would be (price-only path unchanged)."""
+        """The alt-data join keyed by CELL KEY but FETCHED by each cell's BARE INGEST symbol (alt data is a property
+        of the pair, not the venue cell — a 'BTC/USDT@kraken' cell reads BTC/USDT's funding). Ingest keys those
+        series by the BARE full-pair symbol (BTCUSDT), not the canonical slash pair (BTC/USDT) the universal price
+        layer stamps on the cell, so canonical→bare via alt_ingest_symbol before fetching (else funding/OI/on-chain
+        silently read None on the populated-universe path). Builds the join once per bare ingest key (deduped across
+        a pair's venue cells) and replicates under each cell key. None exactly when _alt_by_symbol would be
+        (price-only path unchanged)."""
         canon_market: dict[str, list] = {}
+        ingest_key_by_cell: dict[str, str] = {}
         for key, bars in market.items():
-            symbol = cell_meta.get(key, (key, ""))[0]
-            canon_market.setdefault(symbol, bars)
+            ingest_key = alt_ingest_symbol(cell_meta.get(key, (key, ""))[0])
+            ingest_key_by_cell[key] = ingest_key
+            canon_market.setdefault(ingest_key, bars)
         joined = self._alt_by_symbol(spec, canon_market)
         if joined is None:
             return None
         out: dict = {}
         for key in market:
-            symbol = cell_meta.get(key, (key, ""))[0]
-            feats = joined.get(symbol)
+            feats = joined.get(ingest_key_by_cell[key])
             if feats is not None:
                 out[key] = feats
         return out or None

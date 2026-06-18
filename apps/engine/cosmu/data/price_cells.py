@@ -68,6 +68,17 @@ def cell_key(symbol: str, venue_id: str) -> str:
     return symbol if venue_id == REFERENCE_VENUE else f"{symbol}@{venue_id}"
 
 
+def alt_ingest_symbol(symbol: str) -> str:
+    """The alt-data store key for a cell's canonical pair. The ingest pipeline (ingest/run.py over `perp_universe()`)
+    keys funding_rate / open_interest / on-chain by the BARE full-pair Binance perp symbol (BTCUSDT), while the
+    universal price layer (build_crypto_cells) stamps the CANONICAL slash pair (BTC/USDT) on each cell. Strip the
+    '/' so a canonical-keyed cell resolves to the bare key the alt series actually live under — otherwise
+    fetch_series('BTC/USDT', 'funding_rate') misses and funding/OI/on-chain silently read None on the populated-
+    universe screen path. Idempotent on an already-bare symbol (the empty-universe fallback path keys cells by the
+    bare symbol → no-op), so both screen paths fetch alt by the identical key."""
+    return symbol.replace("/", "")
+
+
 # Keyless OHLCV providers per crypto venue, for FALLBACK bars (a venue whose prices diverge from the reference is
 # screened on its OWN series). Only keyless venues are wired in Stage 1 (crypto, FREE). A venue absent here has no
 # keyless data route → its non-reference cells can't FALLBACK to real bars, so they are SKIPPED (never fabricated).
