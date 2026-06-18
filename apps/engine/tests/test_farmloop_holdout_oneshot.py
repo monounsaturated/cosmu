@@ -1,22 +1,18 @@
-# Item 1: the autonomous FarmLoop must run the holdout as a ONE-SHOT exam on its gate+FDR survivors, never as a
-# per-candidate SELECTION set. The screen sees validation-only evidence (include_holdout=False); a champion that
-# fails the untouched holdout is DEMOTED (the loop never retries the exam with the next-best variant). This
-# TIGHTENS the gate — it can only ever remove a survivor, never add one.
+# BRUT FarmLoop: each (mutant × symbol) cell is judged ON ITS OWN data — no cross-mutant FDR, no cluster dedupe,
+# no global-trial deflation. The screen sees validation-only evidence (include_holdout=False); the untouched
+# holdout is a ONE-SHOT per-cell CONFIRMATION on each passing cell (a cell that fails its own holdout is not
+# funded). The loop registers NO global trials (a brut cell is not part of any family). These pin those contracts.
 
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
-import random
 from decimal import Decimal
 
-from cosmu.config.settings import Settings
+from cosmu.config.settings import GateSettings, Settings
 from cosmu.data.market import Bar
-from cosmu.evolution.loop import Candidate, FarmLoop
+from cosmu.evolution.loop import Candidate, FarmLoop, _BrutCell
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
-from cosmu.master.scorer import BacktestMetrics
-from cosmu.spine.venue import default_catalog
 
 
 class _FixtureProvider:
@@ -27,14 +23,15 @@ class _FixtureProvider:
         return self.bars[-limit:]
 
 
-def _fixture_bars(count: int = 420) -> list[Bar]:
-    ts = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+def _fixture_bars(count: int = 600) -> list[Bar]:
+    """A trade-DENSE cyclic-bull series so a SINGLE symbol's cell books >= the brut per-cell trade floor (30 of its
+    OWN trades) and clears its own DSR — under brut each cell is judged ALONE, so pooling thin per-symbol books
+    over min_trades no longer works."""
+    ts = dt.datetime(2023, 1, 1, tzinfo=dt.UTC)
     price = Decimal("100")
     out: list[Bar] = []
     for i in range(count):
-        mv = Decimal("0.012") if (i % 18) < 9 else Decimal("-0.009")
-        if i % 53 == 0:
-            mv -= Decimal("0.035")
+        mv = Decimal("0.012") if (i % 14) < 9 else Decimal("-0.005")
         o = price
         cl = (price * (Decimal("1") + mv)).quantize(Decimal("0.0001"))
         out.append(Bar(ts=ts + dt.timedelta(days=i), open=o, high=max(o, cl) * Decimal("1.006"),
@@ -43,85 +40,65 @@ def _fixture_bars(count: int = 420) -> list[Bar]:
     return out
 
 
-def _loop(tmp_path) -> FarmLoop:
-    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/fl.sqlite3"))
+def _loop(tmp_path, *, beat_bnh: bool = False) -> FarmLoop:
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/fl.sqlite3",
+                           gates=GateSettings(require_beat_buy_and_hold=beat_bnh)))
     return FarmLoop(settings=store.settings, store=store, market_data=_FixtureProvider(_fixture_bars()))
-
-
-# Very strong, gate-clearing metrics (no holdout field — the screen no longer measures it). Used to FORCE a
-# survivor through the (correctly strict) gate so the champion-holdout step actually runs.
-def _strong() -> BacktestMetrics:
-    return BacktestMetrics(
-        oos_return=Decimal("0.2"), sharpe=Decimal("19"), sortino=Decimal("2"), max_drawdown=Decimal("0.08"),
-        win_rate=Decimal("0.6"), num_trades=80, sharpe_per_obs=Decimal("1.0"), skew=Decimal("0"),
-        kurtosis=Decimal("3"), n_obs=1000, pbo=Decimal("0.05"), trials_counted=1,
-        folds_positive_pct=Decimal("0.9"),
-    )
 
 
 def test_screen_is_validation_only_no_holdout_simulated(tmp_path):
     # The real screen runs include_holdout=False, so the untouched holdout is NEVER simulated during selection:
-    # holdout_deflated_sharpe reads the no-evidence sentinel (PSR(∅)−0.5 = −0.5), which is BELOW any floor. That
-    # the screen returns the sentinel (not a real exam value) is the proof selection didn't peek — and it's
-    # exactly why _persist must score with check_holdout=False (else every candidate would die on the sentinel).
+    # holdout_deflated_sharpe reads the no-evidence sentinel (PSR(∅)−0.5 = −0.5). The brut _screen returns the
+    # per-symbol RUNS + per-symbol B&H (the streams each cell is judged on) — never the pooled holdout.
     loop = _loop(tmp_path)
     cand = Candidate(spec=seed_orb_fvg_spec(), origin="seed", lane="gate")
-    metrics, _venue, _mst, _vr, _ps = loop._screen(cand, "code-hash", 7)
-    assert metrics.holdout_deflated_sharpe == Decimal("-0.5")
+    metrics, _venue, _mst, _vr, per_symbol, per_symbol_runs, per_symbol_bh = loop._screen(cand, "code-hash", 7)
+    assert metrics.holdout_deflated_sharpe == Decimal("-0.5")  # the exam was never sat during the screen
+    assert set(per_symbol_runs) == set(per_symbol)  # a run per screened symbol — the per-cell streams
+    assert set(per_symbol_bh) <= set(per_symbol)    # each cell's own buy-and-hold benchmark
 
 
-def _distinct_val_stream(cand: Candidate) -> list[float]:
-    """A strongly-positive, per-candidate-DISTINCT validation return stream for the forced-survivor mock. The
-    cohort now clusters correlated streams into distinct representatives and certifies them with a REAL cohort
-    CSCV-PBO — so the mock must hand back streams that (a) are NOT all >= 0.95 correlated (else the cohort
-    collapses to ONE representative → cohort_pbo=1.0 → every candidate fails the pbo gate) and (b) stay strongly
-    positive so CSCV-PBO is low (the IS-best config is also OOS-good). A deterministic per-candidate seed gives
-    each its own idiosyncratic noise on a shared strong uptrend."""
-    # hashlib, NOT builtin hash(): hash() is salted per-process (PYTHONHASHSEED) so the streams — and thus the
-    # cohort CSCV-PBO — differed across runs, making this exam flaky (~3/5 hash seeds killed every champion on
-    # pbo before the holdout could be exercised). hashlib is stable, so the forced survivor is reproducible.
-    rng = random.Random(int.from_bytes(hashlib.sha256(cand.spec.name.encode()).digest()[:4], "big"))
-    # 60 bars: a strong, consistent positive drift (0.01/bar) plus small idiosyncratic noise. Different noise per
-    # candidate breaks the 0.95 correlation; the dominant drift keeps every stream a clear winner (low PBO).
-    return [0.01 + rng.uniform(-0.006, 0.006) for _ in range(60)]
-
-
-def _force_survivor(monkeypatch, loop: FarmLoop) -> None:
-    venue = default_catalog().venue_for(["binance"])
-    monkeypatch.setattr(
-        FarmLoop, "_screen",
-        lambda self, cand, code_hash, seed: (_strong(), venue, 20, _distinct_val_stream(cand), {}),
-    )
-    # Isolate the HOLDOUT exam (what THESE tests assert) from the orthogonal, stochastic cohort CSCV-PBO: pin the
-    # cohort PBO low so the forced-strong champion deterministically reaches the one-shot holdout step. The cohort
-    # PBO behaviour itself is fully covered by test_farmloop_cscv_pbo.py — here it must not gate the exam under
-    # test (otherwise the stream fixture's incidental correlation, not the holdout, decides survivorship).
-    monkeypatch.setattr("cosmu.evolution.loop.cohort_cscv_pbo", lambda *a, **k: 0.05)
-
-
-def test_champion_holdout_demotes_a_survivor_that_fails_the_exam(tmp_path, monkeypatch):
+def test_brut_loop_registers_no_global_trials(tmp_path):
+    # BRUT contract: a per-combo cell is not part of any cross-combo family, so the autonomous loop registers NO
+    # global trials (it no longer contaminates the pooled research lanes' ledger, and each cell deflates on its OWN
+    # per-combo evidence). The pooled FDR/cluster cull that register_trial fed is gone.
     loop = _loop(tmp_path)
-    _force_survivor(monkeypatch, loop)
-    monkeypatch.setattr(FarmLoop, "_champion_holdout", lambda self, spec, params: -1.0)  # below any floor → fails
-    summary = loop.run_cohort(seed=7, cohort_size=4)
-
-    assert summary.generated > 0
-    assert summary.survivors == []  # every champion failed the one-shot exam → none promoted
-    killed = loop.store.rows("SELECT status, kill_reason FROM strategy_versions WHERE status = 'killed'")
-    assert any(r["kill_reason"] and "holdout" in r["kill_reason"] for r in killed)
-    assert loop.store.row("SELECT id FROM events WHERE kind = 'holdout_look'") is not None
-    # a demoted champion's track is removed and its screen backtest marked failed
-    assert loop.store.row("SELECT id FROM tracks") is None
-    assert loop.store.row("SELECT id FROM backtests WHERE kind='screen' AND CAST(passed_gates AS INT)=1") is None
+    loop.run_cohort(seed=7, cohort_size=4)
+    assert loop.store.rows("SELECT COUNT(*) AS n FROM trials")[0]["n"] == 0
 
 
-def test_champion_holdout_keeps_a_survivor_that_passes_the_exam(tmp_path, monkeypatch):
+def test_score_cells_judges_each_symbol_on_its_own_streams(tmp_path):
+    # _score_cells builds ONE cell per symbol from that symbol's OWN run + B&H + trials=1 and scores it ALONE via
+    # promote_brut — the cell's pass/fail is independent of its siblings. A thin cell (< the per-cell trade floor)
+    # is killed on min_trades_per_symbol; a cell never re-pools sibling streams.
     loop = _loop(tmp_path)
-    _force_survivor(monkeypatch, loop)
-    monkeypatch.setattr(FarmLoop, "_champion_holdout", lambda self, spec, params: 5.0)  # clears the floor → passes
-    summary = loop.run_cohort(seed=7, cohort_size=4)
+    cand = Candidate(spec=seed_orb_fvg_spec(), origin="seed", lane="gate")
+    metrics, venue, mst, vr, per_symbol, per_symbol_runs, per_symbol_bh = loop._screen(cand, "h", 7)
+    from cosmu.evolution.loop import _Screened
 
-    assert len(summary.survivors) >= 1  # champions that pass the exam stay promoted
-    for s in summary.survivors:
-        bt = loop.store.row("SELECT holdout_passed FROM backtests WHERE strategy_version_id=? AND kind='screen'", (s.version_id,))
-        assert int(bt["holdout_passed"]) == 1  # the one-shot exam marked it passed
+    sc = _Screened(cand=cand, params={}, compiled=None, metrics=metrics, survival_score=0.0, proven=[],
+                   per_symbol=per_symbol, per_symbol_runs=per_symbol_runs, per_symbol_buy_and_hold=per_symbol_bh,
+                   venue_id=venue.id, pre_kill=None)
+    cells = loop._score_cells(sc)
+    assert set(cells) == set(per_symbol_runs)
+    for sym, cell in cells.items():
+        assert isinstance(cell, _BrutCell)
+        assert cell.symbol == sym and cell.venue_id == venue.id
+        # the cell's own trade count drives its floor reason — never a pooled total
+        if cell.trades < 5:
+            assert "min_trades_per_symbol" in cell.reasons
+
+
+def test_champion_holdout_runs_are_per_cell(tmp_path):
+    # The one-shot exam re-runs the backtest WITH the embargoed holdout and exposes a holdout RUN per symbol, so
+    # the brut gate confirms EACH passing cell on its OWN holdout stream (never a pooled basket holdout).
+    from cosmu.evolution.loop import fit_params
+
+    loop = _loop(tmp_path)
+    spec = seed_orb_fvg_spec()
+    holdout_runs, holdout_bh = loop._champion_holdout_runs(spec, fit_params(spec))
+    assert isinstance(holdout_runs, dict)
+    assert isinstance(holdout_bh, dict)
+    # every holdout run has its own bar_returns stream (the per-cell confirmation evidence)
+    for run in holdout_runs.values():
+        assert hasattr(run, "bar_returns")

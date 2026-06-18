@@ -12,6 +12,7 @@ from cosmu.data.alt_join import build_alt_by_symbol
 from cosmu.data.backtest import (
     DEFAULT_IMPACT_BPS,
     DEFAULT_SLIPPAGE_BPS,
+    metrics_for_run,
     run_strategy_backtest_detailed,
 )
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
@@ -19,17 +20,13 @@ from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
 from cosmu.knowledge.store import Store, Writer, utcnow
-from cosmu.master.cohort import (
-    CLUSTER_CORRELATION,
-    cluster_representatives,
-    cohort_cscv_pbo,
-)
-from cosmu.master.fdr import benjamini_hochberg, dsr_pvalue
-from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol, funding_eligible
-from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.cohort import Candidate as CohortCandidate
+from cosmu.master.cohort import promote_brut
+from cosmu.master.live_eligibility import cell_id
+from cosmu.master.scorer import BacktestMetrics
 from cosmu.master.screen_universe import build_cost_context
 from cosmu.master.tracks import open_paper_track
-from cosmu.master.trials import register_trial, trial_stats
+from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
 from cosmu.spine.universe import enabled_universe
@@ -59,19 +56,21 @@ class _Screened:
     cand: Candidate
     params: dict[str, float]
     compiled: CompiledStrategy
-    metrics: BacktestMetrics
+    metrics: BacktestMetrics  # POOLED display metrics; the BRUT verdict is per cell (see per_symbol_runs below)
     survival_score: float
     proven: list[str]
-    # The validation per-bar return stream from the cheap screen (BacktestResult.val_returns). The cohort needs
-    # it for (a) cross-mutant correlation CLUSTERING into DISTINCT representatives and (b) the REAL cohort
-    # CSCV-PBO — exactly as the finder sweep does. Empty list when no symbol traded (degrades safely: an
-    # untradeable candidate is excluded from clustering and cannot anchor the cohort PBO).
+    # The validation per-bar return stream from the cheap screen (BacktestResult.val_returns). Kept for the
+    # survival-feature row + display. The BRUT gate no longer clusters/CSCV-PBOs across mutants — each cell is
+    # judged on its OWN streams (per_symbol_runs below).
     val_returns: list[float] = field(default_factory=list)
-    # The per-symbol standalone validation breakdown (BacktestResult.per_symbol: symbol -> return/sharpe/dd/trades)
-    # the SAME screen already computes for the per-symbol trade floor. Carried so _persist writes the first-class
-    # backtest_symbols rows (the queryable per-(strat,symbol,venue) unit of truth) — the autonomous loop populates
-    # that table identically to the finder sweep, instead of dropping the breakdown after the floor check.
+    # The per-symbol standalone validation breakdown (BacktestResult.per_symbol) the screen computes — carried so
+    # _persist writes the first-class backtest_symbols rows (the queryable per-(strat,symbol,venue) unit of truth).
     per_symbol: dict[str, dict[str, float]] = field(default_factory=dict)
+    # The full per-symbol RUNS (each cell's OWN bar_returns + fold_returns + trades) — the streams the BRUT gate
+    # scores each cell on, via metrics_for_run. NEVER re-pool by reusing val.* per cell.
+    per_symbol_runs: dict = field(default_factory=dict)
+    # Each cell's OWN buy-and-hold over its validation window (the brut beat-B&H benchmark per cell).
+    per_symbol_buy_and_hold: dict[str, float] = field(default_factory=dict)
     # The cost assumptions the screen was scored under (the venue it priced against + its taker fee + the SAME
     # venue's market depth the backtest charged), carried so _persist records the EXACT values on the backtest
     # row and the promotion freeze pins the gate-time cost model — never the global default (depth is per-venue).
@@ -81,6 +80,8 @@ class _Screened:
     impact_bps: float = float(DEFAULT_IMPACT_BPS)
     parent: _Screened | None = None
     pre_kill: str | None = None  # kill reason injected before _persist (e.g. per-symbol floor)
+    # The BRUT per-cell verdicts {symbol: _BrutCell}, filled in run_cohort before _persist. Each cell judged alone.
+    cells: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -137,29 +138,30 @@ def _midpoint(ps: ParamSpace) -> float:
     return 0.0
 
 
-def fdr_culled_vids(evaluated: list[Evaluated], q: float) -> set[str]:
-    """Apply Benjamini-Hochberg FDR to every candidate's deflated-Sharpe p-value across the family it is given,
-    and return the version_ids of candidates that CLEARED score()'s per-candidate gate but FAIL FDR control —
-    i.e. the ones that must be demoted so they never become fundable. Only gate-passers can be culled — a
-    candidate the gate already killed has nothing left to demote. Pure + deterministic; the agent can't touch it.
+@dataclass
+class _BrutCell:
+    """ONE brut cell (this candidate × one symbol × its venue), judged on its OWN streams. `metrics` is built by
+    metrics_for_run from this symbol's per_symbol_run (own bar_returns + fold_returns); `passed` is the locked
+    stats gate on those streams AND the per-cell trade floor. `holdout_passed` is this cell's own one-shot holdout
+    confirmation."""
 
-    run_cohort calls this with the DEDUPED cluster REPRESENTATIVES as the family (not the full grid): correlated
-    near-duplicate mutants would otherwise inflate the trial count and ease the BH cutoff. The representatives are
-    the DISTINCT hypotheses tested — the same "distinct candidates, not correlated param-variants" contract the
-    finder honours — and every near-duplicate is independently demoted as a cluster_dup before this runs."""
-    if not evaluated:
-        return set()
-    pvalues = [dsr_pvalue(e.deflated_sharpe) for e in evaluated]
-    survives = benjamini_hochberg(pvalues, q=q)
-    return {e.version_id for e, ok in zip(evaluated, survives, strict=True) if e.passed and not ok}
+    symbol: str
+    venue_id: str
+    metrics: BacktestMetrics
+    deflated_sharpe: float
+    trades: int
+    passed: bool
+    reasons: list[str] = field(default_factory=list)
+    holdout_passed: bool = False
 
 
-# Minimum trades on the THINNEST screened symbol — a true per-symbol-minimum test, mirroring finder.py:62
-# (which checks trades_by_tag per config). The screen reads BacktestResult.min_symbol_trades. A strategy that
-# books 30 trades all on ONE of six symbols (five with zero) has min_symbol_trades=0 and is killed; a pooled
-# `num_trades >= n*5` total would have waved it through. This is what catches phantom cross-sectional breadth.
-# Single source of truth in master/per_symbol.py (shared with the finder sweep + the honest per-symbol verdict).
+# Minimum trades on a SCREENED symbol — the cheap per-cell thinness pre-screen (the larger min_trades=30 floor is
+# enforced per cell inside promote_brut, on the cell's OWN num_trades). A strategy that books 30 trades all on ONE
+# of six symbols is no longer carried by a pooled count: under brut each cell stands alone. Single source of truth
+# in master/trade_floor.py (shared with the finder sweep).
 _MIN_TRADES_PER_SYMBOL = MIN_TRADES_PER_SYMBOL
+# The BRUT per-cell min-trades floor on the single combo's OWN trades (set as gates.min_trades for promote_brut).
+_BRUT_MIN_TRADES = 30
 
 
 @dataclass(frozen=True)
@@ -307,43 +309,39 @@ class FarmLoop:
             screened.append(sc)
             lanes["explore"] += 1
 
-        # Snapshot the global ledger ONCE, now that every candidate is registered, so all candidates in this cohort
-        # are judged against the identical, full trial count (and every prior cohort's trials — two sequential
-        # cohorts deflate the second against the first). This is the contract finder.py honors via trial_stats().
-        combined = trial_stats(self.store)
-
-        # ---- CLUSTER the correlated cohort → DISTINCT representatives; certify with a REAL cohort CSCV-PBO ----
-        # Mirror lab/finder.py exactly. The autonomous loop generates EXPLOIT children + EXPLORE wildcards that are
-        # near-duplicates of each other and of their seeds; without this a dense correlated family would (a) inflate
-        # the BH-FDR trial count (each near-dup counted as an independent test, easing the cutoff) and (b) be judged
-        # on a per-candidate PBO PROXY that a correlated family trivially keeps low. We key every screened candidate
-        # by a STABLE id, order best-first (profit_factor, then per-obs Sharpe — finder's order), greedily collapse
-        # streams correlated >= CLUSTER_CORRELATION into one representative, and compute the cohort CSCV-PBO over the
-        # representatives' streams. cohort_pbo is then INJECTED into every candidate's metrics BEFORE scoring (so the
-        # gate's pbo check uses the real overfit estimate), and BH-FDR runs over the DEDUPED representatives only.
-        returns_by_tag: dict[str, list[float]] = {id(sc): sc.val_returns for sc in screened}
-        ordered_tags = [
-            id(sc)
-            for sc in sorted(
-                (s for s in screened if len(s.val_returns) >= 2),
-                key=lambda s: (float(s.metrics.profit_factor), float(s.metrics.sharpe_per_obs)),
-                reverse=True,
-            )
-        ]
-        rep_ids = set(cluster_representatives(ordered_tags, returns_by_tag, threshold=CLUSTER_CORRELATION))
-        cohort_pbo = cohort_cscv_pbo(list(rep_ids), returns_by_tag)
+        # ---- BRUT per-cell scoring: judge each (candidate × symbol) cell ON ITS OWN data ----
+        # No clustering, no cohort CSCV-PBO inject, no cross-mutant FDR. Each candidate's cells are scored alone via
+        # promote_brut (the locked DSR/PBO math untouched; only the INPUT — one cell — and trials_counted change).
+        # The FarmLoop screens each mutant ONCE at its midpoint params (no per-candidate param grid), so the
+        # per-combo param-search count is 1 → trials=1 in metrics_for_run. A candidate with NO passing cell is
+        # killed (the brut equivalent of the old gate-fail), still recording its per-cell rows for visibility.
         for sc in screened:
-            # Inject the cohort's REAL CSCV-PBO onto every candidate so score()'s pbo gate (and the persisted
-            # backtest row) reflect the cohort overfit estimate, not the per-candidate _pbo_proxy. A correlated
-            # family of mutants now shares ONE honest, combinatorially-cross-validated PBO.
-            sc.metrics = sc.metrics.model_copy(update={"pbo": Decimal(str(round(cohort_pbo, 6)))})
+            sc.cells = self._score_cells(sc)
+
+        # CHAMPION-ONLY one-shot holdout, PER CELL (pure compute, before the persist batch). The screen ran
+        # include_holdout=False; for each candidate with ≥1 passing cell, re-run WITH the embargoed holdout once and
+        # confirm EACH passing cell on ITS OWN holdout run — a pure CONFIRMATION, never a retry. A cell that fails
+        # its own holdout is dropped from funding (its track is not opened).
+        holdout_floor = float(self.settings.gates.holdout_min_deflated_sharpe)
+        for sc in screened:
+            if not any(c.passed for c in sc.cells.values()):
+                continue
+            holdout_runs, holdout_bh = self._champion_holdout_runs(sc.cand.spec, sc.params)
+            for sym, cell in sc.cells.items():
+                if not cell.passed:
+                    continue
+                h_run = holdout_runs.get(sym)
+                cell_h_dsr = (
+                    float(metrics_for_run(h_run, trials=1, buy_and_hold=holdout_bh.get(sym, 0.0), holdout_run=h_run).holdout_deflated_sharpe)
+                    if h_run is not None else 0.0
+                )
+                cell.holdout_passed = cell_h_dsr > holdout_floor
+                cell.metrics = cell.metrics.model_copy(update={"holdout_deflated_sharpe": Decimal(str(round(cell_h_dsr, 6)))})
 
         evaluated: list[Evaluated] = []
         vid_by_screened: dict[int, str] = {}   # id(_Screened) → persisted version_id, to resolve child parent_id
-        screened_by_vid: dict[str, _Screened] = {}   # version_id → its _Screened, for the champion-holdout re-run
-        rep_vids: set[str] = set()   # version_ids of the DISTINCT cluster representatives (BH-FDR family)
 
-        # PHASE 2 — score every screened candidate against the snapshot and persist. One connection + one
+        # PHASE 2 — persist every screened candidate with its per-cell brut verdicts. One connection + one
         # transaction for the whole cohort. Parents are persisted before their children (wave-0 first), so an
         # exploit child's parent_id always references an already-inserted row (the FK holds).
         with self.store.batch() as b:
@@ -357,75 +355,10 @@ class FarmLoop:
 
             for sc in screened:
                 parent_vid = vid_by_screened.get(id(sc.parent)) if sc.parent is not None else None
-                result, vid = self._persist(sc, combined, survival, parent_vid, b)
+                result, vid = self._persist(sc, survival, parent_vid, b)
                 evaluated.append(result)
                 specs_by_vid[vid] = sc.cand.spec
                 vid_by_screened[id(sc)] = vid
-                screened_by_vid[vid] = sc
-                if id(sc) in rep_ids:
-                    rep_vids.add(vid)
-
-            # FDR GATE — the multiple-testing correction the funding path depends on, now run over the DEDUPED
-            # cluster representatives (mirrors lab/finder.py). score() judged each candidate in isolation; this
-            # judges the COHORT together. Two ways a gate-passer is demoted here:
-            #   1. NON-representative near-duplicate (folded into a representative at >= CLUSTER_CORRELATION):
-            #      culled with reason "cluster_dup". Only a DISTINCT representative can be funded — exactly as the
-            #      finder promotes only cluster representatives — so a swarm of correlated mutants can't each become
-            #      fundable. The trial is still registered (the global ledger holds the true count), but the
-            #      false-discovery FAMILY is the representatives, never the near-dups.
-            #   2. REPRESENTATIVE that clears score() but fails Benjamini-Hochberg across the OTHER representatives:
-            #      culled with reason "fdr". The BH family is the representatives only — a correlated grid can no
-            #      longer inflate the family size to ease the cutoff.
-            # A demotion sets passed_gates→0 (so orchestrator's funding query never funds it), status→killed, and
-            # removes the Track. Same transaction as the cohort. This is strictly >= the prior all-candidate FDR:
-            # the family is now smaller AND every near-dup is additionally culled.
-            rep_evaluated = [e for e in evaluated if e.version_id in rep_vids]
-            culled = fdr_culled_vids(rep_evaluated, float(self.settings.gates.fdr_q))
-            for e in evaluated:
-                if e.version_id in rep_vids:
-                    reason = "fdr" if e.version_id in culled else None
-                elif e.passed:
-                    reason = "cluster_dup"  # a near-duplicate of a representative — never independently fundable
-                else:
-                    reason = None
-                if reason is None:
-                    continue
-                b.execute("UPDATE backtests SET passed_gates = 0 WHERE strategy_version_id = ? AND kind = 'screen'", (e.version_id,))
-                b.execute("UPDATE strategy_versions SET status = 'killed', kill_reason = ?, killed_at = ? WHERE id = ?", (reason, utcnow(), e.version_id))
-                b.execute("DELETE FROM tracks WHERE strategy_version_id = ?", (e.version_id,))
-                e.passed = False
-                if reason not in e.reasons:
-                    e.reasons.append(reason)
-
-            # CHAMPION-ONLY one-shot holdout. The screen ran include_holdout=False (validation-only) and scored
-            # with check_holdout=False, so the untouched, purged+embargoed holdout is evaluated EXACTLY ONCE here
-            # — for each candidate that cleared the stats gate AND FDR — as a pure CONFIRMATION. A champion that
-            # FAILS the exam is an honest dead end: passed_gates→0, status→killed (reason 'holdout'), track
-            # removed. The loop never retries the exam with the next-best variant (search-until-pass would turn
-            # the holdout back into a selection set). One look per version (a fresh version per cohort →
-            # structurally one-shot), audited as a holdout_look event. Same transaction as the cohort.
-            holdout_floor = float(self.settings.gates.holdout_min_deflated_sharpe)
-            for e in evaluated:
-                if not e.passed:
-                    continue
-                sc = screened_by_vid[e.version_id]
-                holdout_dsr = self._champion_holdout(sc.cand.spec, sc.params)
-                holdout_ok = holdout_dsr > holdout_floor
-                b.execute(
-                    "UPDATE backtests SET holdout_passed = ? WHERE strategy_version_id = ? AND kind = 'screen'",
-                    (int(holdout_ok), e.version_id),
-                )
-                b.append_event(
-                    actor="master", kind="holdout_look", ref_type="strategy_version", ref_id=e.version_id,
-                    payload={"passed": holdout_ok, "holdout_deflated_sharpe": holdout_dsr},
-                )
-                if not holdout_ok:
-                    b.execute("UPDATE backtests SET passed_gates = 0 WHERE strategy_version_id = ? AND kind = 'screen'", (e.version_id,))
-                    b.execute("UPDATE strategy_versions SET status = 'killed', kill_reason = 'holdout', killed_at = ? WHERE id = ?", (utcnow(), e.version_id))
-                    b.execute("DELETE FROM tracks WHERE strategy_version_id = ?", (e.version_id,))
-                    e.passed = False
-                    if "holdout" not in e.reasons:
-                        e.reasons.append("holdout")
 
             # ORDER the gate-survivors by the survival model's edge-persistence score (descending) — this is the
             # validation queue: which gate-passers get scarce full-validation compute FIRST. It is a re-sort of
@@ -450,7 +383,6 @@ class FarmLoop:
                     "passed": len(survivors),
                     "killed": killed,
                     "duplicates": duplicates,
-                    "fdr_culled": len(culled),
                     "kill_rate": round(killed / generated, 3) if generated else 0.0,
                     "lanes": lanes,
                     "survival_model": {"trained": survival.trained, "backend": survival.backend, "n_labels": survival.n_labels, "auroc": survival.auroc},
@@ -538,53 +470,77 @@ class FarmLoop:
         except ValueError:
             return None  # invalid spec — never persisted, counted as invalid
 
-        metrics, venue, min_symbol_trades, val_returns, per_symbol = self._screen(cand, compiled.code_hash, seed)
-        # THE choke point: every farmed candidate is one more hypothesis the Deflated Sharpe / FDR must deflate
-        # against — register the trial BEFORE the per-symbol floor check (a backtested hypothesis is counted even
-        # if it lacks per-symbol breadth, so the deflation ledger never under-counts thin-book specs).
-        register_trial(self.store, float(metrics.sharpe_per_obs), source="farmloop", label=cand.spec.name)
+        metrics, venue, min_symbol_trades, val_returns, per_symbol, per_symbol_runs, per_symbol_bh = self._screen(cand, compiled.code_hash, seed)
+        # BRUT: a per-combo cell is NOT part of any cross-combo family, so the autonomous loop NO LONGER registers
+        # a global trial here (the old register_trial fed the pooled FDR/DSR deflation this lane has dropped, and
+        # would otherwise also contaminate the POOLED research lanes' global ledger with autonomous mutants). Each
+        # cell deflates on its OWN per-combo evidence (trials=1 — the loop screens a mutant once, no param grid).
         # Survival model: edge-persistence score (ordering only) + the regimes this screen proved positive in
         # (the strategy's live-eligibility passport). Computed from the SCREEN metrics — never a veto.
         survival_score = round(survival.score_features(features_from_metrics(metrics)), 6)
         proven = sorted(proven_regimes(metrics.regime_returns))
-        # Per-symbol trade floor (mirrors finder.py:62): require >= _MIN_TRADES_PER_SYMBOL trades on the THINNEST
-        # screened symbol, not a pooled total. A pooled count of 30 met by 30 trades on ONE of six symbols (five
-        # with zero) is phantom breadth — a pooled `num_trades >= n*5` test would wave it through; the per-symbol
-        # MINIMUM catches it. Flag as pre_kill so _persist counts it as generated+killed (the trial is already
-        # registered above). min_symbol_trades is 0 when no symbol traded → always killed, as intended.
+        # Per-cell trade floor pre-screen: require >= _MIN_TRADES_PER_SYMBOL trades on the THINNEST screened symbol
+        # (the cheap thinness gate; the larger min_trades=30 floor is enforced per cell in promote_brut). A mutant
+        # with no symbol clearing the floor is killed pre-paper. min_symbol_trades is 0 when no symbol traded.
         pre_kill = "min_trades_per_symbol" if min_symbol_trades < _MIN_TRADES_PER_SYMBOL else None
         return _Screened(
             cand=cand, params=params, compiled=compiled, metrics=metrics,
             survival_score=survival_score, proven=proven,
             val_returns=val_returns, per_symbol=per_symbol,
+            per_symbol_runs=per_symbol_runs, per_symbol_buy_and_hold=per_symbol_bh,
             venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
             slippage_bps=float(venue.slippage_bps), impact_bps=float(venue.impact_bps),
             pre_kill=pre_kill,
         )
 
-    def _persist(self, sc: _Screened, trials: TrialStats, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
-        """Score a screened candidate against the cohort-wide trial snapshot and persist its strategy / version /
-        screen-backtest (and, for a gate-passer, its paper track). Returns the Evaluated row + version_id."""
+    def _score_cells(self, sc: _Screened) -> dict[str, _BrutCell]:
+        """Build ONE _BrutCell per (symbol, venue) from this candidate's per-symbol RUNS, judged on its OWN data.
+
+        NO RE-POOLING: each cell's metrics come from sc.per_symbol_runs[sym] (own bar_returns AND own
+        fold_returns) + the per-symbol B&H + trials=1 (the loop screens a mutant once — no per-candidate param
+        grid). promote_brut scores each cell alone (TrialStats(count=1), the min-trades floor on the cell's OWN
+        trades). A cell passes iff promoted AND it cleared the per-cell trade floor AND the candidate wasn't
+        pre-killed for thinness."""
+        cell_metrics: dict[str, BacktestMetrics] = {}
+        for sym, run in (sc.per_symbol_runs or {}).items():
+            cell_metrics[sym] = metrics_for_run(run, trials=1, buy_and_hold=sc.per_symbol_buy_and_hold.get(sym, 0.0))
+        candidates = [CohortCandidate(id=sym, metrics=m, net_profit=0.0, source="farmloop") for sym, m in cell_metrics.items()]
+        promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
+        out: dict[str, _BrutCell] = {}
+        for sym, m in cell_metrics.items():
+            p = promotions[sym]
+            trades = m.num_trades
+            reasons = list(p.reasons)
+            floor_ok = trades >= _MIN_TRADES_PER_SYMBOL and not sc.pre_kill
+            if trades < _MIN_TRADES_PER_SYMBOL:
+                reasons.append("min_trades_per_symbol")
+            out[sym] = _BrutCell(
+                symbol=sym, venue_id=sc.venue_id, metrics=m,
+                deflated_sharpe=p.deflated_sharpe_prob, trades=trades,
+                passed=p.promoted and floor_ok, reasons=reasons,
+            )
+        return out
+
+    def _persist(self, sc: _Screened, survival, parent_vid: str | None, b: Writer) -> tuple[Evaluated, str]:  # noqa: ANN001
+        """Persist a screened candidate with its BRUT per-cell verdicts: strategy / version / screen-backtest, one
+        backtest_symbols row PER CELL (carrying the cell's OWN pass/fail in `verdict`), and — for each cell that
+        passed the gate AND confirmed on its OWN holdout — a per-CELL paper track + a cell-keyed track_opened.
+        Returns the Evaluated row + version_id."""
         cand = sc.cand
-        metrics = sc.metrics
+        metrics = sc.metrics  # POOLED display metrics; the brut verdict is per cell (sc.cells)
         compiled = sc.compiled
         params = sc.params
-        # Deflate against the FULL global trial count (this cohort + all history), not ~len(param_space).
-        # check_holdout=False: SELECTION is validation-only — the one-shot holdout is applied to the gate+FDR
-        # survivors afterwards (run_cohort's champion-holdout step), never as a per-candidate selection filter.
-        verdict = score(metrics, self.settings.gates, trials=trials, check_holdout=False)
-        # PER-SYMBOL BREADTH floor: a gate-passer whose edge generalizes on NO symbol (judgeable cells exist but
-        # none robust) is a best-of-N artefact the pooled Gate can't catch — never forward-test it. Fail-open when
-        # there's no per-symbol evidence (mirrors the funder fallback). ADD-strictness only; the Gate stays locked.
-        breadth_ok = funding_eligible(sc.per_symbol)
-        passed = verdict.passed and not sc.pre_kill and breadth_ok  # pre_kill / no-breadth always kill
-        # Born "screened" (badge: Backtest) — backtest evidence only at birth. The paper clock promotes to
-        # "paper" once >= 1 real forward day accrues. status is badge-only; the live gate reads track_opened.
+        # BRUT: the candidate is SCREENED (kept on /lab) iff ANY of its cells passed; KILLED otherwise. No pooled
+        # score(), no breadth/generalize gate, no FDR — each cell judged ALONE on its own data (sc.cells).
+        passing = [c for c in sc.cells.values() if c.passed]
+        passed = bool(passing)
         status = "screened" if passed else "killed"
-        all_reasons = ([sc.pre_kill] if sc.pre_kill else []) + ([] if breadth_ok else ["no_generalizing_symbol"]) + list(verdict.reasons)
-        kill_reason = None if passed else ",".join(all_reasons) or "screened_out"
+        kill_reason = None if passed else (sc.pre_kill or "no_passing_cell")
         survival_score = sc.survival_score
         proven = sc.proven
+        # The best cell's deflated Sharpe is the display ranking number for this version (the brut verdict is per
+        # cell). On a fully-killed candidate this is the max over cells (or 0 when no cell traded).
+        best_dsr = max((c.deflated_sharpe for c in sc.cells.values()), default=0.0)
 
         strategy_id = b.insert(
             "strategies",
@@ -620,7 +576,7 @@ class FarmLoop:
                 "oos_return": str(metrics.oos_return),
                 "sharpe": str(metrics.sharpe),
                 "sortino": str(metrics.sortino),
-                "deflated_sharpe": str(verdict.ranking_scalar),
+                "deflated_sharpe": str(round(best_dsr, 6)),
                 "max_dd": str(metrics.max_drawdown),
                 "win_rate": str(metrics.win_rate),
                 "num_trades": metrics.num_trades,
@@ -629,7 +585,8 @@ class FarmLoop:
                 "regime_label": "mixed",
                 "folds_positive": int(metrics.folds_positive_pct * 6),
                 "passed_gates": int(passed),
-                "holdout_passed": int(metrics.holdout_deflated_sharpe > self.settings.gates.holdout_min_deflated_sharpe),
+                # BRUT: holdout_passed iff ANY cell confirmed on its OWN holdout (the per-cell exam).
+                "holdout_passed": int(any(c.passed and c.holdout_passed for c in sc.cells.values())),
                 # Survival-model feature row persisted alongside the verdict so the ranker trains on the SAME
                 # vector it scores with (no more zero-filling skew/kurtosis/n_obs/regime breadth at train time).
                 "sharpe_per_obs": str(metrics.sharpe_per_obs),
@@ -647,52 +604,46 @@ class FarmLoop:
                 "created_at": utcnow(),
             },
         )
-        # First-class per-symbol rows — the autonomous loop populates the queryable per-(strat,symbol,venue) unit
-        # of truth identically to the finder sweep (lab/finder.py), so prod's continuous discovery fills the table,
-        # not just manual runs. venue_id = the fee axis; verdict = the HONEST cross-symbol label (computed once over
-        # the strategy's whole per-symbol set) so a lone best-of-N winner is flagged, not celebrated. This is pure
-        # persistence of data the screen already computed — never the funding authority (the pooled deflated Gate
-        # scored above is). The #306 per_symbol JSON blob is intentionally NOT written here: the table supersedes it.
-        # NOTE: a single sc.venue_id is CORRECT here only because the autonomous loop is crypto-only today (the
-        # screen fetches Binance spot for every symbol — see _binance_symbols / _screen), so build_cost_context
-        # returns venue_id_by_symbol=None and every cell shares sc.venue_id. The finder, which screens equity+HL
-        # legs, stamps the PER-SYMBOL venue map build_cost_context already produces (lab/finder.py). The day this
-        # loop's universe widens, carry that same venue_id_by_symbol (discarded as `_venue_id_by_symbol` in _screen
-        # today) onto _Screened and use it here, or this will mislabel the fee axis.
-        _verdicts = classify_per_symbol(sc.per_symbol)
+        # First-class per-CELL rows — the autonomous loop populates the queryable per-(strat,symbol,venue) unit of
+        # truth identically to the finder sweep. venue_id = the fee axis; `verdict` carries the BRUT per-cell
+        # pass/fail ('pass' iff this cell cleared the gate on its OWN data, else its own kill reason — the funder
+        # fans out a paper track per 'pass' cell). NEVER a pooled or sibling-compared label — each cell judged ALONE.
+        # NOTE: a single sc.venue_id is correct only because this loop is crypto-only today (every symbol is Binance
+        # spot). The finder, which screens equity+HL legs, stamps the per-symbol venue map. When this loop's universe
+        # widens, carry venue_id_by_symbol onto the cells or it will mislabel the fee axis.
         for _sym, _pm in (sc.per_symbol or {}).items():
+            cell = sc.cells.get(_sym)
+            cell_verdict = "pass" if (cell and cell.passed) else ((",".join(cell.reasons) or "fail") if cell else None)
             b.insert("backtest_symbols", {
                 "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": sc.venue_id,
                 "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                 "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
-                "verdict": _verdicts.get(_sym), "created_at": utcnow(),
+                "verdict": cell_verdict, "created_at": utcnow(),
             })
-        if passed:
-            # Born HONEST at the STANDARDIZED standalone track size (sim_track_capital — what the funder
-            # deploys), never the $100k pool. equity = starting_capital, return_pct = 0: a forward track has
-            # zero forward P&L at birth. The OOS return stays in backtests.oos_return; the paper clock
-            # (orchestrator._update_track_returns) is the SOLE writer that advances equity/return_pct from
-            # real marks. Seeding the backtest here (as this used to) let a never-marked survivor display its
-            # OOS as forward P&L — and master/live_eligibility could read live_ready off that backtest number.
-            track_capital = self.settings.sim_track_capital
-            open_paper_track(b, version_id=version_id, starting_capital=track_capital)
+        # PER-CELL TRACKS: one standalone paper track per cell that passed the gate AND confirmed on its OWN
+        # holdout. Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances forward columns
+        # from real marks. track_opened is keyed to the CELL (cell_id) so master/live_eligibility reads this cell's
+        # OWN clock origin + proven-regime passport — never a sibling cell's. Each cell stands alone.
+        track_capital = self.settings.sim_track_capital
+        for _sym, cell in sc.cells.items():
+            if not (cell.passed and cell.holdout_passed):
+                continue
+            open_paper_track(b, version_id=version_id, starting_capital=track_capital,
+                             symbol=cell.symbol, venue_id=cell.venue_id)
+            cell_proven = sorted(proven_regimes(cell.metrics.regime_returns))
+            cid = cell_id(version_id, cell.symbol, cell.venue_id)
             b.append_event(
-                actor="master",
-                kind="track_opened",
-                ref_type="strategy_version",
-                ref_id=version_id,
+                actor="master", kind="track_opened", ref_type="strategy_version", ref_id=cid,
                 payload={
-                    "deflated_sharpe": str(verdict.ranking_scalar),
-                    "lane": cand.lane,
-                    "survival_score": survival_score,
-                    "survival_trained": survival.trained,
-                    "proven_regimes": proven,
+                    "deflated_sharpe": round(cell.deflated_sharpe, 6), "lane": cand.lane,
+                    "symbol": cell.symbol, "venue_id": cell.venue_id,
+                    "survival_score": survival_score, "survival_trained": survival.trained,
+                    "proven_regimes": cell_proven,
                 },
             )
-            # ADDITIVE lifecycle-trace audit marks (see master/lifecycle.py): the screen passed and the paper
-            # clock now begins. Write-only journaling on the same transaction — never gates/promotes/arms.
-            b.append_event(actor="master", kind="screened_passed", ref_type="strategy_version", ref_id=version_id, payload={"lane": cand.lane, "proven_regimes": proven})
-            b.append_event(actor="master", kind="paper_started", ref_type="strategy_version", ref_id=version_id, payload={"lane": cand.lane, "proven_regimes": proven})
+            # ADDITIVE lifecycle-trace audit marks: the cell's screen passed and the paper clock now begins.
+            b.append_event(actor="master", kind="screened_passed", ref_type="strategy_version", ref_id=cid, payload={"lane": cand.lane, "symbol": cell.symbol, "proven_regimes": cell_proven})
+            b.append_event(actor="master", kind="paper_started", ref_type="strategy_version", ref_id=cid, payload={"lane": cand.lane, "symbol": cell.symbol, "proven_regimes": cell_proven})
 
         return (
             Evaluated(
@@ -700,10 +651,10 @@ class FarmLoop:
                 name=cand.spec.name,
                 origin=cand.origin,
                 lane=cand.lane,
-                deflated_sharpe=float(verdict.ranking_scalar),
+                deflated_sharpe=float(best_dsr),
                 oos_return_pct=float(metrics.oos_return) * 100,
                 passed=passed,
-                reasons=verdict.reasons,
+                reasons=([kill_reason] if kill_reason else []),
                 survival_score=survival_score,
                 survival_trained=survival.trained,
                 proven_regimes=proven,
@@ -764,21 +715,23 @@ class FarmLoop:
             include_holdout=False,
             asset_class_by_symbol=asset_class_by_symbol,
         )
-        return result.metrics, venue, result.min_symbol_trades, list(result.val_returns), result.per_symbol
+        return (
+            result.metrics, venue, result.min_symbol_trades, list(result.val_returns),
+            result.per_symbol, result.per_symbol_runs, result.per_symbol_buy_and_hold,
+        )
 
-    def _champion_holdout(self, spec: StrategySpec, params: dict[str, float]) -> float:
-        """The one-shot UNTOUCHED holdout for a SELECTED champion: re-run the full backtest WITH the embargoed
-        holdout (the screen ran include_holdout=False) and return its holdout deflated Sharpe — same market /
-        venue / cost model the screen priced against, so the exam is charged identically. Pure compute, no DB
-        write. Called exactly once per gate+FDR survivor (a fresh version per cohort → structurally one-shot)."""
+    def _champion_holdout_runs(self, spec: StrategySpec, params: dict[str, float]) -> tuple[dict, dict[str, float]]:
+        """The one-shot UNTOUCHED holdout for a SELECTED champion, PER CELL: re-run the full backtest WITH the
+        embargoed holdout (the screen ran include_holdout=False) and return (per_symbol_holdout_runs,
+        per_symbol_buy_and_hold) — same market / venue / cost model the screen priced against, so the exam is
+        charged identically. The brut gate confirms EACH passing cell on ITS OWN holdout run. Pure compute, no DB
+        write. Called once per candidate with a passing cell (a fresh version per cohort → structurally one-shot)."""
         provider = self.market_data or BinanceSpotOHLCVProvider()
         enabled_venues, enabled_classes = self._enabled()
         symbols = _binance_symbols(spec, enabled_venues, enabled_classes)
         market = {s: provider.fetch_bars(s, spec.horizon.bar_size, limit=_bar_limit(spec)) for s in symbols}
         catalog = default_catalog()
         venue = catalog.venue_for(spec.universe.venues)
-        # Same SHARED per-symbol cost context as the screen (crypto-only today → all-None → byte-identical), so
-        # the exam is charged on the identical fee/depth/calendar model the candidate was selected under.
         fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(spec, market, catalog)
         result = run_strategy_backtest_detailed(
             spec, params, market, fee_bps=venue.taker_fee_bps,
@@ -789,7 +742,7 @@ class FarmLoop:
             include_holdout=True,
             asset_class_by_symbol=asset_class_by_symbol,
         )
-        return float(result.metrics.holdout_deflated_sharpe)
+        return result.per_symbol_holdout_runs, result.per_symbol_buy_and_hold
 
     def _alt_store(self):  # noqa: ANN202 — AltDataStore | PgAltDataStore
         """The point-in-time alt-data store, chosen the SAME way ingest/api do: postgres URL → PgAltDataStore
