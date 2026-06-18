@@ -112,6 +112,7 @@ def run_strategy_backtest(
     fee_schedule: dict[str, Decimal] | None = None,
     slippage_bps: Decimal = DEFAULT_SLIPPAGE_BPS,
     impact_bps: Decimal = DEFAULT_IMPACT_BPS,
+    depth_schedule: dict[str, tuple[Decimal, Decimal]] | None = None,
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
@@ -128,6 +129,7 @@ def run_strategy_backtest(
         fee_schedule=fee_schedule,
         slippage_bps=slippage_bps,
         impact_bps=impact_bps,
+        depth_schedule=depth_schedule,
         size_multiplier=size_multiplier,
         alt_by_symbol=alt_by_symbol,
         size_series=size_series,
@@ -145,6 +147,7 @@ def run_strategy_backtest_detailed(
     fee_schedule: dict[str, Decimal] | None = None,
     slippage_bps: Decimal = DEFAULT_SLIPPAGE_BPS,
     impact_bps: Decimal = DEFAULT_IMPACT_BPS,
+    depth_schedule: dict[str, tuple[Decimal, Decimal]] | None = None,
     size_multiplier: float = 1.0,
     alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None = None,
     size_series: dict[str, float] | None = None,
@@ -161,6 +164,11 @@ def run_strategy_backtest_detailed(
 
     `slippage_bps` is the fixed half-spread; `impact_bps` scales market impact with participation
     (order notional / bar quote-volume), so larger size erodes the edge — the capacity dimension.
+    `depth_schedule` maps symbol -> (slippage_bps, impact_bps): the per-venue MARKET DEPTH, a mirror of
+    `fee_schedule` so a cross-asset backtest charges each leg the depth of the venue it would ACTUALLY trade on
+    (equity at IBKR's 2/25, HL perps at 6/60) instead of the spec's primary-venue depth applied uniformly. A
+    symbol absent from the map (or `depth_schedule=None`) falls back to the scalar `slippage_bps`/`impact_bps`,
+    so the crypto-only path is byte-identical.
     `size_multiplier` scales position notional, used to probe capacity decay.
     `alt_by_symbol` maps symbol → feature → {bar.ts.isoformat(): value}: the point-in-time alt-data join
     (funding_rate, etc.) so leading-signal strategies are actually evaluable, not just price/TA ones. The
@@ -199,6 +207,13 @@ def run_strategy_backtest_detailed(
         # Per-venue fee: cross-asset backtests supply a fee_schedule (symbol → bps) so equity symbols are
         # charged IBKR's 0.5 bps and crypto symbols Binance's 10 bps — never a single blended rate.
         sym_fee = fee_schedule.get(symbol, fee_bps) if fee_schedule else fee_bps
+        # Per-venue MARKET DEPTH (the slippage/impact half of trading cost): the same cross-asset backtest
+        # supplies a depth_schedule (symbol → (slippage_bps, impact_bps)) so an equity leg pays IBKR's 2/25 and
+        # an HL leg 6/60 — not the spec's primary-venue depth applied uniformly. A symbol absent from the map
+        # (or no map at all) falls back to the scalar slippage_bps/impact_bps, so crypto-only is byte-identical.
+        sym_slip, sym_impact = (
+            depth_schedule.get(symbol, (slippage_bps, impact_bps)) if depth_schedule else (slippage_bps, impact_bps)
+        )
         alt = (alt_by_symbol or {}).get(symbol)
         # Annualize THIS symbol on its OWN calendar: equity/fx ≈252 sessions/yr, crypto/HL/prediction 365.
         # Default (no map / unknown class) is the 365-session crypto base, so single-asset crypto is unchanged.
@@ -210,7 +225,7 @@ def run_strategy_backtest_detailed(
             for i in range(1, len(val_bars))
             if float(val_bars[i - 1].close) > 0
         )
-        v_run = _run_symbol(spec, params, val_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series, periods_per_year=ppy)
+        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
@@ -221,7 +236,7 @@ def run_strategy_backtest_detailed(
             "trades": float(len(v_run.trades)),
         }
         if holdout_bars and include_holdout:
-            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, slippage_bps, impact_bps, size_multiplier, alt, size_series, periods_per_year=ppy))
+            holdout_runs.append(_run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy))
 
     if not validation_runs:
         return BacktestResult(_empty_metrics(spec), [], [], {})

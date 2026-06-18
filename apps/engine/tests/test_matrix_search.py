@@ -263,6 +263,51 @@ def test_alt_join_degrades_to_price_only_when_no_store(monkeypatch):
     assert isinstance(r, MatrixResult)
 
 
+def test_equity_cell_prices_at_ibkr_not_a_global_binance_default(monkeypatch):
+    """REGRESSION (audit#2/3/6/9): run_matrix_cell charged a GLOBAL Binance fee on every cell, durably persisting
+    Binance-cost rows for IBKR-priced equities to gate_verdicts. An equity asset (SPY) must now price at IBKR's
+    fee AND depth (one source, Venue.cost_inputs), not Binance's."""
+    import cosmu.research.matrix_search as ms
+    from cosmu.spine.venue import default_catalog
+
+    _patch(monkeypatch, {"SPY": _make_bars(300)}, [_make_spec()])
+    seen: dict = {}
+    real = ms.run_strategy_backtest_detailed
+
+    def spy(spec, params, market, **kwargs):
+        seen.update(fee_bps=kwargs.get("fee_bps"), slippage_bps=kwargs.get("slippage_bps"), impact_bps=kwargs.get("impact_bps"))
+        return real(spec, params, market, **kwargs)
+
+    monkeypatch.setattr(ms, "run_strategy_backtest_detailed", spy)
+    ms.run_matrix_cell("SPY", "1d", persist=False)
+
+    ibkr, binance = default_catalog().venue("ibkr"), default_catalog().venue("binance")
+    assert seen["fee_bps"] == ibkr.taker_fee_bps == Decimal("0.5")
+    assert seen["fee_bps"] != binance.taker_fee_bps  # explicitly NOT the old global Binance fee
+    assert seen["slippage_bps"] == ibkr.slippage_bps and seen["impact_bps"] == ibkr.impact_bps
+
+
+def test_crypto_cell_still_prices_at_binance(monkeypatch):
+    """A *USDT cell keeps Binance's per-venue cost (fee + that venue's real depth, not the global 5/50)."""
+    import cosmu.research.matrix_search as ms
+    from cosmu.spine.venue import default_catalog
+
+    _patch(monkeypatch, {"BTCUSDT": _make_bars(300)}, [_make_spec()])
+    seen: dict = {}
+    real = ms.run_strategy_backtest_detailed
+
+    def spy(spec, params, market, **kwargs):
+        seen.update(fee_bps=kwargs.get("fee_bps"), slippage_bps=kwargs.get("slippage_bps"), impact_bps=kwargs.get("impact_bps"))
+        return real(spec, params, market, **kwargs)
+
+    monkeypatch.setattr(ms, "run_strategy_backtest_detailed", spy)
+    ms.run_matrix_cell("BTCUSDT", "1d", persist=False)
+
+    binance = default_catalog().venue("binance")
+    assert seen["fee_bps"] == binance.taker_fee_bps == Decimal("10")
+    assert (seen["slippage_bps"], seen["impact_bps"]) == (binance.slippage_bps, binance.impact_bps)
+
+
 def test_malformed_spec_in_inbox_is_skipped_not_crashed(monkeypatch, tmp_path):
     """A malformed JSON file in the inbox is silently skipped; valid specs still run."""
     import cosmu.research.matrix_search as ms

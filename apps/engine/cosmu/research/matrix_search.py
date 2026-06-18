@@ -87,7 +87,12 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
     bars = load_bars(asset, timeframe)
     market = {asset: bars}
     specs = load_specs()
-    fee_bps = default_catalog().venue("binance").taker_fee_bps
+    # Cost by the CELL's OWN venue, not a global Binance default: a *USDT cell prices at Binance, an equity cell
+    # (SPY/QQQ/…) at IBKR. Fee AND market depth come from the SAME source (Venue.cost_inputs), so the durable
+    # gate_verdicts never again record Binance-cost (10 bps / 5-50 depth) rows for an IBKR-priced equity (0.5
+    # bps / 2-25). One symbol per cell → a scalar fee/depth is enough (no per-symbol schedule needed here).
+    venue = default_catalog().venue("binance" if asset.endswith("USDT") else "ibkr")
+    fee_bps, slippage_bps, impact_bps = venue.cost_inputs()
     tmp = tempfile.mkdtemp(prefix="cosmu-matrix-")
     store = Store(Settings(database_url=f"sqlite:///{tmp}/m.sqlite3", openrouter_api_key=None))
     alt_store = _matrix_alt_store()
@@ -102,7 +107,8 @@ def run_matrix_cell(asset: str, timeframe: str, *, persist: bool = True) -> Matr
                 # sweep only ever searches bar-TA. None (no alt features / no store) → price-only, unchanged.
                 alt = build_alt_by_symbol(alt_store, spec, market) if alt_store is not None else None
                 res = run_strategy_backtest_detailed(
-                    spec, _resolve_params(spec), market, fee_bps=fee_bps, alt_by_symbol=alt
+                    spec, _resolve_params(spec), market, fee_bps=fee_bps,
+                    slippage_bps=slippage_bps, impact_bps=impact_bps, alt_by_symbol=alt
                 )
             except Exception:  # noqa: BLE001 — a spec that can't run on this slice is an honest skip
                 continue

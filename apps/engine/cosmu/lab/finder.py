@@ -42,6 +42,7 @@ from cosmu.master.holdout import HoldoutLedger
 from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol, funding_eligible
 from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.screen_universe import build_cost_context, equity_symbols, hyperliquid_symbols
 from cosmu.master.tracks import open_paper_track
 from cosmu.master.trials import register_trial
 from cosmu.master.verdict_log import CohortPersist
@@ -65,12 +66,6 @@ _REFINE_RADIUS = 0.15
 # cached under .cosmu/market_data/binanceperp/. The five-symbol CORE slice was the prior value; widened
 # 2026-06-16 once the cache confirmed full coverage.
 _REAL_SYMBOLS = PERP_UNIVERSE
-# Cap equity symbols per finder run. More symbols → more trials → stricter gate (correct), but also slower
-# local runs. 50 gives breadth without dominating the trial budget on a correlated sector basket.
-_EQUITY_SCREEN_LIMIT = 50
-# Cap Hyperliquid perp symbols per run. HL perps are highly correlated with Binance perps (same underlying),
-# so 30 liquid perps is already generous — matching the Binance PERP_UNIVERSE width.
-_HL_SCREEN_LIMIT = 30
 # Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
 # cluster representative, the rest are near-duplicates. Dedupe to representatives BEFORE BH-FDR so a dense
 # correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract). Aliases
@@ -261,21 +256,19 @@ class StrategyFinder:
         return list(_REAL_SYMBOLS)
 
     def _equity_symbols(self, spec: StrategySpec) -> list[str]:
-        """Equity symbols when the spec's universe includes 'equity'. Reads the local cache to avoid a network
-        dependency at discovery time; the cache is maintained by equity backfill scripts."""
+        """Equity symbols when the spec's universe includes 'equity' AND equity is enabled in the global universe
+        gate. The cache-backed symbol detection itself is the SINGLE source in master/screen_universe (shared with
+        build_cost_context + the autonomous loop), so the finder and the cost context can never disagree on the
+        set; this method only adds the finder's store-level enabled-universe gate on top."""
         if "equity" not in spec.universe.asset_classes:
             return []
         _, classes = enabled_universe(self.store)
-        if "equity" not in classes:
-            return []
-        return EquityOHLCVProvider().available_symbols()[:_EQUITY_SCREEN_LIMIT]
+        return equity_symbols(spec) if "equity" in classes else []
 
     def _hyperliquid_symbols(self, spec: StrategySpec) -> list[str]:
-        """Hyperliquid perp symbols when the spec's universe includes 'hyperliquid'. Cache-only: returns
-        whatever `ingest_hyperliquid_bars.py` has already downloaded; empty if the cache hasn't been run."""
-        if "hyperliquid" not in spec.universe.venues:
-            return []
-        return HyperliquidOHLCVProvider().available_symbols()[:_HL_SCREEN_LIMIT]
+        """Hyperliquid perp symbols when the spec's universe includes 'hyperliquid'. Cache-only detection via the
+        SINGLE source in master/screen_universe (returns whatever `ingest_hyperliquid_bars.py` has downloaded)."""
+        return hyperliquid_symbols(spec)
 
     def _market(self, spec: StrategySpec) -> dict[str, list[Bar]]:
         limit = 1500 if spec.horizon.bar_size == "1h" else 1000
@@ -332,37 +325,14 @@ class StrategyFinder:
         grid = build_grid(spec, max_variants=max_variants)
         catalog = default_catalog()
         venue = catalog.venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
-        # Per-symbol fee schedule: equity symbols pay IBKR (0.5 bps); HL perp symbols pay HL (1.5 bps); crypto
-        # symbols pay the spec's primary venue fee. None when all symbols share the same venue fee (common
-        # crypto-only path) — avoids a dict-lookup on every bar for the typical case.
-        equity_syms = set(self._equity_symbols(spec)) & market.keys()
-        hl_syms = set(self._hyperliquid_symbols(spec)) & market.keys()
-        fee_schedule = None
-        if equity_syms or hl_syms:
-            fee_schedule = {s: venue.taker_fee_bps for s in market}
-            if equity_syms:
-                ibkr_fee = catalog.venue("ibkr").taker_fee_bps
-                fee_schedule.update({s: ibkr_fee for s in equity_syms})
-            if hl_syms:
-                hl_fee = catalog.venue("hyperliquid").taker_fee_bps
-                fee_schedule.update({s: hl_fee for s in hl_syms})
-        # Per-symbol annualization calendar: equity symbols trade ≈252 sessions/yr, so their Sharpe must NOT be
-        # annualized at crypto's 365 (a pooled cross-asset spec would otherwise over-state the equity leg ≈1.2×).
-        # Crypto + HL perps are 24/7 → the 365-session default (None) is already correct, so we only mark equity.
-        # None when there are no equity symbols (the common crypto-only path stays byte-identical).
-        asset_class_by_symbol = {s: "equity" for s in equity_syms} or None
-        # Per-symbol VENUE id — the SAME per-symbol map the fee_schedule uses (equity→ibkr, HL→hyperliquid, else
-        # the spec's primary venue). Each backtest_symbols cell is then STAMPED with the venue it was actually
-        # priced at (the fee axis of the S×A×V triple), never the spec's single primary venue — so an IBKR-priced
-        # equity cell is no longer mislabeled 'binance' in the table built to be the source of truth. None on the
-        # crypto-only path (every row shares venue.id, applied at persist) — keeps that path allocation-free.
-        venue_id_by_symbol = None
-        if equity_syms or hl_syms:
-            venue_id_by_symbol = {s: venue.id for s in market}
-            if equity_syms:
-                venue_id_by_symbol.update({s: catalog.venue("ibkr").id for s in equity_syms})
-            if hl_syms:
-                venue_id_by_symbol.update({s: catalog.venue("hyperliquid").id for s in hl_syms})
+        # Per-symbol cost + calendar context — taker fee, MARKET DEPTH (slippage/impact), the asset-class
+        # annualization calendar, and the venue each cell was actually priced at — ALL from the single source the
+        # autonomous loop also reads (master/screen_universe.build_cost_context), so the Strategy Finder and the
+        # FarmLoop can never disagree on what an equity/HL leg costs. Equity symbols pay IBKR (0.5 bps, depth
+        # 2/25) and annualize at ≈252 sessions/yr; HL perps pay HL (4.5 bps, depth 6/60); crypto symbols pay the
+        # spec's primary venue. Each is None on the common crypto-only path (no equity/HL symbol present) → the
+        # backtest's SCALAR venue fee/depth is used, byte-identical to before.
+        fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(spec, market, catalog)
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params. Without this the sweep would screen every
         # funding/meta-label spec price-only (funding reads None) — the same join the cohort screen uses.
@@ -374,7 +344,7 @@ class StrategyFinder:
         trades_by_tag: dict[str, int] = {}
 
         def _screen_into(variant: Variant, source: str, label: str) -> None:
-            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label, fee_schedule=fee_schedule, asset_class_by_symbol=asset_class_by_symbol)
+            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label, fee_schedule=fee_schedule, depth_schedule=depth_schedule, asset_class_by_symbol=asset_class_by_symbol)
             if screened is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             r, cand, val_returns, min_symbol_trades = screened
@@ -468,10 +438,12 @@ class StrategyFinder:
             champion = run_strategy_backtest_detailed(
                 spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps,
                 fee_schedule=fee_schedule,
-                slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps, alt_by_symbol=alt,
+                slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
+                depth_schedule=depth_schedule, alt_by_symbol=alt,
                 asset_class_by_symbol=asset_class_by_symbol,
-            )  # include_holdout defaults True — this is the single exam look for this champion; charge the
-            #    venue's OWN depth (half-spread + impact), not the global 5/50 — same cost model as the screen
+            )  # include_holdout defaults True — this is the single exam look for this champion; charge EACH leg
+            #    its OWN venue depth (per-symbol depth_schedule, falling back to the venue scalar) — same cost
+            #    model as the screen
             r.metrics = r.metrics.model_copy(
                 update={"holdout_deflated_sharpe": champion.metrics.holdout_deflated_sharpe}
             )
@@ -534,6 +506,7 @@ class StrategyFinder:
         source: str,
         label: str,
         fee_schedule: dict[str, Decimal] | None = None,
+        depth_schedule: dict[str, tuple[Decimal, Decimal]] | None = None,
         asset_class_by_symbol: dict[str, str] | None = None,
     ) -> tuple[VariantResult, CohortCandidate, list[float], int] | None:
         """Compile + backtest one variant on REAL bars (with the point-in-time alt-data join so funding/meta-label
@@ -551,11 +524,13 @@ class StrategyFinder:
             spec, variant.params, market, fee_bps=venue.taker_fee_bps,
             fee_schedule=fee_schedule,
             slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
+            depth_schedule=depth_schedule,
             alt_by_symbol=alt_by_symbol,
             include_holdout=False,
             asset_class_by_symbol=asset_class_by_symbol,
-        )  # price at the SPEC's venue depth — a thin-book venue (Polymarket 30/150, Coinbase 8/60) pays the
-        #   wide spread + heavy impact it really would, instead of falling back to the global 5/50
+        )  # price each leg at ITS OWN venue depth (per-symbol depth_schedule, falling back to the spec's primary
+        #   venue scalar) — a thin-book venue (Polymarket 30/150, Coinbase 8/60) pays the wide spread + heavy
+        #   impact it really would, instead of falling back to the global 5/50
         metrics = detailed.metrics
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
         result = VariantResult(
