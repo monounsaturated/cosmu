@@ -14,6 +14,7 @@ import hashlib
 import itertools
 import tempfile
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
@@ -37,7 +38,12 @@ from cosmu.master.holdout import HoldoutLedger
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics
-from cosmu.master.screen_universe import build_cost_context, equity_symbols, hyperliquid_symbols
+from cosmu.master.screen_universe import (
+    build_cost_context,
+    equity_symbols,
+    hyperliquid_symbols,
+    prediction_markets,
+)
 from cosmu.master.tracks import WATCH_VERDICT, is_near_miss_cell, open_paper_track
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
@@ -258,6 +264,12 @@ class StrategyFinder:
     settings: Settings
     store: Store
     market_data: MarketDataProvider | None = None
+    # Injectable alt-data store (the per-market odds + the alt-feature join). None → resolved the SAME way ingest/
+    # the loop do (resolve_alt_store): postgres → PgAltDataStore, else JSONL. Set only by tests for hermetic odds.
+    alt_store: object | None = None
+
+    def _resolve_alt_store(self) -> object:
+        return self.alt_store if self.alt_store is not None else resolve_alt_store(self.settings, self.store)
 
     def _symbols(self, spec: StrategySpec) -> list[str]:
         """Crypto symbols for this spec — the full PERP_UNIVERSE when binance+crypto are enabled."""
@@ -282,6 +294,38 @@ class StrategyFinder:
         """Hyperliquid perp symbols when the spec's universe includes 'hyperliquid'. Cache-only detection via the
         SINGLE source in master/screen_universe (returns whatever `ingest_hyperliquid_bars.py` has downloaded)."""
         return hyperliquid_symbols(spec)
+
+    def _prediction_symbols(self, spec: StrategySpec) -> list[str]:
+        """Polymarket prediction conditionIds when the spec's universe declares polymarket + prediction. SINGLE
+        detection source in master/screen_universe (the most-liquid open markets from universe_pairs), so the
+        finder and the cost context agree on the prediction leg. Empty for any non-prediction spec."""
+        return prediction_markets(spec, self.store)
+
+    def _prediction_bars(self, spec: StrategySpec, condition_ids: list[str], limit: int) -> dict[str, list[Bar]]:
+        """The per-MARKET odds bars for a prediction leg: each conditionId's `odds` series (provider="polymarket",
+        symbol=conditionId, metric="odds" — written by ingest/polymarket_odds.py) read back through the
+        PredictionDataAdapter as Bars whose OHLC carries the implied probability in [0,1]. The adapter is the ONE
+        odds→Bar seam (point-in-time, resolution-aware), so the finder never re-implements the odds read. Keyed by
+        conditionId so build_cost_context prices each market at Polymarket's per-category taker fee. A market with
+        no ingested odds simply yields no bars and is omitted (honest — never a fabricated series)."""
+        from cosmu.adapters.data.prediction import Market, PredictionDataAdapter
+        from cosmu.adapters.data.prediction import instrument_id as pm_instrument_id
+
+        alt_store = self._resolve_alt_store()
+        markets = [Market(symbol=cid, token=cid) for cid in condition_ids]  # odds stored under the conditionId
+        adapter = PredictionDataAdapter(markets, alt_reader=alt_store, metric="odds")
+        # A wide [start, end] so the adapter returns the full ingested odds history; the backtest slices to need.
+        start = datetime(2000, 1, 1, tzinfo=UTC)
+        end = datetime(2100, 1, 1, tzinfo=UTC)
+        out: dict[str, list[Bar]] = {}
+        for cid in condition_ids:
+            try:
+                bars = adapter.bars(pm_instrument_id(cid), start, end, spec.horizon.bar_size)
+            except Exception:  # noqa: BLE001 — one unreadable market never aborts the panel
+                continue
+            if bars:
+                out[cid] = bars[-limit:]
+        return out
 
     def _market(self, spec: StrategySpec) -> dict[str, list[Bar]]:
         limit = 1500 if spec.horizon.bar_size == "1h" else 1000
@@ -313,6 +357,12 @@ class StrategyFinder:
                         out[symbol] = bars
                 except Exception:  # noqa: BLE001
                     continue
+        # Prediction panel — per-market Polymarket odds (the share price IS the probability), read from the
+        # alt-data store through the PredictionDataAdapter (ingest/polymarket_odds.py keys them by conditionId).
+        # Each conditionId is one tradeable cell, judged BRUT on its OWN odds series — same per-symbol contract.
+        prediction_ids = self._prediction_symbols(spec)
+        if prediction_ids:
+            out.update(self._prediction_bars(spec, prediction_ids, limit))
         return out
 
     def find(
@@ -353,7 +403,7 @@ class StrategyFinder:
         fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(spec, market, catalog)
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params.
-        alt = build_alt_by_symbol(resolve_alt_store(self.settings, self.store), spec, market)
+        alt = build_alt_by_symbol(self._resolve_alt_store(), spec, market)
 
         results: list[VariantResult] = []
 
