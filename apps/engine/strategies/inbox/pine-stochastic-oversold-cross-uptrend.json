@@ -1,0 +1,51 @@
+{
+  "name": "Stochastic oversold cross-up in an uptrend (Pine import)",
+  "rationale": "Faithful import of the Stochastic-crossover-in-trend strategy (Alorse 'Stoch RSI Crossover Strat + EMA' / Trade Pro: %K crosses up through %D inside the oversold zone while a stacked EMA ribbon confirms an uptrend; 3:1 ATR-based risk). Economic mechanism: the stochastic oscillator measures where price sits within its recent high-low range; a %K-over-%D cross UP from the oversold zone signals that a short-term pullback has stopped going down and momentum is turning back up — and gating that turn on an established uptrend (EMA ribbon stacked, price above a long MA) restricts it to BUYING THE DIP within a trend rather than catching a falling knife. The edge is the timing of re-entry on a trend pullback, captured precisely by the cross. The distinct structural piece vs our other reversion specs: the entry uses the cross_up OPERATOR on the range_position feature (a Donchian/stochastic channel-position read in [0,1]) through a low oversold floor — a TURN trigger, not a static level — combined with a MaTrendFilter uptrend gate (setup.ma_trend_filter). Our existing range-floor spec buys a STATIC low position in a COMPRESSED range (a grid/mean-reversion regime); this instead buys the MOMENT range_position turns up out of oversold while in a TREND — a different trigger (cross vs level) and a different regime (trend vs chop). Translation losses (noted, not fabricated): (1) the registry exposes a single channel-position series (range_position), not separate smoothed %K and %D lines — the %K-cross-%D event is approximated by range_position crossing UP through a fitted oversold floor (the position itself turning up out of oversold), with the Finder fitting the lookback and floor; (2) the multi-EMA ribbon alignment (8>14>50) collapses to the single fitted-MA uptrend gate; (3) the literal ATR x3 stop becomes a fitted stop fraction (sizing/units stay with the master). Honest prior: stochastic-cross-in-trend is a staple retail setup; net of ~20bps on crypto spot it is unproven and prone to repeated small whipsaws on shallow pullbacks — expected a powered fail that maps the dip-re-entry surface; the Gate disposes. Disconfirmer: an RSI-overbought signal exit takes profit once the bounce matures; the stop + time-stop close a 'dip' that keeps falling (the uptrend was actually breaking — thesis wrong).",
+  "catalyst": "stochastic channel-position crosses up out of oversold while price is in a confirmed uptrend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "range_position", "lookback": {"param": "stoch_lb"}},
+      "op": "cross_up",
+      "threshold": {"param": "oversold_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "setup": {
+    "ma_trend_filter": {
+      "ma_lookback": {"param": "trend_lb"}
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "stoch_lb": {"kind": "int", "lo": 7, "hi": 21, "step": 1},
+    "oversold_floor": {"kind": "float", "lo": 0.1, "hi": 0.35},
+    "trend_lb": {"kind": "int", "lo": 50, "hi": 150, "step": 5},
+    "rsi_exit": {"kind": "float", "lo": 60, "hi": 80},
+    "stop": {"kind": "float", "lo": 0.03, "hi": 0.12},
+    "tp": {"kind": "float", "lo": 0.05, "hi": 0.25},
+    "time_stop": {"kind": "int", "lo": 4, "hi": 12, "step": 1}
+  }
+}

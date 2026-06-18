@@ -1,0 +1,46 @@
+{
+  "name": "Turtle Donchian breakout with channel-low exit (Pine import)",
+  "rationale": "Faithful import of the original Turtle Trading channel system (Dennis/Eckhardt; the widely-cloned 'Turtle / Donchian Breakout' Pine community scripts): go long on a breakout to a new N-period Donchian HIGH, and — the defining and distinct rule — EXIT not on a fixed profit target but when price falls back to the opposite M-period channel LOW (the trailing Donchian stop). Economic mechanism: a new multi-week high is a confirmed breakout to fresh price discovery (the Turtles' core bet that big trends start at new extremes and persist far longer than reversion logic expects); the channel-low exit is a volatility/structure-adaptive trailing stop that keeps the position on as long as price keeps making higher lows and cuts it the instant the trend structure breaks — letting winners run and capping the give-back without a fixed take-profit that would clip a large trend. This is structurally DISTINCT from the existing Donchian spec (which closes on fixed stop_loss/take_profit fractions): here the take is a far backstop and the real exit is range_position falling below a low channel-position floor — the literal 'price at the bottom of its recent range' Turtle exit, encoded as a signal_exit on the range_position feature (a Donchian/stochastic channel-position read in [0,1]). Translation losses (noted, not fabricated): (1) the entry 'new N-day high' is approximated by a strong long-lookback ret_Nd breakout (price at/near a multi-week high) — the registry has no literal Donchian-high crossover, so the Finder fits the lookback to the intended channel window; (2) the Turtles used an N-of-2-system (20/55-day entry, 10/20-day exit) and ATR-based 'unit' position sizing — sizing stays with the deterministic master, and the entry/exit channel lengths become fitted lookbacks; (3) a wide fitted stop_loss is retained purely as a catastrophic backstop below the channel exit (a conservative addition, not the Turtles' rule). Honest prior: Donchian breakout is one of the few trend systems with genuine multi-decade OOS evidence in futures, but on crypto SPOT net of ~20bps round-trip the channel-exit give-back can erode the edge — expected a powered fail/marginal that maps the breakout-and-trail surface; the Gate disposes. Disconfirmer: range_position dropping to the channel floor (trend structure broke) closes the trade — the pre-registered failure test; a long time-stop and the backstop stop bound a breakout that immediately fails.",
+  "catalyst": "price breaks to a new multi-week Donchian high (long-lookback return breakout)",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 60
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "ret_Nd", "lookback": {"param": "entry_channel"}},
+      "op": "gt",
+      "threshold": {"param": "breakout_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position", "lookback": {"param": "exit_channel"}}, "op": "lt", "threshold": {"param": "channel_low_exit"}}
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "entry_channel": {"kind": "int", "lo": 20, "hi": 80, "step": 1},
+    "breakout_floor": {"kind": "float", "lo": 0.08, "hi": 0.4},
+    "exit_channel": {"kind": "int", "lo": 10, "hi": 30, "step": 1},
+    "channel_low_exit": {"kind": "float", "lo": 0.1, "hi": 0.4},
+    "stop": {"kind": "float", "lo": 0.08, "hi": 0.25},
+    "tp": {"kind": "float", "lo": 0.3, "hi": 1.0},
+    "time_stop": {"kind": "int", "lo": 20, "hi": 60, "step": 1}
+  }
+}
