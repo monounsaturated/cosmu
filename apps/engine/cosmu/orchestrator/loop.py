@@ -19,7 +19,11 @@ from typing import TYPE_CHECKING
 
 from cosmu.adapters.data.alpaca import AlpacaDailyBarsProvider
 from cosmu.adapters.exec.registry import EXEC_ADAPTER_VENUES
-from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
+from cosmu.data.market import (
+    MarketDataProvider,
+    YahooDailyBarsProvider,
+    default_crypto_reference,
+)
 from cosmu.data.price_cells import alt_ingest_symbol
 
 if TYPE_CHECKING:
@@ -326,7 +330,9 @@ class PricingRouter:
         settings: Settings | None = None,
     ) -> None:
         self.catalog = catalog
-        self._crypto = crypto or BinanceSpotOHLCVProvider()
+        # Crypto leg: injected wins (tests); else the default reference — Binance direct, or the Railway EU bars
+        # engine when COSMU_BARS_URL is set (so a geo-blocked compute account still marks crypto closes).
+        self._crypto = crypto or default_crypto_reference()
         # Equity leg: an injected provider always wins (tests / alternate venues); otherwise prefer Alpaca when
         # keyed, else keyless Yahoo total-return — the same total-return closes the equity_dual_momentum_arm uses.
         self._equity = equity or _default_equity_provider(settings)
