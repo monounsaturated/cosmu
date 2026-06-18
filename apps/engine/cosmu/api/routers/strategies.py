@@ -25,9 +25,42 @@ from cosmu.api.models import (
 from cosmu.api.routers.lab import _CELL_SELECT, _cell_row, _dedup_cells
 from cosmu.api.routers.leaderboard import _money_or_none  # the shared finite-or-None money coercion (never null→0)
 from cosmu.knowledge.store import utcnow
+from cosmu.master.scorer import BacktestMetrics, TrialStats, deflated_sharpe_prob
 from cosmu.research.summary_facts import facts_hash, summary_facts
 
 router = APIRouter()
+
+
+def _deflated_sharpe_prob(bt: dict) -> float | None:
+    """The GATED deflated-Sharpe PROBABILITY in [0,1] for a backtest row — the number the 0.95 bar actually
+    checks — recomputed from the row's persisted survival inputs via master/scorer.deflated_sharpe_prob (the
+    SAME function the deterministic Gate runs). Distinct from `backtests.deflated_sharpe`, which is the deflated
+    Sharpe RATIO (a ranking number that can exceed 1.0). Trials = this row's own `trials_counted` (no correlation
+    haircut), matching score()'s default — verified prod-wide to reproduce the recorded verdict (prob ≥ 0.95 ⟺
+    passed_gates). Returns None when the survival columns are absent (pre-migration / arm rows): the UI then falls
+    back to the binary passed_gates verdict (≥/< 0.95) rather than fabricating a number. Read-only — never gates."""
+    sharpe_per_obs = bt.get("sharpe_per_obs")
+    skew = bt.get("skew")
+    kurtosis = bt.get("kurtosis")
+    n_obs = bt.get("n_obs")
+    if sharpe_per_obs is None or skew is None or kurtosis is None or n_obs is None:
+        return None
+    trials = int(bt.get("trials_counted") or 1)
+    metrics = BacktestMetrics(
+        oos_return=_metric(bt["oos_return"]),
+        sharpe=_metric(bt["sharpe"]) if bt.get("sharpe") is not None else _metric(0),
+        sortino=_metric(bt["sortino"]) if bt.get("sortino") is not None else _metric(0),
+        max_drawdown=_metric(bt["max_dd"]),
+        win_rate=_metric(bt["win_rate"]),
+        num_trades=int(bt["num_trades"]),
+        sharpe_per_obs=_metric(sharpe_per_obs),
+        skew=_metric(skew),
+        kurtosis=_metric(kurtosis),
+        n_obs=int(n_obs),
+        pbo=_metric(bt["pbo"]),
+        trials_counted=trials,
+    )
+    return round(deflated_sharpe_prob(metrics, TrialStats(count=trials)), 6)
 
 
 @router.get("/strategies/{version_id}", response_model=StrategyDetailResponse)
@@ -102,7 +135,7 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             for trade in executions
         ],
         backtests=[
-            Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]), oos_window_days=oos_window_days(bt["oos_start"], bt["oos_end"]))
+            Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), deflated_sharpe_prob=_deflated_sharpe_prob(bt), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]), oos_window_days=oos_window_days(bt["oos_start"], bt["oos_end"]))
             for bt in backtests
         ],
         notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",

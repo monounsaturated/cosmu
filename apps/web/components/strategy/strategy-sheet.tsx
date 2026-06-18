@@ -165,6 +165,14 @@ function PhaseComparison({
   const cellReturnPct = cell ? cell.return_pct * 100 : null;
   const cellMaxDdPct = cell ? cell.max_drawdown * 100 : null;
   const cellTrades = cell ? cell.trades : null;
+  // The GATED deflated-Sharpe value is the PROBABILITY (deflated_sharpe_prob, the 0–1 number the 0.95 bar checks),
+  // NOT the deflated-Sharpe ratio — comparing the ratio (which can exceed 1.0) to the 0.95 probability bar read as
+  // a contradiction ("0.98 below 0.95"). Fall back to the binary verdict (≥/< 0.95) off passed_gates when the engine
+  // could not recompute the probability (pre-migration / arm rows). DSR has no per-cell value (the algo's pooled
+  // gate verdict), so this stays algo-level even when a cell is focused — mirroring PBO.
+  const dsrProb = headlineBt?.deflated_sharpe_prob ?? null;
+  const dsrPass = dsrProb !== null ? dsrProb >= 0.95 : !!headlineBt?.passed_gates;
+  const dsrProbStr = dsrProb !== null ? dsrProb.toFixed(2) : headlineBt ? (headlineBt.passed_gates ? "≥0.95" : "<0.95") : "—";
   // `tip` defines each metric ONCE, in plain words (hover) — so a non-expert can read the table without a
   // glossary elsewhere. These replace the removed gate-metric chips' tooltips.
   const rows: { metric: string; tip?: string; bt: string; btTone?: string; paper: string; paperTone?: string; live: string }[] = [
@@ -196,10 +204,10 @@ function PhaseComparison({
       live: "—"
     },
     {
-      metric: "Sharpe (DSR)",
-      tip: "Deflated Sharpe Ratio — risk-adjusted return, discounted for how many variants were tried (so luck can't fake an edge). The Gate wants ≥ 0.95. This is the ALGO's pooled gate verdict, not a per-cell number.",
-      bt: headlineBt ? headlineBt.deflated_sharpe.toFixed(2) : "—",
-      btTone: headlineBt ? (headlineBt.deflated_sharpe >= 0.95 ? "up" : undefined) : undefined,
+      metric: "DSR confidence",
+      tip: `Deflated-Sharpe PROBABILITY — the 0-to-1 confidence the edge is real after discounting for how many variants were tried (so luck can't fake an edge). THIS is the number the Gate's 0.95 bar checks${headlineBt ? `; the raw deflated-Sharpe ratio (a separate ranking number, can exceed 1.0) is ${headlineBt.deflated_sharpe.toFixed(2)}` : ""}. The ALGO's pooled gate verdict, not a per-cell number.`,
+      bt: dsrProbStr,
+      btTone: headlineBt && dsrPass ? "up" : undefined,
       paper: "—",
       live: "—"
     },
@@ -456,10 +464,14 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
             ? {
                 passedGates: headlineBt.passed_gates,
                 deflatedSharpe: headlineBt.deflated_sharpe,
+                deflatedSharpeProb: headlineBt.deflated_sharpe_prob ?? null,
                 pbo: headlineBt.pbo,
-                oosReturn: headlineBt.oos_return,
+                // Return + Max DD read the PER-CELL standalone truth when a cell is focused — the SAME source the
+                // Phase-comparison table uses — so the "why" prose and the table never disagree on the drawdown /
+                // return. DSR-prob + PBO have no per-cell value, so they stay the algo's pooled gate verdict.
+                oosReturn: cell ? cell.return_pct : headlineBt.oos_return,
                 oosWindowDays: headlineBt.oos_window_days,
-                maxDd: headlineBt.max_dd
+                maxDd: cell ? cell.max_drawdown : headlineBt.max_dd
               }
             : null
         }

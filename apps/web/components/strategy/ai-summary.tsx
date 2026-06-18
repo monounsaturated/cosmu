@@ -16,7 +16,12 @@ import { fmtTz } from "@/lib/utils";
 // The real Gate facts from the headline backtest — the numbers behind "why this stage". Null when none ran.
 export type GateFacts = {
   passedGates: boolean;
+  // The deflated-Sharpe RATIO (ranking number, can exceed 1.0) — kept for reference, but NOT what the 0.95 bar
+  // checks, so the prose never cites it as the gated number (that was the "0.98 — below the 0.95 bar" contradiction).
   deflatedSharpe: number;
+  // The GATED metric: deflated-Sharpe PROBABILITY in [0,1] — the value the strict 0.95 bar actually checks. null
+  // when the engine could not recompute it (pre-migration / arm rows); the prose then states the bar without a number.
+  deflatedSharpeProb: number | null;
   pbo: number;
   oosReturn: number; // fraction: 0.94 = +94%
   oosWindowDays?: number | null;
@@ -40,24 +45,32 @@ function fmtWindow(days?: number | null): string {
   return yr >= 1 ? `~${yr.toFixed(1)}yr` : `~${Math.round(days)}d`;
 }
 
+// The deflated-Sharpe PROBABILITY clause — the number the strict 0.95 bar actually checks. Falls back to a
+// numberless phrase when the engine couldn't recompute the probability, so the prose is never contradictory
+// (it used to cite the deflated-Sharpe RATIO, e.g. 0.98, against the 0.95 PROBABILITY bar — "0.98 below 0.95").
+function dsrProbClause(g: NonNullable<GateFacts>): string {
+  return g.deflatedSharpeProb !== null
+    ? `deflated-Sharpe probability ${g.deflatedSharpeProb.toFixed(2)}`
+    : "deflated-Sharpe probability";
+}
+
 // DETERMINISTIC plain-language "why this stage", grounded ONLY in the real stage + Gate facts. Always current
 // (computed on render), never fabricated, never stale. Same shape for every strategy.
 export function stageReason(stage: Stage, g: GateFacts): string {
-  const dsr = g ? g.deflatedSharpe.toFixed(2) : null;
   switch (stage) {
     case "queued":
       return "It's authored and waiting in the queue — no backtest has run yet, so the Gate hasn't judged it. It moves to Backtest automatically on the next research tick.";
     case "backtest":
       if (g && g.passedGates) {
-        return `It cleared the Gate in backtest (deflated-Sharpe ${dsr}, PBO ${g.pbo.toFixed(2)}, OOS ${pct(g.oosReturn)} over ${fmtWindow(g.oosWindowDays)}) but hasn't been funded a paper track yet. The Gate promotes survivors — you don't move them by hand.`;
+        return `It cleared the Gate in backtest (${dsrProbClause(g)} ≥ 0.95, PBO ${g.pbo.toFixed(2)}, OOS ${pct(g.oosReturn)} over ${fmtWindow(g.oosWindowDays)}) but hasn't been funded a paper track yet. The Gate promotes survivors — you don't move them by hand.`;
       }
-      return `It's screening in Backtest and has NOT cleared the Gate${dsr ? ` (deflated-Sharpe ${dsr} — below the strict 0.95 bar, max drawdown ${absPct(g!.maxDd)})` : ""}. That's the machine working as designed: the Gate is deliberately strict, so most ideas are honestly refused here rather than risked.`;
+      return `It's screening in Backtest and has NOT cleared the Gate${g ? ` (${dsrProbClause(g)} — below the strict 0.95 bar, max drawdown ${absPct(g.maxDd)})` : ""}. That's the machine working as designed: the Gate is deliberately strict, so most ideas are honestly refused here rather than risked.`;
     case "paper":
-      return `It earned Paper by clearing the Gate${g ? ` (deflated-Sharpe ${dsr}, OOS ${pct(g.oosReturn)})` : ""} and is now paper-trading on live market data with NO real money. A ≥30 paper-day net-of-fee proof is the live-readiness signal; the operator decides if and when to arm it live.`;
+      return `It earned Paper by clearing the Gate${g ? ` (${dsrProbClause(g)} ≥ 0.95, OOS ${pct(g.oosReturn)})` : ""} and is now paper-trading on live market data with NO real money. A ≥30 paper-day net-of-fee proof is the live-readiness signal; the operator decides if and when to arm it live.`;
     case "live":
       return "It's armed for live trading: it cleared the Gate and matured in Paper, and the operator armed it behind the interlocks (global toggle + venue keys + caps + kill-switch). A real order fires only while every interlock holds.";
     case "killed":
-      return `It was killed — removed from the active set because its edge decayed below the floor or the operator stopped it${g && !g.passedGates ? ` (its deflated-Sharpe ${dsr} never cleared the 0.95 Gate)` : ""}. Its full record is KEPT — nothing is deleted, so the result stays as training data and shows in the Paper "Track record".`;
+      return `It was killed — removed from the active set because its edge decayed below the floor or the operator stopped it${g && !g.passedGates ? ` (its ${dsrProbClause(g)} never cleared the 0.95 Gate)` : ""}. Its full record is KEPT — nothing is deleted, so the result stays as training data and shows in the Paper "Track record".`;
   }
 }
 

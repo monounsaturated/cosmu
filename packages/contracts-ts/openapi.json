@@ -442,6 +442,17 @@
             "title": "Deflated Sharpe",
             "type": "number"
           },
+          "deflated_sharpe_prob": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deflated Sharpe Prob"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -8248,7 +8259,7 @@
     },
     "/lab/symbols": {
       "get": {
-        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue), the granular truth the pooled\nleaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with\nthe honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not\ncelebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal.",
+        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue), the granular truth the pooled\nleaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with\nthe honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not\ncelebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal.\n\nAuthored-but-UNCOMPUTED versions (no backtest_symbols cell yet) are ALSO surfaced \u2014 one synthetic 'New' row each\n\u2014 so the whole authored population is visible, not just the ~8 versions that have cells. They are appended AFTER\nthe computed cells (which keep the outlier ranking) and only when no symbol/venue/verdict filter is active (a\ncell-less version has no symbol/venue/verdict to match).",
         "operationId": "lab_symbols_lab_symbols_get",
         "parameters": [
           {
