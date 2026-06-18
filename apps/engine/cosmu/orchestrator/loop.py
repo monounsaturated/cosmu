@@ -448,10 +448,20 @@ def _update_track_returns(store: Store, cells: list[tuple[str, str, str]]) -> in
         if track is None:  # pre-migration table, OR a post-migration legacy version-wide track
             track = store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
             ref = vid
-            snap = store.row(
-                "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
-                (vid,),
-            )
+            # mark_to_market cell-keys the snapshot (ref_id=version:symbol:venue) even for a legacy version-wide
+            # track when the position resolves to a real cell — so read the CELL key FIRST (when columns exist),
+            # then fall back to the legacy version key. Without this a version-wide equity track froze at its seed.
+            snap = None
+            if has_cell_cols:
+                snap = store.row(
+                    "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
+                    (cid,),
+                )
+            if snap is None:
+                snap = store.row(
+                    "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
+                    (vid,),
+                )
         if track is None or track.get("starting_capital") is None or snap is None or snap.get("equity") is None:
             continue
         starting = Decimal(str(track["starting_capital"]))
