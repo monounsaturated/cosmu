@@ -21,13 +21,18 @@ from cosmu.spine.venue import default_catalog
 # so a fresh checkout / CI / prod boot has none. Claiming "has data" there would be the exact lie this set
 # forbids. The finder still backtests HL for any spec that explicitly declares it (lab/finder._hyperliquid_symbols
 # reads spec.universe.venues + the cache directly), so cross-asset HL works without an always-available claim here.
-VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "alpaca", "polymarket"})
+# kraken: crypto spot via the FREE public Kraken OHLC API (no key) — KrakenSpotOHLCVProvider (data/market.py)
+# live-fetches + disk-caches, and managed-bar history pulls Kraken over ccxt (ingest/catalog.py DEFAULT_BAR_VENUES
+# = ("binance", "kraken")). The data path is keyless + always-available exactly like Binance, so a fresh
+# checkout / CI / prod boot has Kraken data — it is NOT a "no data yet" venue and the /universe badge must say so.
+VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "kraken", "alpaca", "polymarket"})
 CLASSES_WITH_DATA: frozenset[str] = frozenset({"crypto", "equity", "prediction"})
 # Venues with a real CRYPTO data path. has_live_data() gates the crypto-specific ORB/FVG Finder + cohort seed,
 # so it asks SPECIFICALLY whether a crypto data venue is live — widening VENUES_WITH_DATA for equity UI honesty
-# must not let the crypto Finder fire on an empty crypto universe (audit 2026-06-13). Binance is the always-on
-# crypto data path (live fetch + cache); Hyperliquid is excluded here for the same cache-only reason as above.
-_CRYPTO_VENUES_WITH_DATA: frozenset[str] = frozenset({"binance"})
+# must not let the crypto Finder fire on an empty crypto universe (audit 2026-06-13). Binance + Kraken are the
+# always-on crypto data paths (keyless live fetch + cache); Hyperliquid is excluded for the same cache-only
+# reason as above.
+_CRYPTO_VENUES_WITH_DATA: frozenset[str] = frozenset({"binance", "kraken"})
 
 CLASS_LABELS: dict[str, str] = {
     "crypto": "Crypto",

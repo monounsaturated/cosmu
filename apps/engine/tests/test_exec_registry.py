@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from cosmu.adapters.exec.alpaca import AlpacaExecutionAdapter
 from cosmu.adapters.exec.binance import BinanceSpotExecutionAdapter
+from cosmu.adapters.exec.kraken import KrakenSpotExecutionAdapter
 from cosmu.adapters.exec.polymarket import PolymarketExecutionAdapter
 from cosmu.adapters.exec.registry import EXEC_ADAPTER_VENUES, adapter_for, keys_present, live_mode
 from cosmu.config.settings import LiveSettings, Settings
@@ -18,6 +19,7 @@ def _s(**kw) -> Settings:
 def test_adapter_for_resolves_each_wired_venue():
     s = _s()
     assert isinstance(adapter_for("binance", s), BinanceSpotExecutionAdapter)
+    assert isinstance(adapter_for("kraken", s), KrakenSpotExecutionAdapter)
     assert isinstance(adapter_for("alpaca", s), AlpacaExecutionAdapter)
     assert isinstance(adapter_for("polymarket", s), PolymarketExecutionAdapter)
 
@@ -40,6 +42,8 @@ def test_keys_present_is_presence_only():
     assert keys_present("polymarket", _s(polymarket_private_key="0xr")) is True  # presence != armed (mode still testnet)
     assert keys_present("binance", _s(binance_testnet_api_key="k", binance_testnet_api_secret="s")) is True
     assert keys_present("alpaca", _s(alpaca_paper_api_key="k", alpaca_paper_api_secret="s")) is True
+    assert keys_present("kraken", _s()) is False
+    assert keys_present("kraken", _s(kraken_api_key="k", kraken_api_secret="s")) is True  # presence != armed (mode still testnet)
     assert keys_present("ibkr", _s()) is False  # no adapter → never "connected"
 
 
@@ -54,6 +58,9 @@ def test_live_mode_aggregates_across_all_venues():
     # real money on ANY venue → 'live'
     live = _s(binance_api_key="k", binance_api_secret="s", live=LiveSettings(mode="real"))
     assert live_mode(live) == "live"
+    # kraken has no testnet — keys alone (mode still testnet) stay disabled; only mode=real arms it live
+    assert live_mode(_s(kraken_api_key="k", kraken_api_secret="s")) == "disabled"
+    assert live_mode(_s(kraken_api_key="k", kraken_api_secret="s", live=LiveSettings(mode="real"))) == "live"
 
 
 def test_polymarket_keys_present_does_not_imply_armed():

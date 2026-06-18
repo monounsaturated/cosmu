@@ -9,8 +9,8 @@
 from __future__ import annotations
 
 from cosmu.spine.universe import (
-    VENUES_WITH_DATA,
     _CRYPTO_VENUES_WITH_DATA,
+    VENUES_WITH_DATA,
 )
 
 
@@ -29,3 +29,11 @@ def test_no_hyperliquid_aliases_leak_into_has_data_sets():
     aliases = {"hyperliquid", "hl", "hyperliquid_perp", "hyper_liquid"}
     assert not (aliases & VENUES_WITH_DATA)
     assert not (aliases & _CRYPTO_VENUES_WITH_DATA)
+
+
+def test_kraken_included_in_has_data_sets():
+    """The CONVERSE of the HL exclusion: Kraken HAS a keyless, always-available data path (KrakenSpotOHLCVProvider
+    free public OHLC + managed-bar ccxt history in DEFAULT_BAR_VENUES), so it belongs in BOTH the display set and
+    the crypto Finder/cohort gate — the /universe badge must stop saying 'no data' for Kraken."""
+    assert "kraken" in VENUES_WITH_DATA
+    assert "kraken" in _CRYPTO_VENUES_WITH_DATA

@@ -56,6 +56,24 @@ def test_ibkr_real_fees_and_instrument_catalog() -> None:
     assert all(i.asset_class == "equity" for i in cat.instruments if i.venue_id == "ibkr")
 
 
+def test_kraken_spot_is_a_live_venue_with_real_fees_and_depth() -> None:
+    """Kraken SPOT now has a wired exec adapter (cosmu/adapters/exec/kraken.py) → live_enabled. Its real
+    cost triple (taker fee + slippage + impact) resolves via cost_inputs() so the backtest prices it honestly,
+    and SPOT is FR/EU-legal (MiCA) + US-legal — restricted_jurisdictions stays empty (the ESMA derivatives
+    wall lives on kraken_futures, not spot)."""
+    cat = default_catalog()
+    kraken = cat.venue("kraken")
+    assert kraken.kind == "crypto" and kraken.live_enabled is True
+    assert kraken.maker_fee_bps == Decimal("16") and kraken.taker_fee_bps == Decimal("26")
+    taker, slippage, impact = kraken.cost_inputs()
+    assert taker == Decimal("26") and slippage > 0 and impact > 0  # full per-venue cost triple resolves
+    # Spot is legal FR/EU + US — no jurisdiction restriction on the spot venue.
+    assert kraken.live_legal_in("FR") is True
+    assert kraken.live_legal_in("US") is True
+    assert kraken.restricted_jurisdictions == []
+    assert "kraken" in {v.id for v in cat.live_legal_venues("FR")}
+
+
 def test_volume_tiers_lower_fees() -> None:
     binance = default_catalog().venue("binance")
     _, base = binance.effective_fee(0)

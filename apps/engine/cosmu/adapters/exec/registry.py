@@ -12,7 +12,7 @@ from cosmu.core.interfaces import ExecutionAdapter
 
 # Venues that have a real ExecutionAdapter implementation today. A venue NOT here can still be a data/research
 # venue — it just has no live-money leg, so adapter_for() returns None and the live lane sim-fills it.
-EXEC_ADAPTER_VENUES: frozenset[str] = frozenset({"binance", "alpaca", "polymarket"})
+EXEC_ADAPTER_VENUES: frozenset[str] = frozenset({"binance", "kraken", "alpaca", "polymarket"})
 
 
 def adapter_for(venue_id: str, settings: Settings) -> ExecutionAdapter | None:
@@ -23,6 +23,10 @@ def adapter_for(venue_id: str, settings: Settings) -> ExecutionAdapter | None:
         from cosmu.adapters.exec.binance import BinanceSpotExecutionAdapter
 
         return BinanceSpotExecutionAdapter.from_settings(settings)
+    if venue_id == "kraken":
+        from cosmu.adapters.exec.kraken import KrakenSpotExecutionAdapter
+
+        return KrakenSpotExecutionAdapter.from_settings(settings)
     if venue_id == "alpaca":
         from cosmu.adapters.exec.alpaca import AlpacaExecutionAdapter
 
@@ -42,9 +46,10 @@ def live_mode(settings: Settings) -> str:
     adapter's PURE resolve_mode (keys + live.mode interlock) — no network, safe in the API read path."""
     from cosmu.adapters.exec.alpaca import resolve_mode as _alpaca_mode
     from cosmu.adapters.exec.binance import resolve_mode as _binance_mode
+    from cosmu.adapters.exec.kraken import resolve_mode as _kraken_mode
     from cosmu.adapters.exec.polymarket import resolve_mode as _polymarket_mode
 
-    modes = {_binance_mode(settings), _alpaca_mode(settings), _polymarket_mode(settings)}
+    modes = {_binance_mode(settings), _kraken_mode(settings), _alpaca_mode(settings), _polymarket_mode(settings)}
     if "live" in modes:
         return "live"
     if "testnet" in modes or "paper" in modes:  # alpaca calls its sandbox 'paper'; normalize to testnet
@@ -61,6 +66,9 @@ def keys_present(venue_id: str, settings: Settings) -> bool:
             (settings.binance_api_key and settings.binance_api_secret)
             or (settings.binance_testnet_api_key and settings.binance_testnet_api_secret)
         )
+    if venue_id == "kraken":
+        # Kraken spot has no public sandbox, so there are no testnet keys — presence is the real key pair only.
+        return bool(settings.kraken_api_key and settings.kraken_api_secret)
     if venue_id == "alpaca":
         return bool(
             (settings.alpaca_api_key and settings.alpaca_api_secret)
