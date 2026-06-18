@@ -1,0 +1,31 @@
+{
+  "name": "Cross-sectional laggard reversion — long the worst relative performers (short-horizon)",
+  "rationale": "ECONOMIC MECHANISM (the OPPOSITE-SIGN read of xsec_momentum_rank vs every existing xsec spec: xsec-neutral-momentum-long-leg and cross-asset-social-rotation go long the HIGH-rank LEADERS; this goes long the LOW-rank LAGGARDS): at the cross-sectional level, momentum dominates at the medium horizon (weeks-to-months) but REVERSAL dominates at the SHORT horizon (days) — the documented short-term cross-sectional reversal (Lehmann 1990, Lo-MacKinlay): the week's biggest relative losers over-shoot on the downside and snap back as liquidity providers are compensated for absorbing the selling. So ranking by the SHORT-window relative return and buying the BOTTOM of the cross-section (low rank) harvests the reversal premium that is orthogonal to (and opposite in horizon from) the medium-term momentum the existing xsec leaders capture. The rank is computed point-in-time over instruments present at the bar (no survivorship). To avoid catching a structurally broken name, gate on a non-collapsing realized vol (sit out turbulent regimes) and exit when the laggard has mean-reverted back up the cross-section. Entry: xsec_momentum_rank below a fitted low-rank floor (a relative laggard) over a SHORT lookback AND vol_realized below a fitted ceiling (calm enough for reversion). Exit: xsec_momentum_rank crosses UP through a mid-rank threshold (reverted) or stop/TP/time. Disconfirmer 1: if buying low-rank does NO better than a coin-flip after costs, short-term reversal has no exploitable edge net of ~20bps. Disconfirmer 2: this is the directional inverse of the momentum-rank leaders — the two must NOT be double-counted (same feature, opposite tail, different horizon). Disconfirmer 3 (HORIZON is the thesis): if a MEDIUM lookback works as well, the short-horizon reversal claim is unsupported and this collapses into anti-momentum noise. Disconfirmer 4: low rank can mean a dying asset — the vol gate and PIT universe must guard survivorship. tier0 cohort-computed feature.",
+  "catalyst": "the short-horizon cross-sectional losers over-shoot and mean-revert up",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 7 },
+  "entry": [
+    { "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "rank_lb" } }, "op": "lt", "threshold": { "param": "rank_floor" } },
+    { "feature": { "name": "vol_realized" }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "rank_lb" } }, "op": "cross_up", "threshold": { "param": "rank_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rank_lb":     { "kind": "int",   "lo": 3,    "hi": 10,  "step": 1 },
+    "rank_floor":  { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "rank_exit":   { "kind": "float", "lo": 0.4,  "hi": 0.6 },
+    "vol_ceiling": { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 8,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
