@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from cosmu.data.backtest import run_strategy_backtest_detailed
-from cosmu.data.market import EquityOHLCVProvider
+from cosmu.data.market import Bar, EquityOHLCVProvider
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.lab.finder import build_grid
 from cosmu.master.screen_universe import build_cost_context
@@ -43,21 +45,32 @@ def test_crypto_only_cost_context_is_all_none():
     assert asset_class is None and venue_id is None
 
 
-def test_equity_leg_priced_at_ibkr_fee_depth_and_calendar(monkeypatch):
+def _eq_bar(close: float):
+    """One equity bar at a given close — gives build_cost_context a real reference price for the per-share fee."""
+    import datetime as _dt
+
+    return Bar(ts=_dt.datetime(2026, 1, 1, tzinfo=_dt.UTC), open=Decimal(str(close)), high=Decimal(str(close)),
+               low=Decimal(str(close)), close=Decimal(str(close)), volume=Decimal("1000"))
+
+
+def test_equity_leg_priced_at_ibkr_per_share_fee_depth_and_calendar(monkeypatch):
     """A spec whose universe includes equity: the equity symbols present in the market are stamped with IBKR's
-    fee AND depth (from ONE Venue.cost_inputs call) and marked equity for the ≈252-session calendar, while the
-    crypto leg keeps the primary (Binance) cost — the per-venue map the finder persists as the fee axis."""
+    REAL per-share fee (NOT the flat 0.5 bps placeholder) AND its depth, and marked equity for the ≈252-session
+    calendar, while the crypto leg keeps the primary (Binance) cost — the per-venue map the finder persists."""
     monkeypatch.setattr(EquityOHLCVProvider, "available_symbols", lambda self, timeframe="1d": ["AAPL", "MSFT"])
     catalog = default_catalog()
     ibkr, binance = catalog.venue("ibkr"), catalog.venue("binance")
-    market = {"BTCUSDT": [], "AAPL": [], "MSFT": []}
+    # $100 names → $10k order buys 100 shares × $0.0035 = $0.35 commission → 0.35 bps (the real per-share fee).
+    market = {"BTCUSDT": [], "AAPL": [_eq_bar(100.0)], "MSFT": [_eq_bar(100.0)]}
 
     fee_schedule, depth_schedule, asset_class, venue_id = build_cost_context(_equity_spec(), market, catalog)
 
-    # Fees: IBKR for the equity leg (≈0.5 bps), Binance for the crypto leg — never a single blended rate.
-    assert fee_schedule["AAPL"] == fee_schedule["MSFT"] == ibkr.taker_fee_bps == Decimal("0.5")
+    # Fees: IBKR's REAL per-share commission for the equity leg (~0.35 bps), NOT the flat 0.5 catalog placeholder.
+    assert fee_schedule["AAPL"] == fee_schedule["MSFT"]
+    assert fee_schedule["AAPL"] == pytest.approx(Decimal("0.35"), abs=1e-6)
+    assert fee_schedule["AAPL"] != ibkr.taker_fee_bps      # the per-asset model overrode the flat 0.5
     assert fee_schedule["BTCUSDT"] == binance.taker_fee_bps
-    assert fee_schedule["AAPL"] != binance.taker_fee_bps  # explicitly NOT the global Binance fee
+    assert fee_schedule["AAPL"] != binance.taker_fee_bps   # explicitly NOT the global Binance fee
     # Depth: each leg at ITS OWN venue's (slippage, impact) — the fix (IBKR 2/25, not Binance 5/40).
     assert depth_schedule["AAPL"] == (ibkr.slippage_bps, ibkr.impact_bps) == (Decimal("2"), Decimal("25"))
     assert depth_schedule["BTCUSDT"] == (binance.slippage_bps, binance.impact_bps)
@@ -107,3 +120,53 @@ def test_depth_schedule_charges_per_symbol_slippage():
         depth_schedule={"SOMETHING-ELSE": (Decimal("500"), Decimal("0"))},
     )
     assert fallback.metrics.oos_return == cheap.metrics.oos_return
+
+
+# ----------------------------------------------------- per-asset fee wiring (Polymarket / always-taker)
+
+
+def _polymarket_spec():
+    """The crypto seed re-pointed at Polymarket as its primary venue (prediction asset class) — so
+    build_cost_context must resolve its taker via the per-category model, not Binance's flat 10 bps."""
+    spec = seed_orb_fvg_spec()
+    return spec.model_copy(
+        update={"universe": spec.universe.model_copy(
+            update={"venues": ["polymarket"], "asset_classes": ["prediction"]}
+        )}
+    )
+
+
+def test_polymarket_primary_venue_uses_per_category_taker():
+    """A Polymarket-primary spec triggers the per-symbol map (the venue is asset-aware) and charges the
+    per-category P&L-room taker for its catalog market — NOT the flat 0 bps placeholder. The catalog
+    PM-FED-CUT-2026 market is category 'economics' (5%) at a 0.5 mark → 0.05 × 0.5 × 1e4 = 250 bps."""
+    catalog = default_catalog()
+    market = {"PM-FED-CUT-2026": [_eq_bar(0.5)]}  # a 50/50 prediction-market mark
+    fee_schedule, depth_schedule, asset_class, venue_id = build_cost_context(_polymarket_spec(), market, catalog)
+    assert fee_schedule is not None  # asset-aware primary venue → the per-symbol path triggers
+    assert fee_schedule["PM-FED-CUT-2026"] == pytest.approx(Decimal("250"))  # economics 5% × (1−0.5)
+    assert fee_schedule["PM-FED-CUT-2026"] != catalog.venue("polymarket").taker_fee_bps  # NOT the flat 0
+    assert venue_id["PM-FED-CUT-2026"] == "polymarket"
+    assert asset_class is None  # prediction uses the 365 default calendar
+
+
+def test_always_taker_charges_both_entry_and_exit_legs():
+    """The screen cost path is ALWAYS-TAKER and SYMMETRIC: doubling the taker bps roughly DOUBLES the total
+    fee drag (entry + exit both pay it). If only one leg were charged (or a maker assumption credited a rebate)
+    the relationship would not hold. This is the always-taker entry+exit invariant the maker/taker deletion
+    preserves."""
+    spec = seed_orb_fvg_spec()
+    bars = edge_bearing_screen_market(n=280)["BTCUSDT"][-280:]
+    market = {"BTCUSDT": bars}
+    # Zero depth so the FEE is the only cost lever (isolate the round-trip fee).
+    lo = run_strategy_backtest_detailed(
+        spec, _params(), market, fee_bps=Decimal("10"),
+        slippage_bps=Decimal("0"), impact_bps=Decimal("0"),
+    )
+    hi = run_strategy_backtest_detailed(
+        spec, _params(), market, fee_bps=Decimal("20"),
+        slippage_bps=Decimal("0"), impact_bps=Decimal("0"),
+    )
+    assert lo.metrics.num_trades > 0 and hi.metrics.num_trades == lo.metrics.num_trades
+    # Higher taker → strictly worse net return (fees bite on BOTH legs, never a rebate credited).
+    assert float(hi.metrics.oos_return) < float(lo.metrics.oos_return)

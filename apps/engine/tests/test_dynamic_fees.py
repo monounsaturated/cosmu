@@ -11,7 +11,6 @@ import pytest
 
 from cosmu.config.settings import Settings
 from cosmu.data.altdata import AltDataPoint, AltDataStore, VenueFeesProvider, read_pit_fee
-from cosmu.execution.costopt import FeeSchedule
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.spine.venue import default_catalog
@@ -157,44 +156,9 @@ class TestReadPitFee:
         assert val == 10.0  # future snapshot invisible, fallback used
 
 
-# ---------------------------------------------------------------------------
-# FeeSchedule.from_pit — costopt seam
-# ---------------------------------------------------------------------------
-
-class TestFeeScheduleFromPit:
-    def test_reads_pit_when_available(self, tmp_path):
-        store = _store(tmp_path)
-        t0 = _ts(0)
-        store.append("venue_fees", "binance:BTCUSDT", "venue_fees_maker", [
-            AltDataPoint(ts=t0, available_at=t0, value=6.0),
-        ])
-        store.append("venue_fees", "binance:BTCUSDT", "venue_fees_taker", [
-            AltDataPoint(ts=t0, available_at=t0, value=8.0),
-        ])
-        venue = default_catalog().venue("binance")
-        sched = FeeSchedule.from_pit(venue, "BTCUSDT", t0, store)
-        assert sched.maker_bps == pytest.approx(6.0)
-        assert sched.taker_bps == pytest.approx(8.0)
-
-    def test_falls_back_to_catalog_when_no_snapshot(self, tmp_path):
-        store = _store(tmp_path)
-        venue = default_catalog().venue("binance")
-        sched = FeeSchedule.from_pit(venue, "BTCUSDT", _ts(0), store)
-        # Static catalog Binance base: maker=10, taker=10
-        assert sched.maker_bps == pytest.approx(10.0)
-        assert sched.taker_bps == pytest.approx(10.0)
-
-    def test_no_look_ahead(self, tmp_path):
-        """A fee snapshot AFTER as_of must not leak into the PIT read."""
-        store = _store(tmp_path)
-        future = _ts(5)
-        store.append("venue_fees", "binance:BTCUSDT", "venue_fees_taker", [
-            AltDataPoint(ts=future, available_at=future, value=2.0),  # future low fee
-        ])
-        venue = default_catalog().venue("binance")
-        sched = FeeSchedule.from_pit(venue, "BTCUSDT", _ts(0), store)
-        # Future snapshot invisible → catalog fallback (10 bps)
-        assert sched.taker_bps == pytest.approx(10.0)
+# NOTE: the FeeSchedule.from_pit "costopt seam" was DELETED with cosmu/execution/costopt.py (dead maker/taker
+# path, no live caller). The PIT read it wrapped is `read_pit_fee`, covered directly by TestReadPitFee above; the
+# production order path (master/execution._pit_fee_for_order) calls read_pit_fee directly, not FeeSchedule.
 
 
 # ---------------------------------------------------------------------------

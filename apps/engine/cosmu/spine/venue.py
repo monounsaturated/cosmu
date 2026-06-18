@@ -51,6 +51,11 @@ class Venue(BaseModel):
     # restricted_jurisdictions + live_enabled, the only two load-bearing fields) ---
     region: str | None = None        # operating region / hosting hint, e.g. "EU" / "Global ex-US" / "On-chain"
     legal_entity: str | None = None  # the regulated entity we'd contract with, e.g. "OKX Europe Ltd (Malta)"
+    # Perp FUNDING cadence note (queryable metadata, NOT enforced — the funding accrual itself lives in the data
+    # join, this just records the venue's real cadence so a funding-carry spec is sized against the right clock).
+    # Most perp venues settle funding every 8h; Kraken Futures settles HOURLY (rate clamped ±0.5%/hr), so an
+    # 8h-cadence assumption would mis-accrue its carry. Empty for spot/non-perp venues.
+    funding_cadence: str | None = None  # e.g. "8h" | "hourly (clamped ±0.5%/hr)"
 
     def effective_fee(self, volume_30d_usd: Decimal | float = Decimal("0")) -> tuple[Decimal, Decimal]:
         """(maker_bps, taker_bps) for a trailing-30d USD volume — the richest tier met, else the base."""
@@ -82,6 +87,14 @@ class Instrument(BaseModel):
     lot_size: Decimal = Decimal("0.0001")
     min_notional: Decimal = Decimal("10")
     active: bool = True
+    # --- per-asset fee inputs (drive the asset/category-aware fee resolver in spine/asset_fees.py) ---
+    # `contract_multiplier` is the underlying units per contract for a FUTURE (a per-contract commission divided by
+    # multiplier×price → bps). 1 for spot/equity (per-share == per-unit). `instrument_type` distinguishes a future
+    # from spot/perp so IBKR's per-contract commission applies only to dated futures. `category` is the prediction
+    # market's topic (geopolitics/sports/politics/crypto/…) — the axis Polymarket's per-category taker fee keys on.
+    contract_multiplier: Decimal = Decimal("1")
+    instrument_type: str | None = None  # "spot" | "perp" | "future" | None (inferred from venue.kind otherwise)
+    category: str | None = None         # prediction-market topic for the Polymarket per-category fee
 
 
 class VenueCatalog(BaseModel):
@@ -152,30 +165,37 @@ def default_catalog() -> VenueCatalog:
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"), maker_fee_bps=Decimal("10"), taker_fee_bps=Decimal("10")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("1000000"), maker_fee_bps=Decimal("9"), taker_fee_bps=Decimal("10")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("5000000"), maker_fee_bps=Decimal("8"), taker_fee_bps=Decimal("9")),
-                    VenueFeeTier(min_volume_30d_usd=Decimal("20000000"), maker_fee_bps=Decimal("6"), taker_fee_bps=Decimal("7")),
+                    # VIP3 ($20M+ 30d): Binance's real VIP-3 spot schedule is 4/6 bps (was 6/7).
+                    VenueFeeTier(min_volume_30d_usd=Decimal("20000000"), maker_fee_bps=Decimal("4"), taker_fee_bps=Decimal("6")),
                 ],
             ),
             # Crypto — Kraken SPOT: US-legal crypto live venue (Payward Inc) + FR/EU-legal via Payward Europe Ltd
-            # (MiCA). Fees are WORSE than Binance (the real finding): ~16/26 bps retail, only reaching Binance-like
-            # levels at high volume. live_enabled=True — the exec adapter is wired (cosmu/adapters/exec/kraken.py);
-            # a real order still needs KRAKEN_API_KEY/SECRET + live.mode=="real" + a gate-passed survivor + caps +
-            # the toggle (the same interlocks as Binance), so the catalog flag does NOT arm anything by itself.
-            # JURISDICTION: SPOT is permitted for FR/EU retail via the MiCA entity, so restricted_jurisdictions
-            # stays []. ESMA restricts crypto DERIVATIVES (CFD-like) for EU retail — that wall lives on the
-            # separate kraken_futures venue below (live_enabled=False), NOT on spot. The operator validated adding
-            # Kraken; the keys + live.mode interlock guarantees nothing arms without explicit keys.
+            # (MiCA). Fees are WORSE than Binance (the real finding): Kraken's REAL retail spot schedule is 25/40 bps
+            # (0.25% maker / 0.40% taker at <$50k 30d volume — Kraken's published "Pro" tier), only reaching
+            # Binance-like levels at high volume. live_enabled=True — the exec adapter is wired
+            # (cosmu/adapters/exec/kraken.py); a real order still needs KRAKEN_API_KEY/SECRET + live.mode=="real" +
+            # a gate-passed survivor + caps + the toggle (the same interlocks as Binance), so the catalog flag does
+            # NOT arm anything by itself. JURISDICTION: SPOT is permitted for FR/EU retail via the MiCA entity, so
+            # restricted_jurisdictions stays []. ESMA restricts crypto DERIVATIVES (CFD-like) for EU retail — that
+            # wall lives on the separate kraken_futures venue below (live_enabled=False), NOT on spot. The operator
+            # validated adding Kraken; the keys + live.mode interlock guarantees nothing arms without explicit keys.
             Venue(
                 id="kraken", name="Kraken", kind="crypto", adapter="nautilus.kraken",
-                maker_fee_bps=Decimal("16"), taker_fee_bps=Decimal("26"),
+                maker_fee_bps=Decimal("25"), taker_fee_bps=Decimal("40"),
                 min_notional=Decimal("10"), lot_size=Decimal("0.0001"),
                 live_enabled=True, restricted_jurisdictions=[],
                 slippage_bps=Decimal("7"), impact_bps=Decimal("55"),
                 region="Global", legal_entity="Payward Inc / Payward Europe Ltd (MiCA)",
+                # Kraken's REAL published 30d-volume ladder (maker/taker bps): <$50k 25/40 → $50k 24/35 →
+                # $100k 22/32 → $250k 20/30 → $1M 14/24 → $10M 0/18 → $100M+ 0/12.
                 fee_tiers=[
-                    VenueFeeTier(min_volume_30d_usd=Decimal("0"), maker_fee_bps=Decimal("16"), taker_fee_bps=Decimal("26")),
-                    VenueFeeTier(min_volume_30d_usd=Decimal("100000"), maker_fee_bps=Decimal("14"), taker_fee_bps=Decimal("24")),
-                    VenueFeeTier(min_volume_30d_usd=Decimal("1000000"), maker_fee_bps=Decimal("12"), taker_fee_bps=Decimal("20")),
-                    VenueFeeTier(min_volume_30d_usd=Decimal("10000000"), maker_fee_bps=Decimal("0"), taker_fee_bps=Decimal("10")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("0"), maker_fee_bps=Decimal("25"), taker_fee_bps=Decimal("40")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("50000"), maker_fee_bps=Decimal("24"), taker_fee_bps=Decimal("35")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("100000"), maker_fee_bps=Decimal("22"), taker_fee_bps=Decimal("32")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("250000"), maker_fee_bps=Decimal("20"), taker_fee_bps=Decimal("30")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("1000000"), maker_fee_bps=Decimal("14"), taker_fee_bps=Decimal("24")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("10000000"), maker_fee_bps=Decimal("0"), taker_fee_bps=Decimal("18")),
+                    VenueFeeTier(min_volume_30d_usd=Decimal("100000000"), maker_fee_bps=Decimal("0"), taker_fee_bps=Decimal("12")),
                 ],
             ),
             # Crypto — Coinbase Advanced Trade: US-legal but the most expensive (~40/60 bps retail). Confirms the
@@ -236,8 +256,11 @@ def default_catalog() -> VenueCatalog:
             ),
             # Derivatives — Kraken Futures: linear perpetuals (PF_ prefix) via Crypto Facilities Ltd
             # (FCA UK) + Payward Europe Ltd (MiCA EU). Retail-perp fees are cheap: 2/5 bps at base,
-            # maker rebate at >$100M. NOT live — execution wired only after live interlock + 5 gates.
-            # Legality: available EU/FR (MiCA entity); US retail restricted (no CFTC retail perp license).
+            # maker rebate at >$100M (verified correct — left as-is). NOT live — execution wired only after live
+            # interlock + 5 gates. Legality: available EU/FR (MiCA entity); US retail restricted (no CFTC retail
+            # perp license). FUNDING: Kraken Futures settles funding HOURLY (rate clamped ±0.5%/hr), NOT on the
+            # 8h cadence most perp venues use — recorded in funding_cadence so a funding-carry spec accrues on the
+            # right clock (8× the settlements/day of an 8h venue).
             Venue(
                 id="kraken_futures", name="Kraken Futures", kind="crypto", adapter="nautilus.kraken_futures",
                 maker_fee_bps=Decimal("2"), taker_fee_bps=Decimal("5"),
@@ -245,6 +268,7 @@ def default_catalog() -> VenueCatalog:
                 live_enabled=False, restricted_jurisdictions=["US"],
                 slippage_bps=Decimal("4"), impact_bps=Decimal("50"),
                 region="EU/UK", legal_entity="Crypto Facilities Ltd (FCA) / Payward Europe Ltd (MiCA)",
+                funding_cadence="hourly (clamped ±0.5%/hr)",
                 fee_tiers=[
                     VenueFeeTier(min_volume_30d_usd=Decimal("0"),         maker_fee_bps=Decimal("2"),    taker_fee_bps=Decimal("5")),
                     VenueFeeTier(min_volume_30d_usd=Decimal("1000000"),   maker_fee_bps=Decimal("1.5"),  taker_fee_bps=Decimal("4")),
@@ -415,6 +439,6 @@ def default_catalog() -> VenueCatalog:
             Instrument(id="xrp-hl",  venue_id="hyperliquid", symbol="XRP",  asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("1"),      min_notional=Decimal("1")),
             Instrument(id="avax-hl", venue_id="hyperliquid", symbol="AVAX", asset_class="crypto", tick_size=Decimal("0.01"),   lot_size=Decimal("0.1"),    min_notional=Decimal("1")),
             Instrument(id="doge-hl", venue_id="hyperliquid", symbol="DOGE", asset_class="crypto", tick_size=Decimal("0.00001"),lot_size=Decimal("1"),      min_notional=Decimal("1")),
-            Instrument(id="pm-fed-cut", venue_id="polymarket", symbol="PM-FED-CUT-2026", asset_class="prediction", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
+            Instrument(id="pm-fed-cut", venue_id="polymarket", symbol="PM-FED-CUT-2026", asset_class="prediction", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1"), instrument_type="prediction", category="economics"),
         ],
     )
