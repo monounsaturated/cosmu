@@ -10,12 +10,8 @@ from __future__ import annotations
 
 import json
 import random
-import tempfile
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
-
-import pytest
 
 from cosmu.config.settings import Settings
 from cosmu.data.market import Bar
@@ -27,7 +23,6 @@ from cosmu.research.matrix_search import (
     run_sweep,
 )
 from cosmu.strategy.spec import StrategySpec
-
 
 # ---------------------------------------------------------------------------
 # Synthetic helpers
@@ -200,8 +195,6 @@ def test_config_defaults_are_non_empty():
 
 def test_persist_true_writes_gate_verdicts_row(monkeypatch, tmp_path):
     """With persist=True a gate_verdicts row is written for a cell that produces candidates."""
-    from cosmu.knowledge.store import Store
-    from cosmu.research import matrix_search as ms
 
     # Patch load_bars, load_specs, and also intercept the ephemeral Store to use our tmp_path so we
     # can inspect the durable gate_verdicts. We capture the durable_persist call but leave the DB write
@@ -490,7 +483,6 @@ def test_malformed_spec_in_inbox_is_skipped_not_crashed(monkeypatch, tmp_path):
     # Do NOT patch load_specs — we want the real loader to exercise the skip-on-bad-JSON path.
     # But we must patch the module-level _INBOX BEFORE load_specs is called, which is what
     # monkeypatching ms._INBOX achieves. Verify by calling load_specs directly:
-    from cosmu.research.matrix_search import load_specs
     # Since _INBOX is patched on ms module, we need to call ms.load_specs() directly:
     valid_specs = ms.load_specs()
     assert len(valid_specs) == 1, f"Expected 1 valid spec, got {len(valid_specs)}"

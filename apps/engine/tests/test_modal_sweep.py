@@ -8,12 +8,11 @@
 from __future__ import annotations
 
 import dataclasses
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from cosmu.research.matrix_search import MatrixResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -169,15 +168,12 @@ def test_projected_sweep_usd_scales_linearly():
 def test_matrix_cell_returns_asdict_dict_for_stubbed_run():
     """matrix_cell must return a plain dict produced by dataclasses.asdict(run_matrix_cell(...)).
     We monkeypatch run_matrix_cell and bypass the Modal decorator so no network is touched."""
-    import dataclasses
 
     # Import the module function directly — bypasses the @app.function decorator wrapper which is
     # a no-op locally (Modal returns the original callable when not running under `modal run`).
-    import importlib
-    import sys
-
     # Ensure remote.app is importable from the engine tree (it lives in apps/engine/remote/).
     import pathlib
+    import sys
     remote_dir = str(pathlib.Path(__file__).resolve().parents[1] / "remote")
     if remote_dir not in sys.path:
         sys.path.insert(0, remote_dir)
@@ -189,7 +185,6 @@ def test_matrix_cell_returns_asdict_dict_for_stubbed_run():
         # Call the underlying Python function directly (not via Modal remote()).
         # The @app.function decorator wraps but preserves the original callable locally.
         # We simulate what matrix_cell does: asdict(run_matrix_cell(asset, tf)).
-        from cosmu.research.matrix_search import run_matrix_cell as _rmc_real
         # Use the patched version
         result = dataclasses.asdict(mock_rmc("ETHUSDT", "1d"))
 
