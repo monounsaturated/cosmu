@@ -1,0 +1,31 @@
+{
+  "name": "Squeeze-release directional breakout momentum — ride the trend out of a volatility coil",
+  "rationale": "ECONOMIC MECHANISM (the CONTINUATION read of the same bb_width squeeze that bollinger-squeeze-release-reversion-regime-break trades for REVERSION; opposite trade off the same setup): low Bollinger Bandwidth (bb_width) marks a volatility coil — a compressed, low-energy range where positioning quietly builds. Such squeezes resolve violently, and the direction of resolution is tradeable: the reversion spec (existing) buys a LOW bb_z inside the squeeze betting the range holds; THIS spec waits for the squeeze to RELEASE UPWARD (bb_z crossing up through a positive breakout level, i.e. price thrusting above the upper band out of the coil) and rides the directional expansion that follows (the documented squeeze-breakout / volatility-cycle continuation). The two are complementary regime calls on the same coil: range-holds-reversion vs range-breaks-continuation. Entry: bb_width below a fitted squeeze ceiling (coil present) AND bb_z crosses UP through a fitted positive breakout level (upward release). Exit: bb_z crosses DOWN back toward the mean (thrust spent / failed breakout) or stop/TP/time. Disconfirmer 1: if an unconditional momentum long matches the deflated Sharpe, the squeeze-release adds no timing edge. Disconfirmer 2: this is the directional-continuation inverse of bollinger-squeeze-release-reversion on the SAME bb_width/bb_z features — the two must NOT be double-counted (they are opposite resolutions of one coil). Disconfirmer 3: squeeze breakouts fake out often; if the bb_width squeeze gate adds nothing over a bare bb_z breakout, the coil thesis is unsupported. Disconfirmer 4 (cost): the expansion must clear ~20bps round-trip net. Price/TA-only — always-on, no feed dependency.",
+  "catalyst": "an upward release out of a low-bb_width volatility coil — a squeeze-breakout continuation",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "bb_width", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "squeeze_ceiling" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "breakout_level" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_down", "threshold": { "param": "mean_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bb_lb":           { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "squeeze_ceiling": { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "breakout_level":  { "kind": "float", "lo": 0.8,  "hi": 1.8 },
+    "mean_exit":       { "kind": "float", "lo": -0.3, "hi": 0.6 },
+    "stop":            { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":              { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":       { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

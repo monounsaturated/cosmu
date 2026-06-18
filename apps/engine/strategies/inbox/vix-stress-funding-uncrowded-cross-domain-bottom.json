@@ -1,0 +1,33 @@
+{
+  "name": "VIX-stress + uncrowded-funding cross-domain bottom — buy the macro panic the crypto crowd has flushed",
+  "rationale": "ECONOMIC MECHANISM (a CROSS-DOMAIN confluence distinct from macro-vix-spike-capitulation [VIX only] and funding-reset-reversion [funding+RSI]; here a MACRO panic gauge and a CRYPTO-NATIVE leverage gauge must agree): the strongest mean-reversion setup is a macro-driven panic (equity VIX spiking — exogenous, broad risk-off) that has ALSO flushed crypto's own leverage (funding at/below zero — the crypto longs have been liquidated, not still stacked). When BOTH are true the sell-off is a forced, cross-asset deleveraging into exhaustion rather than a crypto-specific blow-off with longs still trapped — historically the highest-conviction bounce. VIX (equity options panic) and funding (crypto perp leverage) are causally independent crowding reads, so requiring both is genuine confirmation, not a double-count. The two-sided test is also a leak guard: a VIX spike with crypto funding STILL positive means the crypto crowd hasn't capitulated and the bounce is premature. Entry: vix_level above a fitted panic floor AND funding_rate below a fitted uncrowded ceiling (crypto leverage flushed) AND price not in freefall (trend floor). Exit: vix_level crosses down through a calm threshold (macro panic relieved) or stop/TP/time. Disconfirmer 1: if vix_level ALONE (macro-vix-spike-capitulation) does as well, the funding leg is redundant. Disconfirmer 2: if an unconditional dip-buy matches the deflated Sharpe, neither gauge adds anything. Disconfirmer 3: VIX-panic windows are rare — the AND may fail the gate's min-trades floor, which is honest evidence not a bug. Disconfirmer 4 (cost): must clear ~20bps round-trip net. tier0 macro + tier0 funding features.",
+  "catalyst": "an equity VIX panic that has ALSO flushed crypto leverage (funding flat/negative) — a cross-domain exhaustion bottom",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 15 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_panic_floor" } },
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_uncrowded_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_down", "threshold": { "param": "vix_calm_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_panic_floor":           { "kind": "float", "lo": 26.0, "hi": 40.0 },
+    "vix_calm_exit":             { "kind": "float", "lo": 16.0, "hi": 26.0 },
+    "funding_uncrowded_ceiling": { "kind": "float", "lo": -0.0001, "hi": 0.00005 },
+    "trend_lb":                  { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "trend_floor":               { "kind": "float", "lo": -0.25, "hi": -0.02 },
+    "stop":                      { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":                        { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":                 { "kind": "int",   "lo": 5,    "hi": 16,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

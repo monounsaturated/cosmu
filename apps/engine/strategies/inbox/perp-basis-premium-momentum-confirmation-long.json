@@ -1,0 +1,33 @@
+{
+  "name": "Perp-basis premium momentum — long spot when contango confirms leveraged demand",
+  "rationale": "ECONOMIC MECHANISM (the MOMENTUM read of the basis, opposite in sign to BOTH existing basis specs: perp-basis-discount-contrarian-long FADES a deep discount and perp-basis-premium-contrarian-short FADES a rich premium; this RIDES a moderate, building premium as confirmation, not as an extreme to fade): a positive perp-spot basis (perp trades above spot = contango) is the market paying up for leverage — a revealed, healthy bid for upside exposure. A MODERATE and rising premium (not the blow-off extreme the short leg fades) is the signature of a sustainable up-leg where leveraged demand confirms the spot move rather than over-crowding it. The basis is a spot-perp price spread, a higher-frequency, cleaner crowding read than realized funding, so it confirms a trend EARLIER. The trick is the band: enter on a premium ABOVE a confirmation floor but BELOW a froth ceiling (between two fitted params via two conditions), so we ride healthy contango and hand off to the contrarian short leg in the froth zone. Entry: perp_spot_basis above a fitted confirmation floor AND perp_spot_basis below a fitted froth ceiling AND price in an uptrend. Exit: perp_spot_basis crosses DOWN through the confirmation floor (leverage bid fading) or stop/TP/time. Disconfirmer 1: if an unconditional momentum long matches the deflated Sharpe, the basis band adds nothing. Disconfirmer 2: basis and funding are tightly coupled; if a positive funding LEVEL gate does as well this is funding-carry-long re-skinned and adds no orthogonal SPREAD information. Disconfirmer 3: if the froth ceiling never binds (the optimizer pushes it to the data max), the spec is just 'positive basis + momentum' and the band thesis is unsupported. Disconfirmer 4 (cost): must clear ~20bps round-trip net. tier0 basis feature.",
+  "catalyst": "a healthy (not frothy) perp premium confirming leveraged demand behind an up-leg",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "perp_spot_basis" }, "op": "gt", "threshold": { "param": "premium_floor" } },
+    { "feature": { "name": "perp_spot_basis" }, "op": "lt", "threshold": { "param": "froth_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "perp_spot_basis" }, "op": "cross_down", "threshold": { "param": "basis_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "premium_floor": { "kind": "float", "lo": 0.00005, "hi": 0.0004 },
+    "froth_ceiling": { "kind": "float", "lo": 0.0005,  "hi": 0.0012 },
+    "basis_exit":    { "kind": "float", "lo": -0.0002, "hi": 0.0001 },
+    "trend_lb":      { "kind": "int",   "lo": 10,   "hi": 35,  "step": 1 },
+    "trend_floor":   { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "stop":          { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.24 },
+    "time_stop":     { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

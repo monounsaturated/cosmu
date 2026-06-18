@@ -1,0 +1,31 @@
+{
+  "name": "Polymarket book-depth conviction regime — long crypto when prediction-market liquidity is deep",
+  "rationale": "ECONOMIC MECHANISM (uses pm_book_depth, a feature NO inbox spec touches, and a different channel from polymarket-positioning-risk-flip [the odds LEVEL] and polymarket-prob-velocity [the odds SPEED]): the depth of a prediction market's order book (pm_book_depth, bounded ~0.25-2.0) is a liquidity/conviction gauge — a DEEP book means informed capital is willing to size into the risk view at tight spreads (conviction, orderly risk appetite), while a THIN book signals uncertainty and fragility where participants pull liquidity ahead of a shock. Deep prediction-market liquidity is thus a cross-market 'risk is orderly' tag: crypto, the highest-beta risk asset, tends to trend cleanly when the macro/event book is deep and chop or gap when it is thin. Conditioning a crypto long on a deep-enough book filters out the fragile, illiquid risk regimes. Entry: pm_book_depth above a fitted depth floor (orderly, liquid risk regime) AND price in a non-broken uptrend. Exit: pm_book_depth crosses DOWN through a thinning threshold (liquidity withdrawing — fragility rising) or stop/TP/time. Disconfirmer 1: if the unconditional trend long matches the deflated Sharpe, the depth gate adds nothing. Disconfirmer 2: book depth may just track overall market activity already in vol_realized; if a vol_realized gate does as well this carries no orthogonal liquidity information. Disconfirmer 3 (data depth + breadth): only ~400 points, single aggregate market (market-wide, not per-symbol) — low-confidence, paper-only until it deepens. Disconfirmer 4 (cost): must clear ~20bps round-trip net. tier0 prediction-market feature.",
+  "catalyst": "deep prediction-market liquidity — an orderly, high-conviction risk regime for a crypto long",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 15 },
+  "entry": [
+    { "feature": { "name": "pm_book_depth" }, "op": "gt", "threshold": { "param": "depth_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "pm_book_depth" }, "op": "cross_down", "threshold": { "param": "thin_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "depth_floor": { "kind": "float", "lo": 0.5,  "hi": 1.2 },
+    "thin_exit":   { "kind": "float", "lo": 0.3,  "hi": 0.6 },
+    "trend_lb":    { "kind": "int",   "lo": 10,   "hi": 50,  "step": 1 },
+    "trend_floor": { "kind": "float", "lo": -0.03, "hi": 0.04 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":          { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":   { "kind": "int",   "lo": 4,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,31 @@
+{
+  "name": "On-chain mempool-congestion demand momentum — ride BTC when the chain is busy",
+  "rationale": "ECONOMIC MECHANISM (orthogonal to every existing spec — no on-chain feature is used anywhere in the inbox): the Bitcoin mempool size (bytes of unconfirmed transactions waiting for block space) is a real-time, on-chain measure of DEMAND for settlement that users are paying fees to win. Unlike the secularly-trending hashrate/address/tx-count levels, mempool size is mean-reverting (congestion spikes when usage surges, then clears as blocks confirm — ~100k to ~5M bytes, mean ~810k), so a level threshold on it is economically meaningful and stationary rather than the trending-level always-true trap. The thesis: sustained congestion reflects an organic on-chain demand impulse (more economic actors competing for block space) that tends to coincide with or slightly lead price strength — a fundamental, NON-price, NON-sentiment confirmation of a move. Entry: btc_mempool_size above a fitted congestion floor (real on-chain demand) AND price in an uptrend (the congestion confirms the trend, doesn't predict it cold). Exit: mempool crosses DOWN through a clearing threshold (demand impulse fading) or stop/TP/time. Disconfirmer 1: if the unconditional trend long matches the deflated Sharpe, the on-chain gate adds nothing. Disconfirmer 2: mempool congestion can spike on fee-market dislocations unrelated to demand (ordinals/inscriptions waves) — if the edge is concentrated in those windows it is an artifact, not a demand read. Disconfirmer 3 (data depth + applicability): only ~84 daily points and BTC-only (market-wide metric applied to a BTC-led universe) — low-confidence, paper-only until the series deepens. Disconfirmer 4 (cost): must beat buy-and-hold deflated Sharpe net of ~20bps. tier1 on-chain feature.",
+  "catalyst": "elevated BTC mempool congestion — an on-chain demand impulse confirming a trend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 21 },
+  "entry": [
+    { "feature": { "name": "btc_mempool_size" }, "op": "gt", "threshold": { "param": "mempool_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "btc_mempool_size" }, "op": "cross_down", "threshold": { "param": "mempool_clear_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mempool_floor":      { "kind": "float", "lo": 800000.0,  "hi": 2500000.0 },
+    "mempool_clear_exit": { "kind": "float", "lo": 300000.0,  "hi": 900000.0 },
+    "trend_lb":           { "kind": "int",   "lo": 10,   "hi": 50,  "step": 1 },
+    "trend_floor":        { "kind": "float", "lo": -0.03, "hi": 0.05 },
+    "stop":               { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                 { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":          { "kind": "int",   "lo": 5,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,35 @@
+{
+  "name": "Fear & Greed momentum continuation — ride confirmed greed in a bull regime",
+  "rationale": "ECONOMIC MECHANISM (the OPPOSITE-SIGN read of fear-greed-contrarian-buy-extreme-fear, which BUYS extreme FEAR; this rides moderate-to-strong GREED as trend confirmation): the crowd-sentiment contrarian edge lives only at the TAILS — buy capitulation, fade euphoria. In the MIDDLE-TO-HIGH band, sentiment is PROCYCLICAL: rising, confirmed greed marks a self-reinforcing bull regime where flows beget flows, and the index leads continuation rather than reversal until it reaches the euphoric extreme. So the honest decomposition is: extreme-low → contrarian long (the existing spec), extreme-high → fade, and the MIDDLE-high band → momentum confirmation (this spec). Enter on greed ABOVE a confirmation floor but BELOW a euphoria ceiling (a fitted band via two conditions), in an uptrend — riding the procyclical zone and stepping aside before the blow-off the contrarian short would fade. Entry: fear_greed above a fitted greed floor AND fear_greed below a fitted euphoria ceiling AND price in an uptrend. Exit: fear_greed crosses UP through the euphoria ceiling (entering the fade zone — get out) OR crosses DOWN below the greed floor (regime cooling) — whichever fires; plus stop/TP/time. Disconfirmer 1: if an unconditional momentum long matches the deflated Sharpe, the greed band adds nothing. Disconfirmer 2: if the euphoria ceiling never binds (optimizer pushes it to 100), the band thesis is unsupported and this is just 'greed + momentum'. Disconfirmer 3: this is the directional inverse of fear-greed-contrarian — together they must NOT be double-counted as independent edges (same feature, partitioned regime). Disconfirmer 4 (cost): must clear ~20bps round-trip net. tier0 sentiment feature (~1000 daily points).",
+  "catalyst": "confirmed (non-euphoric) greed in an uptrend — procyclical sentiment continuation",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 21 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_floor" } },
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "euphoria_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "euphoria_exit" } },
+      { "feature": { "name": "fear_greed" }, "op": "cross_down", "threshold": { "param": "cool_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "greed_floor":      { "kind": "float", "lo": 50.0, "hi": 62.0 },
+    "euphoria_ceiling": { "kind": "float", "lo": 75.0, "hi": 90.0 },
+    "euphoria_exit":    { "kind": "float", "lo": 78.0, "hi": 92.0 },
+    "cool_exit":        { "kind": "float", "lo": 40.0, "hi": 52.0 },
+    "trend_lb":         { "kind": "int",   "lo": 15,   "hi": 60,  "step": 1 },
+    "trend_floor":      { "kind": "float", "lo": -0.02, "hi": 0.04 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":        { "kind": "int",   "lo": 5,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

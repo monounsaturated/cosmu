@@ -1,0 +1,31 @@
+{
+  "name": "Negative-funding over-short accumulation — long spot when shorts are paying a deep premium",
+  "rationale": "ECONOMIC MECHANISM (distinct from funding-reset-reversion, which pairs a near-zero funding ceiling with an RSI washout; this requires a DEEPLY negative funding extreme and reads over-extension via the band z-score, not RSI — a different crowding gauge and a different threshold regime): when perp funding goes strongly NEGATIVE, perpetual SHORTS are paying LONGS a fat premium to keep their bearish bets open — a revealed, over-leveraged, one-sided SHORT crowd. Historically these negative-funding extremes precede short squeezes: the negative carry bleeds the shorts, and any bounce forces covering that accelerates the move up. A SPOT long buys into that asymmetry (no perp-short capability needed, fits the spot-only live constraint) and, with funding_feature wired, the open long is not charged carry (a long pays funding only when it is positive) — the positioning extreme IS the edge. Entry: funding_rate below a fitted deep-negative floor (over-short crowd) AND price statistically stretched to the downside (bb_z below a fitted floor — washed out, not mid-range). Exit: funding_rate crosses UP back toward zero (the short crowd is covering / carry pressure relieved) or stop/TP/time. Disconfirmer 1: if the unconditional bb_z washout dip-buy matches the deflated Sharpe, the funding extreme adds nothing — the edge must be the positioning, not generic oversold. Disconfirmer 2: deep-negative funding clusters in violent down-moves; if the bb_z floor doesn't keep us out of true freefall this catches knives. Disconfirmer 3: this overlaps funding-reset-reversion in spirit — if dropping bb_z for RSI gives the same result they are the same spec; the band z-score must add distinct over-extension information. Disconfirmer 4 (cost): the squeeze must clear ~20bps round-trip net. tier0 funding feature (deep PIT data).",
+  "catalyst": "deeply negative perp funding into a washed-out price — an over-short crowd a spot long squeezes",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "neg_funding_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "funding_rate" }, "op": "cross_up", "threshold": { "param": "funding_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "neg_funding_floor":   { "kind": "float", "lo": -0.0015, "hi": -0.0002 },
+    "funding_relief_exit": { "kind": "float", "lo": -0.0002, "hi": 0.0001 },
+    "bb_lb":               { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bb_floor":            { "kind": "float", "lo": -3.0,  "hi": -1.5 },
+    "stop":                { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                  { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":           { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

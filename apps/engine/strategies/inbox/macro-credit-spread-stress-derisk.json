@@ -1,0 +1,31 @@
+{
+  "name": "Macro credit-spread stress de-risk — long crypto only when credit is calm",
+  "rationale": "ECONOMIC MECHANISM (orthogonal to every existing spec — credit_spread is used by NOTHING in the inbox): corporate credit spreads (BAA-AAA / IG OAS) are the canonical leading indicator of systemic financial stress — they widen BEFORE equity and crypto draw down because credit markets price default/liquidity risk first. A widening spread is the bond market flashing risk-off; a tight, stable spread is a green light for the whole risk complex. Crypto, as the highest-beta risk asset, suffers most when credit stress hits, so conditioning a crypto long on a NON-WIDENING credit regime is a clean, causally-motivated macro filter no crypto-native signal captures. Entry: credit_spread below a fitted calm ceiling (no systemic stress) AND price in a non-broken uptrend. Exit: credit_spread crosses UP through a stress threshold (credit is widening — the bond market is de-risking, so do we) or stop/TP/time. Disconfirmer 1: if the unconditional trend long matches the deflated Sharpe, the credit gate adds nothing. Disconfirmer 2: credit_spread, vix_level and yield_curve all proxy the macro stress regime; if substituting vix_level does as well this is macro-vix-calm re-skinned — the credit channel must add orthogonal information (credit leads equity vol). Disconfirmer 3 (cost): conditional long must beat buy-and-hold deflated Sharpe net of ~20bps. tier0 macro feature, low-confidence until OOS.",
+  "catalyst": "corporate credit spreads calm and not widening — no systemic stress for a crypto long",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 30 },
+  "entry": [
+    { "feature": { "name": "credit_spread" }, "op": "lt", "threshold": { "param": "spread_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "credit_spread" }, "op": "cross_up", "threshold": { "param": "spread_stress_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "spread_ceiling":     { "kind": "float", "lo": 2.7, "hi": 3.1 },
+    "spread_stress_exit": { "kind": "float", "lo": 3.1, "hi": 3.6 },
+    "trend_lb":           { "kind": "int",   "lo": 20,  "hi": 80,  "step": 1 },
+    "trend_floor":        { "kind": "float", "lo": -0.03, "hi": 0.05 },
+    "stop":               { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                 { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":          { "kind": "int",   "lo": 7,   "hi": 25,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

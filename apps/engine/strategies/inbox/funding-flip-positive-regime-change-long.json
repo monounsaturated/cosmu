@@ -1,0 +1,33 @@
+{
+  "name": "Funding-flip regime change — long when funding crosses from negative to positive",
+  "rationale": "ECONOMIC MECHANISM (distinct from every level-based funding spec in the inbox — funding-carry-long thresholds a POSITIVE level, funding-reset-reversion a LOW/NEGATIVE level, funding-gated-momentum a level ceiling; this triggers on the SIGN-FLIP cross, a discrete regime-change event): the perp funding rate flipping from negative to positive is the moment leveraged demand returns — shorts that were being paid to be short (negative funding) capitulate and longs re-engage, marking the transition out of a washed-out, uncrowded regime into a fresh up-leg. The cross (not the level) captures the INFLECTION: early enough that funding is only just positive (carry still cheap, not yet a crowded frothy top), confirmed by price not falling. This is the funding analogue of a MACD zero-line cross — a regime-change trigger, not a state filter. Entry: funding_rate crosses UP through a fitted near-zero floor (sign flip / demand returning) AND price in a non-broken trend. Exit: funding_rate crosses DOWN back below a near-zero threshold (demand fading, regime reverting) OR price momentum rolls over — whichever fires. Disconfirmer 1: if entering on a positive funding LEVEL (gt) does as well, the cross adds no timing edge and this is funding-carry-long re-skinned. Disconfirmer 2: if an unconditional momentum long matches the deflated Sharpe, the funding flip adds nothing. Disconfirmer 3: a flip into a euphoric blow-off is the crash regime funding-contrarian-crash-filter shorts — the trend floor must keep us out of parabolic tops. Disconfirmer 4 (cost): must clear ~20bps round-trip net. tier0 funding feature (deep PIT data, 100k+ rows / 50 symbols).",
+  "catalyst": "perp funding flips negative→positive — leveraged demand returns, a fresh regime up-leg",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 21 },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "cross_up", "threshold": { "param": "flip_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "funding_rate" }, "op": "cross_down", "threshold": { "param": "flip_exit" } },
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flip_floor":  { "kind": "float", "lo": -0.00005, "hi": 0.00005 },
+    "flip_exit":   { "kind": "float", "lo": -0.0001,  "hi": 0.0 },
+    "trend_lb":    { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "trend_floor": { "kind": "float", "lo": -0.06, "hi": 0.02 },
+    "mom_exit":    { "kind": "float", "lo": -0.08, "hi": -0.01 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":          { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":   { "kind": "int",   "lo": 5,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

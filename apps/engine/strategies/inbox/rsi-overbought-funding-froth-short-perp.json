@@ -1,0 +1,31 @@
+{
+  "name": "RSI-overbought + funding-froth fade — short the over-extended, over-levered top (perp)",
+  "rationale": "ECONOMIC MECHANISM (a SHORT fade distinct from theory-mean-reversion-fade-of-upside [bb_z+adx, no leverage gauge] and from funding-contrarian-crash-filter [funding+runup+vol, no RSI]; this pairs an RSI overbought extreme with a funding-froth confirmation): the safest place to fade an up-move is where BOTH the price is over-extended (RSI overbought) AND the leverage is crowded long (funding frothy positive) — the over-extension says the move is stretched, the funding says the crowd is levered into it and a small reversal will force long liquidations that accelerate the pullback. Shorting overbought ALONE is the trap that gets run over in a strong leveraged uptrend; requiring positive-funding froth means we only fade tops the leverage crowd is exposed to. This is a perp SHORT (direction -1): stop ABOVE entry, take-profit BELOW. Entry: rsi above a fitted overbought ceiling AND funding_rate above a fitted froth floor (crowded long). Exit: rsi crosses DOWN through a normalization threshold (over-extension worked off) or stop/TP/time. Disconfirmer 1: if RSI-overbought ALONE does as well, the funding-froth leg adds nothing and this is a naive overbought fade (which historically gets run over). Disconfirmer 2: this overlaps funding-contrarian-crash-filter (both fade crowded-long froth) — if dropping RSI for the runup filter gives the same result they are the same spec; RSI must add distinct over-extension information. Disconfirmer 3: shorting crypto means a perp venue + borrow/funding cost — net of perp fees AND the funding the short PAYS while frothy, the pullback must still clear the round-trip. Disconfirmer 4: a powered FAIL here is informative — crypto's upward drift makes systematic shorts hard, so this tests whether the leverage-confirmed fade survives where a naive one doesn't. tier0 funding + price/TA features.",
+  "catalyst": "RSI overbought WHILE funding is frothy-positive — an over-extended, over-levered top to fade",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_ceiling" } },
+    { "feature": { "name": "funding_rate" }, "op": "gt", "threshold": { "param": "froth_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_down", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rsi_lb":      { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_ceiling": { "kind": "float", "lo": 70.0, "hi": 85.0 },
+    "rsi_exit":    { "kind": "float", "lo": 45.0, "hi": 62.0 },
+    "froth_floor": { "kind": "float", "lo": 0.0002, "hi": 0.001 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

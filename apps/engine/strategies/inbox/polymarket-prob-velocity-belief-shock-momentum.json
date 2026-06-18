@@ -1,0 +1,31 @@
+{
+  "name": "Polymarket probability-velocity belief-shock momentum — ride a fast risk repricing",
+  "rationale": "ECONOMIC MECHANISM (distinct from polymarket-positioning-risk-flip, which trades the LEVEL of pm_implied_prob; this trades its DERIVATIVE / velocity): pm_prob_velocity is the speed at which a prediction market is repricing a macro/risk event — a clean, bounded (~-0.31..+0.35, mean 0), point-in-time read on how fast collective beliefs are moving. When a risk-ON event's odds are rising FAST (positive velocity), informed prediction-market money is updating toward a benign macro outcome BEFORE that conviction shows up in the slower, more crowded crypto spot tape — a cross-market belief shock that crypto, the highest-beta risk asset, follows. The velocity (a change) is stationary where the level is not, so a fitted threshold on it is honest. Entry: pm_prob_velocity above a fitted positive shock floor (beliefs repricing risk-on, fast) AND price in a non-broken uptrend (don't fight a falling tape). Exit: velocity crosses DOWN through ~0 (the repricing has stalled — the belief shock is spent) or stop/TP/time. Disconfirmer 1: if the unconditional trend long matches the deflated Sharpe, the velocity gate adds nothing. Disconfirmer 2: velocity is the first difference of pm_implied_prob; if entering on the pm_implied_prob LEVEL alone does as well, this is polymarket-positioning-risk-flip re-skinned and adds no orthogonal SPEED information. Disconfirmer 3 (data depth + breadth): only ~392 points and the market is a single aggregate gauge (market-wide, not per-symbol) — low-confidence, paper-only until it deepens. Disconfirmer 4 (cost): must clear ~20bps round-trip net. tier0 prediction-market feature.",
+  "catalyst": "a fast positive repricing of risk-event odds — a belief shock crypto follows",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "pm_prob_velocity" }, "op": "gt", "threshold": { "param": "velocity_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "pm_prob_velocity" }, "op": "cross_down", "threshold": { "param": "velocity_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "velocity_floor": { "kind": "float", "lo": 0.03, "hi": 0.20 },
+    "velocity_exit":  { "kind": "float", "lo": -0.05, "hi": 0.03 },
+    "trend_lb":       { "kind": "int",   "lo": 5,    "hi": 30,  "step": 1 },
+    "trend_floor":    { "kind": "float", "lo": -0.03, "hi": 0.04 },
+    "stop":           { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":             { "kind": "float", "lo": 0.05, "hi": 0.24 },
+    "time_stop":      { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,31 @@
+{
+  "name": "Macro VIX-spike capitulation reversion — buy crypto into an equity fear extreme",
+  "rationale": "ECONOMIC MECHANISM (the CONTRARIAN mirror of macro-vix-calm-riskon-long, and distinct from fear-greed-contrarian which uses the CRYPTO-native sentiment index): a VIX spike marks a cross-asset panic where forced equity deleveraging spills into correlated crypto and overshoots to the downside. Once the fear extreme is in (VIX above a fitted panic floor) the marginal seller is exhausted and risk assets snap back as the volatility premium decays — a documented post-VIX-spike equity reversion (the 'buy the VIX spike' effect) transferred to crypto via its risk-asset beta. The signal is EXTERNAL (US equity options panic), so it fires on macro stress crypto's own sentiment may not yet show. Entry: VIX above a fitted panic floor AND price not in freefall (a trend floor = the knife guard, mirroring fear-greed-contrarian's structure). Exit: VIX crosses DOWN through a calm threshold (panic relieved, reversion played out) or stop/TP/time. Disconfirmer 1: if an unconditional dip-buy over the same sample matches the deflated Sharpe, the VIX extreme adds nothing. Disconfirmer 2: VIX panics co-occur with crypto fear_greed lows; if substituting fear_greed does as well this is fear-greed-contrarian re-skinned and adds no orthogonal MACRO panic information. Disconfirmer 3 (cost): the bounce must clear ~20bps round-trip net. tier0 macro feature, low-confidence until OOS.",
+  "catalyst": "equity VIX panic spike — cross-asset capitulation crypto reverts from",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 15 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_panic_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_down", "threshold": { "param": "vix_calm_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_panic_floor": { "kind": "float", "lo": 26.0, "hi": 40.0 },
+    "vix_calm_exit":   { "kind": "float", "lo": 16.0, "hi": 26.0 },
+    "trend_lb":        { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "trend_floor":     { "kind": "float", "lo": -0.25, "hi": -0.02 },
+    "stop":            { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":              { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":       { "kind": "int",   "lo": 5,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
