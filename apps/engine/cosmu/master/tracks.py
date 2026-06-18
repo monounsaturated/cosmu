@@ -37,6 +37,8 @@ def open_paper_track(
     version_id: str,
     starting_capital: Decimal | str | float,
     target_vol: float | None = None,
+    symbol: str | None = None,
+    venue_id: str | None = None,
 ) -> str:
     """Insert a forward paper track seeded HONESTLY: ``equity = starting_capital``, ``return_pct = 0``.
 
@@ -45,6 +47,11 @@ def open_paper_track(
 
     ``target_vol`` (T1 sizing): median EWMA realized vol from the strategy's backtest validation price
     returns, frozen at funding. None → T0 static sizing (max_position_pct × conviction).
+
+    ``symbol`` / ``venue_id`` (BRUT per-cell tracks): the tradeable triple (algorithm × asset × venue) this
+    track proves. Back-compatible defaults None → a version-wide track (legacy / pre-migration). When given,
+    the row carries the cell columns so the per-cell forward-proof readers (master/live_eligibility) scope to
+    THIS cell, and the per-cell UNIQUE(version,symbol,venue) lets one version hold one track per passing cell.
     """
     cap = Decimal(str(starting_capital))
     row: dict = {
@@ -56,4 +63,8 @@ def open_paper_track(
     }
     if target_vol is not None:
         row["target_vol"] = float(target_vol)
+    if symbol is not None:
+        row["symbol"] = symbol
+    if venue_id is not None:
+        row["venue_id"] = venue_id
     return writer.insert("tracks", row)

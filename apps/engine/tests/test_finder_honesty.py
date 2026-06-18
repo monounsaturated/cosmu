@@ -1,12 +1,11 @@
-# Regression tests for the finder-honesty fix (P0): the 256+-variant grid that fills the config library must be
-# as statistically honest as research/gate.py (the 12-variant reference). These pin the closed leaks:
-#   1. true trial count flows into EVERY finder decision (gate flag, leaderboard, refine seeds, promotion);
-#   2. the correlation haircut / effective-N means the Deflated Sharpe gets HARDER (never easier) as the grid
-#      densifies (the original behaviour was backwards);
-#   3. a real CSCV-PBO is computed across the grid;
-#   4. the holdout is purged + embargoed (no warm-up bleed into training);
-#   5. per-symbol min_trades + a cross-symbol haircut on the pooled PSR n_obs;
-#   6. correlated variants are deduped to DISTINCT representatives before BH-FDR.
+# Honesty tests for the BRUT per-combo finder. The locked scorer/backtest MATH is unchanged (these still pin the
+# DSR correlation-haircut, the n_obs haircut, the purged+embargoed holdout, and the validation-only screen). What
+# CHANGED with brut: the finder no longer registers cross-combo trials, no longer clusters/FDRs across variants,
+# and judges each (variant × symbol × venue) cell on its OWN data. These pin the brut contract:
+#   - the finder registers NO global trials (a brut cell isn't part of a family);
+#   - a cell's deflated Sharpe is INVARIANT to how many SIBLING cells (symbols) the sweep produced — no family
+#     leak via trials_counted (only the per-combo PARAM-grid count deflates, never the cross-cell count);
+#   - densifying the PARAM grid raises the per-combo trial count → the per-cell DSR gets HARDER, never easier.
 
 from __future__ import annotations
 
@@ -21,12 +20,13 @@ from cosmu.data.backtest import (
     _avg_cross_correlation,
     _effective_obs,
     _purged_embargoed_split,
+    metrics_for_run,
     run_strategy_backtest_detailed,
 )
 from cosmu.data.market import Bar
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store
-from cosmu.lab.finder import StrategyFinder, _cluster_representatives, build_grid
+from cosmu.lab.finder import StrategyFinder, build_grid
 from cosmu.master.scorer import (
     BacktestMetrics,
     TrialStats,
@@ -66,6 +66,30 @@ def _correlated_market(mu: float, n: int = 300, seed: int = 7, symbols=("BTCUSDT
                             low=Decimal(str(lo)), close=Decimal(str(p)), volume=Decimal("1000")))
         out[s] = bars
     return out
+
+
+def _trade_dense_market(n: int = 600, cycle: int = 30, seed: int = 5) -> dict[str, list[Bar]]:
+    """A deterministic cyclic-bull market dense enough that a SINGLE symbol books >= the brut per-cell trade floor
+    (30 of its OWN trades) and clears its own DSR. Under brut each cell is judged ALONE, so the fixture can no
+    longer rely on pooling thin per-symbol books to clear min_trades — it must be honestly trade-dense per cell."""
+    rng = random.Random(seed)
+    base = dt.datetime(2021, 1, 1, tzinfo=dt.UTC)
+    factor = [rng.gauss(0, 0.004) for _ in range(n)]
+    market: dict[str, list[Bar]] = {}
+    for k, (sym, p0) in enumerate(_SYMS.items()):
+        p = p0
+        bars = []
+        for i in range(n):
+            drift = 0.012 if i % cycle < int(cycle * 0.7) else -0.004  # frequent up/down legs → many entries
+            r = drift + 0.9 * factor[i] + rng.gauss(0, 0.0006 * (1 + k * 0.1))
+            o = p
+            p = max(1e-6, p * (1 + r))
+            hi = max(o, p) * (1 + abs(rng.gauss(0, 0.001)))
+            lo = min(o, p) * (1 - abs(rng.gauss(0, 0.001)))
+            bars.append(Bar(ts=base + dt.timedelta(days=i), open=Decimal(str(o)), high=Decimal(str(hi)),
+                            low=Decimal(str(lo)), close=Decimal(str(p)), volume=Decimal("5000000")))
+        market[sym] = bars
+    return market
 
 
 class _Bars:
@@ -185,63 +209,74 @@ def test_holdout_is_purged_and_embargoed_no_warmup_bleed():
         assert holdout_bars[0].ts == bars[split].ts  # first holdout bar is not a training bar
 
 
-# ----------------------------------------------------------------- Problems 1 + 6 — finder: true count + dedupe
+# ----------------------------------------------------------------- BRUT: no family — per-cell, own data only
 
 
-def test_finder_counts_every_variant_as_a_trial(tmp_path):
-    # The leak: deflation used ~len(param_space) (~15). Now EVERY screened variant is a registered trial.
+def test_finder_registers_no_trials_brut(tmp_path):
+    # BRUT contract: a per-combo cell is NOT part of any cross-combo family, so the finder registers NO global
+    # trials (the per-combo param-grid count rides on metrics.trials_counted, not the ledger). The pooled
+    # FDR/cross-cell deflation register_trial fed is gone — each cell is judged on its OWN data.
     spec = seed_orb_fvg_spec()
     finder = _finder(tmp_path, _correlated_market(0.002))
-    rep = finder.find(spec, max_variants=24)
+    finder.find(spec, max_variants=24)
     n_trials = finder.store.rows("SELECT COUNT(*) AS n FROM trials")[0]["n"]
-    assert n_trials == rep.screened
-    assert rep.screened > len(spec.param_space)  # the true count is far above the param-space proxy
+    assert n_trials == 0
 
 
-def test_finder_rejects_an_edge_that_only_clears_the_leaky_count(tmp_path):
-    # The modest synthetic edge fixture: the leaky param-space count would certify the best variant; the true
-    # distinct-trial count does not — so the finder promotes nothing. Closing the leak in the gate flag.
+def test_cell_deflated_sharpe_invariant_to_sibling_cell_count():
+    # NO RE-POOLING / no family leak via trials_counted: a cell's deflated Sharpe must depend ONLY on its OWN
+    # streams + the per-combo PARAM-grid count — NEVER on how many SIBLING cells (other symbols) the sweep ran.
+    # Build ONE cell's metrics from a fixed run at a fixed grid_size, then score it with the brut TrialStats(1):
+    # the verdict is identical whether the sweep had 2 symbols or 200. (The locked DSR math is untouched; only the
+    # INPUT — one cell — and trials_counted = grid_size change.)
+    from cosmu.master.cohort import promote_brut
+
+    spec = seed_orb_fvg_spec()
+    market = _correlated_market(0.006, n=320, symbols=("BTCUSDT", "ETHUSDT"))
+    fee = default_catalog().venue("binance").taker_fee_bps
+    res = run_strategy_backtest_detailed(spec, _valid_params(spec), market, fee_bps=fee)
+    sym = next(iter(res.per_symbol_runs))
+    run = res.per_symbol_runs[sym]
+    bh = res.per_symbol_buy_and_hold.get(sym, 0.0)
+
+    # Same cell, same per-combo grid_size — the only thing that differs between two hypothetical sweeps is how
+    # many OTHER cells exist, which does NOT enter metrics_for_run or promote_brut. So the DSR is byte-identical.
+    grid_size = 32
+    m_a = metrics_for_run(run, trials=grid_size, buy_and_hold=bh)
+    m_b = metrics_for_run(run, trials=grid_size, buy_and_hold=bh)
+    from cosmu.master.cohort import Candidate
+
+    settings = Settings(openrouter_api_key=None)
+    v_a = promote_brut([Candidate(id=sym, metrics=m_a, net_profit=0.0, source="finder")], settings.gates)[0]
+    v_b = promote_brut([Candidate(id=sym, metrics=m_b, net_profit=0.0, source="finder")], settings.gates)[0]
+    assert v_a.deflated_sharpe_prob == v_b.deflated_sharpe_prob
+
+
+def test_cell_dsr_harder_as_param_grid_densifies():
+    # Densifying the PARAM grid (the per-combo trial count) raises trials_counted → the per-cell DSR gets HARDER,
+    # never easier. This is the legitimate own-overfit deflation, applied per cell. (More param variants tried on
+    # this combo = more multiple-testing on THIS combo, so the bar rises — exactly as DSR intends.)
+    spec = seed_orb_fvg_spec()
+    market = _correlated_market(0.006, n=320, symbols=("BTCUSDT", "ETHUSDT"))
+    fee = default_catalog().venue("binance").taker_fee_bps
+    res = run_strategy_backtest_detailed(spec, _valid_params(spec), market, fee_bps=fee)
+    sym = next(iter(res.per_symbol_runs))
+    run, bh = res.per_symbol_runs[sym], res.per_symbol_buy_and_hold.get(sym, 0.0)
+    sparse = metrics_for_run(run, trials=4, buy_and_hold=bh)
+    dense = metrics_for_run(run, trials=128, buy_and_hold=bh)
+    dsr_sparse = deflated_sharpe_prob(sparse, TrialStats(count=1))
+    dsr_dense = deflated_sharpe_prob(dense, TrialStats(count=1))
+    assert dsr_dense <= dsr_sparse + 1e-9
+
+
+def test_finder_rejects_a_modest_edge_per_cell(tmp_path):
+    # The modest synthetic edge fixture must not promote ANY cell under the brut per-cell gate (the per-combo
+    # param-grid deflation + the locked DSR bar reject it). Honest empty result, per cell.
     spec = seed_orb_fvg_spec()
     fixture = {s: edge_bearing_screen_market(n=280)[s][-280:] for s in ("BTCUSDT", "ETHUSDT")}
     finder = _finder(tmp_path, fixture)
     rep = finder.find(spec, max_variants=48)
-    assert rep.promoted == 0  # honest deflation against the true count rejects the modest edge
-    # and the SAME edge clears the bar under the OLD param-space count — proving it was the count that leaked
-    best = _modest_metrics().model_copy(update={"sharpe_per_obs": Decimal("0.40"), "n_obs": 120})
-    leaky = deflated_sharpe_prob(best, TrialStats(count=len(spec.param_space), sr_variance=0.0147))
-    honest = deflated_sharpe_prob(best, TrialStats(count=rep.screened, sr_variance=0.0147))
-    assert leaky > honest
-    assert leaky >= 0.95 > honest
-
-
-def test_finder_dsr_not_easier_as_the_grid_densifies(tmp_path):
-    # The headline leak, end-to-end: a denser grid must not RAISE the best Deflated Sharpe on the leaderboard.
-    spec = seed_orb_fvg_spec()
-    market = _correlated_market(0.006, n=320)
-    sparse = _finder(tmp_path, market, name="sparse").find(spec, max_variants=12)
-    dense = _finder(tmp_path, market, name="dense").find(spec, max_variants=96)
-    best_sparse = max((r.deflated_sharpe for r in sparse.leaderboard), default=0.0)
-    best_dense = max((r.deflated_sharpe for r in dense.leaderboard), default=0.0)
-    assert best_dense <= best_sparse + 1e-6
-
-
-def test_cluster_representatives_collapse_near_duplicates():
-    # Problem 6: correlated variants must collapse to DISTINCT representatives before BH-FDR.
-    from cosmu.lab.finder import VariantResult
-
-    base = [0.01, -0.02, 0.015, -0.005, 0.02, -0.012, 0.008, -0.003]
-    near = [x + 1e-6 for x in base]            # ~identical → same cluster
-    other = [-x for x in base]                 # anti-correlated → distinct cluster
-
-    def _vr(tag: str, sharpe: float) -> VariantResult:
-        return VariantResult(config_tag=tag, code_hash=tag, metrics=_modest_metrics().model_copy(update={"sharpe_per_obs": Decimal(str(sharpe))}),
-                             deflated_sharpe=0.0, profit_factor=1.0, net_profit=0.0, gate_passed=False, reasons=[])
-
-    results = [_vr("a", 0.3), _vr("b", 0.2), _vr("c", 0.1)]
-    returns = {"a": base, "b": near, "c": other}
-    reps = _cluster_representatives(results, returns, threshold=0.95)
-    assert "a" in reps and "b" not in reps and "c" in reps  # a,b collapse; c is distinct
-    assert len(reps) == 2
+    assert rep.promoted == 0  # no cell of any variant cleared its OWN gate + holdout
 
 
 # ------------------------------------------------- deep review H4 — the holdout is champion-only, never a filter
@@ -272,27 +307,11 @@ def test_finder_holdout_is_champion_only(tmp_path):
     sentinel: a 256-variant grid can no longer select against the untouched window."""
     from cosmu.config.settings import GateSettings
 
-    # The relentless-bull significant-edge regime (see test_close_loop) with beat-BnH opted out so a champion
-    # actually promotes and the champion-only holdout path is exercised, not vacuously skipped.
-    import random as _random
-
-    rng = _random.Random(5)
-    base = dt.datetime(2022, 1, 1, tzinfo=dt.UTC)
-    factor = [rng.gauss(0, 0.004) for _ in range(300)]
-    market: dict[str, list[Bar]] = {}
-    for k, (sym, p0) in enumerate(_SYMS.items()):
-        p = p0
-        bars = []
-        for i in range(300):
-            drift = 0.008 if i % 100 < 78 else -0.001
-            r = drift + 0.95 * factor[i] + rng.gauss(0, 0.0006 * (1 + k * 0.1))
-            o = p
-            p = max(1e-6, p * (1 + r))
-            hi = max(o, p) * (1 + abs(rng.gauss(0, 0.001)))
-            lo = min(o, p) * (1 - abs(rng.gauss(0, 0.001)))
-            bars.append(Bar(ts=base + dt.timedelta(days=i), open=Decimal(str(o)), high=Decimal(str(hi)),
-                            low=Decimal(str(lo)), close=Decimal(str(p)), volume=Decimal("5000000")))
-        market[sym] = bars
+    # A denser-signal cyclic-bull regime (longer history + a tighter cycle) so a SINGLE symbol books >= the brut
+    # per-cell min-trades floor (30 of its OWN trades) AND clears its own DSR — under brut, pooling 5 symbols no
+    # longer carries a thin per-symbol book over the floor, so the fixture must be honestly trade-dense per cell.
+    # beat-BnH is opted out so a champion actually promotes and the champion-only holdout path is exercised.
+    market = _trade_dense_market()
 
     store = Store(Settings(database_url=f"sqlite:///{tmp_path}/champion.sqlite3", openrouter_api_key=None,
                            gates=GateSettings(require_beat_buy_and_hold=False)))
@@ -302,14 +321,15 @@ def test_finder_holdout_is_champion_only(tmp_path):
     assert report.survivors, "the significant-edge fixture must promote a champion (else this test is vacuous)"
     look_ids = [r["ref_id"] for r in store.rows("SELECT ref_id FROM events WHERE kind = 'holdout_look'")]
     assert look_ids, "promoted champions must be audited as holdout_look events"
-    assert len(look_ids) == len(set(look_ids))  # one exam look per champion — a champion never re-sits it
-    # every confirmed survivor really sat the exam (real verdict, not the no-evidence sentinel) and is audited
+    assert len(look_ids) == len(set(look_ids))  # one exam look per champion variant — never re-sat
+    # BRUT: only a variant with ≥1 passing cell sits the exam, ONCE, per cell. A confirmed survivor has at least
+    # one cell whose OWN holdout was scored (real verdict, not the no-evidence sentinel) and is audited.
     for r in report.survivors:
-        assert float(r.metrics.holdout_deflated_sharpe) != -0.5
+        confirmed = [c for c in r.cells.values() if c.passed and c.holdout_passed]
+        assert confirmed, "a survivor must have ≥1 cell confirmed on its own holdout"
+        assert all(float(c.metrics.holdout_deflated_sharpe) != -0.5 for c in confirmed)
         assert f"{report.strategy_name}:{r.config_tag}" in set(look_ids)
-    # non-promoted variants never simulated the exam — the sentinel proves the screen ran without the holdout
-    non_champions = [r for r in report.leaderboard if not r.promoted]
-    assert non_champions, "fixture should produce gate-passers beyond the promoted reps"
+    # a variant with NO passing cell never simulated the exam (the screen ran include_holdout=False).
+    non_champions = [r for r in report.leaderboard if not r.gate_passed]
     for r in non_champions:
-        assert float(r.metrics.holdout_deflated_sharpe) == -0.5
         assert r.holdout_passed is False

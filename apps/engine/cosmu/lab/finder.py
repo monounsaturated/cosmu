@@ -12,14 +12,13 @@ from __future__ import annotations
 
 import hashlib
 import itertools
-import statistics
 import tempfile
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.backtest import run_strategy_backtest_detailed
+from cosmu.data.backtest import metrics_for_run, run_strategy_backtest_detailed
 from cosmu.data.market import (
     Bar,
     BinanceSpotOHLCVProvider,
@@ -32,20 +31,15 @@ from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
 from cosmu.knowledge.store import Store, Writer, utcnow
-from cosmu.master.cohort import CLUSTER_CORRELATION as _SHARED_CLUSTER_CORRELATION
 from cosmu.master.cohort import Candidate as CohortCandidate
-from cosmu.master.cohort import cluster_representatives as _shared_cluster_representatives
-from cosmu.master.cohort import cohort_cscv_pbo as _shared_cohort_cscv_pbo
-from cosmu.master.cohort import corr as _shared_corr
-from cosmu.master.cohort import promote_cohort
+from cosmu.master.cohort import promote_brut
 from cosmu.master.holdout import HoldoutLedger
-from cosmu.master.per_symbol import MIN_TRADES_PER_SYMBOL, classify_per_symbol, funding_eligible
+from cosmu.master.live_eligibility import cell_id
 from cosmu.master.promotion import freeze_promotion
-from cosmu.master.scorer import BacktestMetrics, TrialStats, score
+from cosmu.master.scorer import BacktestMetrics
 from cosmu.master.screen_universe import build_cost_context, equity_symbols, hyperliquid_symbols
 from cosmu.master.tracks import open_paper_track
-from cosmu.master.trials import register_trial
-from cosmu.master.verdict_log import CohortPersist
+from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
@@ -66,16 +60,14 @@ _REFINE_RADIUS = 0.15
 # cached under .cosmu/market_data/binanceperp/. The five-symbol CORE slice was the prior value; widened
 # 2026-06-16 once the cache confirmed full coverage.
 _REAL_SYMBOLS = PERP_UNIVERSE
-# Two validation return streams with Pearson correlation >= this are treated as the SAME hypothesis: one is the
-# cluster representative, the rest are near-duplicates. Dedupe to representatives BEFORE BH-FDR so a dense
-# correlated grid can't game the false-discovery cutoff (cohort.py's "distinct candidates" contract). Aliases
-# the single shared constant in master/cohort.py so the finder sweep and the autonomous loop dedupe at the SAME
-# threshold (no per-module drift).
-_CLUSTER_CORRELATION = _SHARED_CLUSTER_CORRELATION
-# Per-symbol validation trade floor. The pooled gate (min_trades=30) can be met with ~6 trades on each of 5
-# correlated symbols; require independent evidence on EACH traded symbol instead of accepting a pooled count.
-# Single source of truth in master/per_symbol.py (shared with the autonomous loop + the honest per-symbol verdict).
+# BRUT per-cell trade floor: a tradeable cell (this variant × symbol × venue) must book at least this many of its
+# OWN trades on its validation window to be judgeable at all. The locked gate's larger min_trades=30 floor is ALSO
+# enforced per cell (on the cell's OWN num_trades) inside promote_brut — this 5 is the cheap thinness pre-screen.
+# Single source of truth in master/trade_floor.py (shared with the autonomous loop).
 _MIN_TRADES_PER_SYMBOL = MIN_TRADES_PER_SYMBOL
+# The BRUT per-cell min-trades floor on the single combo's OWN trades — a cell with fewer than this of its own
+# trades is too thin to score honestly (set as gates.min_trades for the brut promote path).
+_BRUT_MIN_TRADES = 30
 
 
 @dataclass(frozen=True)
@@ -87,25 +79,46 @@ class Variant:
 
 
 @dataclass
+class CellResult:
+    """ONE brut cell (this algorithm-variant × one symbol × one venue), judged on its OWN streams. `metrics` is
+    built by metrics_for_run from THIS symbol's per_symbol_run (own bar_returns + fold_returns) with the per-combo
+    param-grid count baked into trials_counted; `passed` is the locked stats gate on those streams AND the per-cell
+    trade floor — never a pooled or sibling-compared verdict. `holdout_passed` is this cell's OWN one-shot holdout
+    confirmation (champion-only)."""
+
+    symbol: str
+    venue_id: str
+    metrics: BacktestMetrics
+    deflated_sharpe: float
+    trades: int
+    passed: bool
+    reasons: list[str] = field(default_factory=list)
+    holdout_passed: bool = False
+    target_vol: float | None = None
+
+
+@dataclass
 class VariantResult:
     config_tag: str
     code_hash: str
-    metrics: BacktestMetrics
+    metrics: BacktestMetrics  # POOLED display metrics (the granular truth lives in `cells`); never the brut verdict
     deflated_sharpe: float
     profit_factor: float
     net_profit: float
-    gate_passed: bool
+    gate_passed: bool         # brut: True iff ANY cell of this variant passed (a variant is a config, cells are judged)
     reasons: list[str]
     fitted_params: dict[str, float] = field(default_factory=dict)
     version_id: str | None = None
-    promoted: bool = False
-    holdout_passed: bool = False
+    promoted: bool = False     # brut: True iff any cell promoted (== gate_passed; no FDR/cluster gating)
+    holdout_passed: bool = False  # brut: True iff any promoted cell's own holdout confirmed
     target_vol: float | None = None  # T1 sizing anchor: set from champion.target_vol at champion holdout
     # Per-symbol breakdown {symbol: {return, sharpe, max_drawdown, trades}} from the detailed backtest — the
-    # GRANULAR truth the pooled metric averages away. Persisted for VISIBILITY (the operator sees which symbols
-    # carried the edge); the deflated pooled gate still decides pass/fail (funding best-of-N = a multiple-testing
-    # hole). An honest per-symbol gate is design-first, separate.
+    # GRANULAR display truth. The BRUT verdict lives per-cell in `cells` (each judged on its OWN data); this stays
+    # for the display rows + best_symbol.
     per_symbol: dict = field(default_factory=dict)
+    # The BRUT per-cell verdicts: {symbol: CellResult}. Each cell is judged independently on its own streams — the
+    # unit the funder fans out to a paper track. venue_id carried per cell (the fee axis of the S×A×V triple).
+    cells: dict[str, CellResult] = field(default_factory=dict)
 
 
 @dataclass
@@ -307,70 +320,61 @@ class StrategyFinder:
         spec: StrategySpec | None = None,
         *,
         max_variants: int = _MAX_VARIANTS,
-        fdr_q: float = 0.10,
+        fdr_q: float = 0.10,  # noqa: ARG002 — kept for API compat; the BRUT path has no cross-cell FDR family
         persist: bool = True,
         two_pass: bool = True,
     ) -> FinderReport:
-        """Run the full Finder pass for one seed spec — now as statistically honest as research/gate.py.
+        """Run the full Finder pass for one seed spec, BRUT per-combo.
 
-        Steps: build the grid → screen every variant on REAL bars → register EVERY variant as a trial so the
-        global ledger reflects the TRUE count (not len(param_space)) → score every variant against that true,
-        correlation-haircut trial count AND the cohort's REAL CSCV-PBO (not the per-variant proxy) → pick refine
-        seeds from those HONEST gate-passers → TWO-PASS REFINEMENT → cluster the correlated grid into DISTINCT
-        representatives and run BH-FDR over THOSE (cohort.py's "distinct candidates" contract) → one-shot
-        holdout-validate before the config library. Deterministic, LLM-free, and a dense correlated grid can no
-        longer manufacture significance."""
+        A combo is one tradeable cell (this param-variant × one symbol × one venue), judged ON ITS OWN DATA:
+        never pooled across symbols, never deflated by sibling cells, never compared to siblings. Steps: build the
+        grid → screen every variant on REAL bars → for each (variant × symbol) build ONE BacktestMetrics from THAT
+        symbol's per_symbol_run (own bar_returns + fold_returns) with trials = the per-combo param-grid count (the
+        legitimate own-overfit deflation; the cross-combo family is dropped) → score each cell independently via
+        promote_brut (TrialStats(count=1), the locked DSR/PBO math untouched) → refine around variants with ≥1
+        passing cell → confirm each promoted cell on ITS OWN one-shot holdout → persist. Deterministic + LLM-free.
+
+        Deliberately DROPPED vs the pooled finder: register_trial (a brut cell isn't part of a family), the cohort
+        CSCV-PBO inject, the cluster-representative dedupe + rep gating, and BH-FDR. The fluke safeguard is the
+        forward/paper test (live stays human-only)."""
         spec = spec or seed_orb_fvg_spec()
         market = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
+        # trials = the per-combo param-grid count — the number of param variants of THIS algorithm tried (the
+        # legitimate own-overfit deflation). NOT the global ledger, NOT len(param_space) inherited blindly: it is
+        # the realized grid size, so the brut cell's deflated Sharpe is INVARIANT to how many OTHER cells exist.
+        grid_size = max(1, len(grid))
         catalog = default_catalog()
         venue = catalog.venue_for(spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
         # Per-symbol cost + calendar context — taker fee, MARKET DEPTH (slippage/impact), the asset-class
         # annualization calendar, and the venue each cell was actually priced at — ALL from the single source the
-        # autonomous loop also reads (master/screen_universe.build_cost_context), so the Strategy Finder and the
-        # FarmLoop can never disagree on what an equity/HL leg costs. Equity symbols pay IBKR (0.5 bps, depth
-        # 2/25) and annualize at ≈252 sessions/yr; HL perps pay HL (4.5 bps, depth 6/60); crypto symbols pay the
-        # spec's primary venue. Each is None on the common crypto-only path (no equity/HL symbol present) → the
-        # backtest's SCALAR venue fee/depth is used, byte-identical to before.
+        # autonomous loop also reads (master/screen_universe.build_cost_context). Each is None on the common
+        # crypto-only path → the backtest's SCALAR venue fee/depth is used, byte-identical to before.
         fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(spec, market, catalog)
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
-        # the spec's features + the market, not the swept params. Without this the sweep would screen every
-        # funding/meta-label spec price-only (funding reads None) — the same join the cohort screen uses.
+        # the spec's features + the market, not the swept params.
         alt = build_alt_by_symbol(resolve_alt_store(self.settings, self.store), spec, market)
 
         results: list[VariantResult] = []
-        cohort: list[CohortCandidate] = []
-        returns_by_tag: dict[str, list[float]] = {}
-        trades_by_tag: dict[str, int] = {}
 
-        def _screen_into(variant: Variant, source: str, label: str) -> None:
-            screened = self._screen(spec, variant, market, venue, alt, source=source, label=label, fee_schedule=fee_schedule, depth_schedule=depth_schedule, asset_class_by_symbol=asset_class_by_symbol)
-            if screened is None:
+        def _screen_into(variant: Variant) -> None:
+            r = self._screen(spec, variant, market, venue, alt, grid_size=grid_size,
+                             fee_schedule=fee_schedule, depth_schedule=depth_schedule,
+                             asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol)
+            if r is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
-            r, cand, val_returns, min_symbol_trades = screened
             results.append(r)
-            cohort.append(cand)
-            returns_by_tag[r.config_tag] = val_returns
-            trades_by_tag[r.config_tag] = min_symbol_trades
-            # Problem 1 — register EVERY screened variant as a trial so the global ledger (and thus every
-            # deflation in this run) reflects the TRUE running count, not the ~len(param_space) proxy.
-            register_trial(self.store, float(cand.metrics.sharpe_per_obs), source=cand.source, label=cand.label or cand.id)
 
-        # ---- coarse pass ----
+        # ---- coarse pass: screen + score each cell of each variant on its OWN data ----
         for variant in grid:
-            _screen_into(variant, "finder", f"{spec.name}:{variant.config_tag}")
-        # Honest coarse scoring drives the refine-seed selection below: the TRUE running trial count with the
-        # SAME dedupe-based effective-N as the final pass (so a correlated-but-real edge survives to refinement
-        # instead of being over-deflated against the raw coarse count).
-        coarse_reps = _cluster_representatives(results, returns_by_tag, threshold=_CLUSTER_CORRELATION)
-        self._rescore(results, returns_by_tag, trades_by_tag,
-                      self._finder_trial_stats(coarse_reps, {r.config_tag: r for r in results}))
+            _screen_into(variant)
 
-        # TWO-PASS REFINEMENT around the HONEST coarse gate-passers (not the leaky ones).
+        # TWO-PASS REFINEMENT around variants that have ≥1 PASSING cell (a real per-cell edge to localize). No
+        # leaderboard ranking across cells — a variant qualifies as a refine seed iff some cell of it passed.
         if two_pass:
             coarse_passers = sorted(
                 [r for r in results if r.gate_passed],
-                key=lambda r: (r.profit_factor, r.deflated_sharpe),
+                key=lambda r: r.deflated_sharpe,
                 reverse=True,
             )[:_REFINE_TOP_N]
             if coarse_passers:
@@ -380,108 +384,69 @@ class StrategyFinder:
                 for variant in refine_around(spec, survivor_variants):
                     if variant.config_tag in existing_tags:
                         continue
-                    _screen_into(variant, "finder_refine", f"{spec.name}:refine:{variant.config_tag}")
+                    _screen_into(variant)
 
-        # ---- dedupe the correlated grid → DISTINCT representatives; compute the run-wide honest context ----
-        reps = _cluster_representatives(results, returns_by_tag, threshold=_CLUSTER_CORRELATION)
-        results_by_tag = {r.config_tag: r for r in results}
-        finder_stats = self._finder_trial_stats(reps, results_by_tag)         # true count, effective-N = clusters (Problems 1, 2)
-        cohort_pbo = _cohort_pbo(reps, returns_by_tag)                         # REAL CSCV-PBO across the grid (Problem 3)
-
-        # FINAL scoring of every variant against the honest context — drives the displayed leaderboard.
-        self._rescore(results, returns_by_tag, trades_by_tag, finder_stats, cohort_pbo=cohort_pbo)
-
-        # BH-FDR over the DISTINCT representatives only (Problem 6); the ledger already holds every variant so
-        # deflation still sees the true count (register=False), and the haircut context is injected (trials=).
-        rep_set = set(reps)
-        rep_cohort = [
-            _with_pbo(c, cohort_pbo)
-            for c in cohort
-            if c.id in rep_set and trades_by_tag.get(c.id, 0) >= _MIN_TRADES_PER_SYMBOL
-        ]
-        # OBSERVE-ONLY rejects watch-list: opt the REAL autonomous cohort path into measuring the gate's Type-II
-        # rate. `watch_rejects=True` makes persist_cohort_verdict additionally band the gate-rejected-but-CLOSE
-        # representatives (promoted=False AND DSR in [0.90,0.95) AND survived FDR AND no risk-floor reason) into
-        # rejects_watch. This NEVER touches the gate's pass/fail — it reads the same promotions the gate produced.
-        # The verdict store is a SEPARATE durable handle from this run's trial ledger, so persisting the watch-list
-        # never perturbs the deflation math (best-effort: a watch-list write failure can't abort the run).
-        rejects_run_id = f"finder:{spec.name}:{utcnow()}"
-        rejects_persist = CohortPersist(
-            store=self.store,
-            run_id=rejects_run_id,
-            hypothesis=spec.rationale[:200] if spec.rationale else spec.name,
-            source=f"finder:{spec.name}",
-            watch_rejects=True,
-        )
-        promotions = {
-            p.candidate_id: p
-            for p in promote_cohort(
-                self.store, rep_cohort, self.settings.gates, fdr_q=fdr_q, register=False, trials=finder_stats,
-                check_holdout=False,  # selection is validation-only; the holdout confirms champions below
-                persist=rejects_persist,
-            )
-        }
-        for r in results:
-            p = promotions.get(r.config_tag)
-            r.promoted = bool(p and p.promoted)  # only a cluster representative can be promoted
-
-        # CHAMPION-ONLY one-shot holdout. The grid screened with include_holdout=False (no variant ever
-        # simulated the exam), selection + FDR ran on validation evidence alone — so the untouched, PURGED +
-        # EMBARGOED holdout is now evaluated exactly once per PROMOTED cluster representative, as a pure
-        # CONFIRMATION. A champion that fails is an honest dead end for this run: the finder never retries the
-        # exam with the next-best variant (search-until-pass would silently turn the holdout back into a
-        # selection set). Every look is audited as a `holdout_look` event.
+        # CHAMPION-ONLY one-shot holdout, PER CELL. The screen ran include_holdout=False (no cell simulated the
+        # exam). For each variant with ≥1 passing cell, re-run WITH the embargoed holdout once and confirm EACH
+        # passing cell on ITS OWN holdout run (per_symbol_holdout_runs[sym]) — a pure CONFIRMATION, never a retry.
         floor = float(self.settings.gates.holdout_min_deflated_sharpe)
         for r in results:
             r.holdout_passed = False
-        for r in (r for r in results if r.promoted):
+        for r in (r for r in results if r.gate_passed):
             champion = run_strategy_backtest_detailed(
                 spec, dict(r.fitted_params), market, fee_bps=venue.taker_fee_bps,
                 fee_schedule=fee_schedule,
                 slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
                 depth_schedule=depth_schedule, alt_by_symbol=alt,
                 asset_class_by_symbol=asset_class_by_symbol,
-            )  # include_holdout defaults True — this is the single exam look for this champion; charge EACH leg
-            #    its OWN venue depth (per-symbol depth_schedule, falling back to the venue scalar) — same cost
-            #    model as the screen
-            r.metrics = r.metrics.model_copy(
-                update={"holdout_deflated_sharpe": champion.metrics.holdout_deflated_sharpe}
-            )
-            r.holdout_passed = float(r.metrics.holdout_deflated_sharpe) > floor
+            )  # include_holdout defaults True — the single exam look for this champion variant
             r.target_vol = champion.target_vol  # T1: freeze vol anchor from the full backtest (incl. holdout bars)
+            any_cell_holdout = False
+            for sym, cell in r.cells.items():
+                if not cell.passed:
+                    continue
+                # Score this cell's holdout on ITS OWN holdout stream: metrics_for_run with holdout_run = this
+                # symbol's untouched holdout SymbolRun gives the cell's holdout deflated Sharpe (recentred PSR).
+                h_run = champion.per_symbol_holdout_runs.get(sym)
+                cell_h_dsr = (
+                    float(
+                        metrics_for_run(
+                            champion.per_symbol_runs.get(sym, h_run),
+                            trials=grid_size,
+                            buy_and_hold=champion.per_symbol_buy_and_hold.get(sym, 0.0),
+                            holdout_run=h_run,
+                        ).holdout_deflated_sharpe
+                    )
+                    if h_run is not None else 0.0
+                )
+                cell.holdout_passed = cell_h_dsr > floor
+                cell.metrics = cell.metrics.model_copy(update={"holdout_deflated_sharpe": Decimal(str(round(cell_h_dsr, 6)))})
+                cell.target_vol = champion.target_vol
+                any_cell_holdout = any_cell_holdout or cell.holdout_passed
+            r.holdout_passed = any_cell_holdout
             try:
                 self.store.append_event(
                     actor="master", kind="holdout_look", ref_type="strategy",
                     ref_id=f"{spec.name}:{r.config_tag}",
                     payload={
                         "passed": r.holdout_passed,
-                        "holdout_deflated_sharpe": float(r.metrics.holdout_deflated_sharpe),
+                        "cells": {s: c.holdout_passed for s, c in r.cells.items() if c.passed},
                     },
                 )
             except Exception:  # noqa: BLE001 — audit trail is best-effort; the verdict itself is already set
                 pass
+        for r in results:
+            r.promoted = r.gate_passed  # brut: a variant "promotes" iff ≥1 of its cells passed (no FDR/cluster gate)
+
         if persist:
             self._persist(spec, results, market, venue, venue_id_by_symbol)
-            # ACTIVATE the rejects watch-list: every screened variant now has a persisted strategy_version
-            # (r.version_id), so link each watched reject to its version and open a ZERO-CAPITAL paper track —
-            # the SAME SIM machinery survivors use — stamping strategy_version_id back so the Type-II report can
-            # join the reject's realized paper P&L to the verdict that rejected it. Observe-only + best-effort:
-            # a failure here can never undo a valid promotion (the gate already disposed). Zero capital = no money.
-            version_by_tag = {r.config_tag: r.version_id for r in results if r.version_id}
-            if version_by_tag:
-                from cosmu.master.rejects_lane import link_and_open_rejects_tracks
 
-                link_and_open_rejects_tracks(self.store, rejects_run_id, version_by_tag)
-
-        # Experiment-tracking hook (thin, best-effort): log EVERY screened variant to the registry with its
-        # exact fitted config + run seed + data_version + metrics — so the run is comparable to past runs and
-        # exactly regenerable — and carry `net_profit` as the continuous forward-P&L SOFT-LABEL that gives the
-        # ML ranker a gradient before any variant passes the gate. Never blocks discovery (log_experiments
-        # swallows its own failures). data_version is computed from the bars the run actually consumed.
+        # Experiment-tracking hook (thin, best-effort): log EVERY screened variant to the registry.
         self._log_experiments(spec, results, market)
 
         gate_passers = [r for r in results if r.gate_passed]
         leaderboard = sorted(gate_passers, key=lambda r: (r.profit_factor, r.deflated_sharpe), reverse=True)
+        # A SURVIVOR is a variant with at least one cell that passed the gate AND confirmed on its own holdout.
         survivors = [r for r in results if r.promoted and r.holdout_passed]
         return FinderReport(
             strategy_name=spec.name,
@@ -503,23 +468,27 @@ class StrategyFinder:
         venue,  # noqa: ANN001 — venue catalog row
         alt_by_symbol: dict[str, dict[str, dict[str, float]]] | None,
         *,
-        source: str,
-        label: str,
+        grid_size: int,
         fee_schedule: dict[str, Decimal] | None = None,
         depth_schedule: dict[str, tuple[Decimal, Decimal]] | None = None,
         asset_class_by_symbol: dict[str, str] | None = None,
-    ) -> tuple[VariantResult, CohortCandidate, list[float], int] | None:
-        """Compile + backtest one variant on REAL bars (with the point-in-time alt-data join so funding/meta-label
-        specs are evaluated honestly). Returns (result, cohort-candidate, validation return stream, min per-symbol
-        trade count) — or None for an invalid grid point. Gate flags are filled later by `_rescore`, once the
-        run-wide honest trial context is known."""
+        venue_id_by_symbol: dict[str, str] | None = None,
+    ) -> VariantResult | None:
+        """Compile + backtest one variant on REAL bars, then BUILD AND SCORE ONE CELL PER (symbol, venue) on its
+        OWN streams. Returns a VariantResult carrying per-cell verdicts — or None for an invalid grid point.
+
+        Each cell's BacktestMetrics comes from metrics_for_run(per_symbol_runs[sym], trials=grid_size, ...) — the
+        cell's OWN bar_returns AND own fold_returns (NEVER the pooled val.* streams), and the per-combo param-grid
+        count as the own-overfit deflation. Each cell is scored by promote_brut (TrialStats(count=1), the min-trades
+        floor on the cell's OWN trades). A cell passes iff promote_brut promoted it AND it cleared the per-cell
+        trade floor. The variant's pooled `metrics`/`profit_factor` are kept for DISPLAY only; the brut verdict is
+        per cell."""
         try:
             compiled = compile_spec(spec, variant.params)
         except ValueError:
             return None
-        # include_holdout=False: the SCREEN sees validation evidence only — the untouched holdout is evaluated
-        # exactly once, for the promoted champion(s), in find()'s champion-only holdout step. A 256-variant grid
-        # simulating the exam per variant was the structural holdout-reuse channel the deep review flagged.
+        # include_holdout=False: the SCREEN sees validation evidence only — the untouched holdout is confirmed once
+        # per passing cell in find()'s champion-only holdout step. Each leg is priced at ITS OWN venue depth.
         detailed = run_strategy_backtest_detailed(
             spec, variant.params, market, fee_bps=venue.taker_fee_bps,
             fee_schedule=fee_schedule,
@@ -528,10 +497,8 @@ class StrategyFinder:
             alt_by_symbol=alt_by_symbol,
             include_holdout=False,
             asset_class_by_symbol=asset_class_by_symbol,
-        )  # price each leg at ITS OWN venue depth (per-symbol depth_schedule, falling back to the spec's primary
-        #   venue scalar) — a thin-book venue (Polymarket 30/150, Coinbase 8/60) pays the wide spread + heavy
-        #   impact it really would, instead of falling back to the global 5/50
-        metrics = detailed.metrics
+        )
+        metrics = detailed.metrics  # POOLED — display only (best_symbol, the leaderboard); never the brut verdict
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)
         result = VariantResult(
             config_tag=variant.config_tag,
@@ -545,93 +512,76 @@ class StrategyFinder:
             fitted_params=variant.params,
             per_symbol=detailed.per_symbol,
         )
-        candidate = CohortCandidate(
-            id=variant.config_tag,
-            metrics=metrics,
-            net_profit=net_profit,
-            source=source,
-            label=label,
-            return_variance=max(1e-6, float(metrics.max_drawdown) ** 2 + 1e-3),
-        )
-        return result, candidate, list(detailed.val_returns), detailed.min_symbol_trades
+        result.cells = self._score_cells(detailed, venue, grid_size, venue_id_by_symbol)
+        # The variant's display deflated_sharpe = the BEST cell's deflated Sharpe (a display ranking number; the
+        # brut verdict is per cell). gate_passed iff ANY cell passed — a config with one real cell edge qualifies.
+        passing = [c for c in result.cells.values() if c.passed]
+        result.gate_passed = bool(passing)
+        result.deflated_sharpe = max((c.deflated_sharpe for c in result.cells.values()), default=0.0)
+        result.reasons = [] if passing else ["no_passing_cell"]
+        return result
 
-    def _rescore(
+    def _score_cells(
         self,
-        results: list[VariantResult],
-        returns_by_tag: dict[str, list[float]],
-        trades_by_tag: dict[str, int],
-        finder_stats: TrialStats,
-        *,
-        cohort_pbo: float | None = None,
-    ) -> None:
-        """Score every variant against the honest trial context `finder_stats` and, when provided, the REAL
-        cohort CSCV-PBO + a PER-SYMBOL trade floor. Mutates each result's gate flag, deflated Sharpe, and reasons
-        in place."""
-        for r in results:
-            metrics = r.metrics
-            if cohort_pbo is not None:
-                metrics = metrics.model_copy(update={"pbo": Decimal(str(round(cohort_pbo, 6)))})
-                r.metrics = metrics  # persist the real CSCV-PBO into the recorded backtest
-            verdict = score(metrics, self.settings.gates, trials=finder_stats, check_holdout=False)
-            reasons = list(verdict.reasons)
-            per_symbol_ok = trades_by_tag.get(r.config_tag, 0) >= _MIN_TRADES_PER_SYMBOL
-            if not per_symbol_ok:
+        detailed,  # noqa: ANN001 — BacktestResult
+        venue,  # noqa: ANN001 — venue catalog row
+        grid_size: int,
+        venue_id_by_symbol: dict[str, str] | None,
+    ) -> dict[str, CellResult]:
+        """Build ONE CellResult per (symbol, venue) from the variant's per-symbol RUNS, judged on its OWN data.
+
+        NO RE-POOLING: each cell's metrics come from detailed.per_symbol_runs[sym] (own bar_returns AND own
+        fold_returns), the per-symbol B&H, and trials=grid_size (the per-combo param-search count) — never the
+        pooled val.bar_returns/val.fold_returns. promote_brut scores each cell alone (TrialStats(count=1), so the
+        cell's deflated Sharpe is invariant to how many OTHER cells the sweep produced) with the min-trades floor on
+        the cell's OWN trades. A cell passes iff promoted AND it cleared the per-cell trade floor."""
+        vmap = venue_id_by_symbol or {}
+        cell_metrics: dict[str, BacktestMetrics] = {}
+        for sym, run in detailed.per_symbol_runs.items():
+            cell_metrics[sym] = metrics_for_run(
+                run,
+                trials=grid_size,
+                buy_and_hold=detailed.per_symbol_buy_and_hold.get(sym, 0.0),
+            )
+        candidates = [CohortCandidate(id=sym, metrics=m, net_profit=0.0, source="finder") for sym, m in cell_metrics.items()]
+        promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
+        out: dict[str, CellResult] = {}
+        for sym, m in cell_metrics.items():
+            p = promotions[sym]
+            trades = m.num_trades
+            reasons = list(p.reasons)
+            floor_ok = trades >= _MIN_TRADES_PER_SYMBOL
+            if not floor_ok:
                 reasons.append("min_trades_per_symbol")
-            r.deflated_sharpe = float(verdict.ranking_scalar)
-            r.reasons = reasons
-            r.gate_passed = verdict.passed and per_symbol_ok
-
-    def _finder_trial_stats(self, reps: list[str], results_by_tag: dict[str, VariantResult]) -> TrialStats:
-        """The honest multiple-testing context for this run.
-
-        The EFFECTIVE number of independent trials is the number of DISTINCT correlation clusters K — Problem 6's
-        dedupe *is* the effective-N. This is the faithful realization of "thread the true trial count, haircut for
-        correlation": K is the real count of decorrelated hypotheses tested (>> len(param_space)~7), and a dense
-        CORRELATED grid collapses to few clusters so densifying it cannot keep inflating the count (closing the
-        'easier as the grid densifies' leak). It is computed per-run from the data alone, so re-running the finder
-        on the same bars is deterministic (it does NOT ratchet up with the accumulating global ledger).
-
-        The closed-form average-correlation haircut `N/(1+(N-1)*rho_bar)` (`scorer.effective_trials`) is the wrong
-        model for a CLUSTERED grid — most pairs ~0, a few ~1 → a low mean that over-discounts toward 1 — so K, the
-        decorrelated-cluster count, is used directly as the effective count. The cross-sectional Sharpe variance
-        is taken over the DISTINCT representatives, which (unlike the variance over the whole grid) does NOT
-        collapse as near-duplicates pile up."""
-        k = max(1, len(reps))
-        rep_sharpes = [float(results_by_tag[t].metrics.sharpe_per_obs) for t in reps if t in results_by_tag]
-        sr_variance = statistics.pvariance(rep_sharpes) if len(rep_sharpes) > 1 else None
-        return TrialStats(count=k, sr_variance=sr_variance, sr_correlation=None)
+            out[sym] = CellResult(
+                symbol=sym,
+                venue_id=vmap.get(sym, venue.id),
+                metrics=m,
+                deflated_sharpe=p.deflated_sharpe_prob,
+                trades=trades,
+                passed=p.promoted and floor_ok,
+                reasons=reasons,
+            )
+        return out
 
     # ------------------------------------------------------------------ persistence (config library)
 
     def _persist(self, spec: StrategySpec, results: list[VariantResult], market: dict[str, list[Bar]], venue, venue_id_by_symbol: dict[str, str] | None = None) -> None:  # noqa: ANN001 — venue catalog row
-        """Write the config library: one strategies row + one strategy_versions row per variant (origin='finder',
-        config_tag carried in params), the screen backtest, and — for promoted+holdout-passing variants — a track,
-        a `track_opened` event (the paper clock origin + proven-regime passport that master/live_eligibility
-        reads, mirroring the evolution loop), and a finder-survivor event. Idempotent: a variant whose code_hash
-        already exists is not re-inserted."""
+        """Write the config library, BRUT per-cell: one strategies row + one strategy_versions row per variant
+        (origin='finder', config_tag in params), the screen backtest, one backtest_symbols row PER CELL (carrying
+        the cell's OWN pass/fail in `verdict`), and — for each cell that passed the gate AND confirmed on its OWN
+        holdout — a per-CELL paper track + a cell-keyed `track_opened` event (the paper clock origin + this cell's
+        own proven-regime passport that master/live_eligibility reads) + a finder_survivor event. Idempotent: a
+        variant whose code_hash already exists is not re-inserted."""
         with self.store.batch() as b:
             strategy_id = self._ensure_strategy(b, spec)
             for r in results:
                 if self._version_exists(r.code_hash):
                     continue
-                holdout_ok = r.holdout_passed
-                # PER-SYMBOL BREADTH floor: a gate-passer whose edge generalizes on NO symbol (judgeable cells but
-                # none robust) is a best-of-N artefact the pooled Gate can't catch — don't promote/fund it. Fail-open
-                # when there's no per-symbol evidence. ADD-strictness only; the locked Gate is untouched. The
-                # per-symbol rows are still PERSISTED below (visibility) — the spec stays on /lab, just unfunded.
-                breadth_ok = funding_eligible(r.per_symbol)
-                gate_and_breadth = r.gate_passed and breadth_ok
-                promote = r.promoted and holdout_ok and breadth_ok
-                # Forward-test entrants are born "screened" (badge: Backtest) — they carry only backtest
-                # evidence at birth. The paper clock (mark_tracks) promotes them to "paper" once they accrue
-                # >= 1 real forward day. status is badge-only; the live gate reads track_opened, not status.
-                status = "screened" if gate_and_breadth else "killed"
-                if gate_and_breadth:
-                    kill_reason = None
-                elif not r.gate_passed:
-                    kill_reason = ",".join(r.reasons) or "screened_out"
-                else:  # passed the Gate but no symbol generalizes → a best-of-N artefact
-                    kill_reason = "no_generalizing_symbol"
+                # A variant is SCREENED (kept on /lab) iff ANY of its cells passed the brut gate; KILLED otherwise.
+                # The brut verdict is per CELL — the version status is just whether any cell is fundable.
+                status = "screened" if r.gate_passed else "killed"
+                kill_reason = None if r.gate_passed else (",".join(r.reasons) or "no_passing_cell")
                 fitted = r.fitted_params or fit_params(spec)
                 params = {**fitted, "config_tag": r.config_tag}
                 compiled = compile_spec(spec, fitted)
@@ -654,72 +604,64 @@ class StrategyFinder:
                     },
                 )
                 r.version_id = version_id
-                bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, holdout_ok, venue, r.per_symbol))
-                # PER-SYMBOL rows = the queryable unit of truth (1 strat × 1 symbol × 1 result), so the /lab front +
-                # recompute + the honest per-symbol gate read SQL, not a JSON blob. venue_id = the venue THIS symbol
-                # was actually priced at (equity→ibkr, HL→hyperliquid, else the spec's primary venue) — the real fee
-                # axis of the S×A×V triple, never the spec's single primary venue. verdict = the HONEST cross-symbol
-                # label (robust/fragile/thin/negative, computed ONCE over the whole per-symbol set) so a lone
-                # best-of-N winner is flagged, not celebrated — pure visibility, never the funding authority (the
-                # pooled deflated Gate is).
-                _verdicts = classify_per_symbol(r.per_symbol)
+                bt_id = b.insert("backtests", _backtest_row(version_id, r.metrics, r.deflated_sharpe, r.gate_passed, r.holdout_passed, venue, r.per_symbol))
+                # PER-CELL rows = the queryable unit of truth (1 strat × 1 symbol × 1 venue × 1 result). venue_id =
+                # the venue THIS symbol was actually priced at (the real fee axis of the S×A×V triple). `verdict`
+                # carries the BRUT per-cell pass/fail: 'pass' iff this cell cleared the gate on its OWN data (the
+                # funder fans out a paper track per 'pass' cell), else the cell's own kill reason. NEVER a pooled or
+                # sibling-compared label — each cell is judged alone.
                 _vmap = venue_id_by_symbol or {}
                 for _sym, _pm in (r.per_symbol or {}).items():
+                    cell = r.cells.get(_sym)
+                    cell_venue = cell.venue_id if cell else _vmap.get(_sym, venue.id)
+                    cell_verdict = "pass" if (cell and cell.passed) else ((",".join(cell.reasons) or "fail") if cell else None)
                     b.insert("backtest_symbols", {
-                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": _vmap.get(_sym, venue.id),
+                        "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": cell_venue,
                         "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                         "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
-                        "verdict": _verdicts.get(_sym), "created_at": utcnow(),
+                        "verdict": cell_verdict, "created_at": utcnow(),
                     })
-                if promote:
-                    # Born HONEST: equity = starting_capital, return_pct = 0 (master/tracks.open_paper_track).
-                    # The OOS stays in backtests.oos_return; the paper clock advances the forward columns from
-                    # real marks, so a promoted-but-unmarked survivor never shows its backtest as forward P&L.
-                    _capital = self.settings.sim_track_capital
-                    open_paper_track(b, version_id=version_id, starting_capital=_capital, target_vol=r.target_vol)
-                    # The paper clock origin. master/live_eligibility reads the FIRST `track_opened` event for
-                    # a version as BOTH its maturity-clock origin (paper_clock_origin) and its proven-regime
-                    # passport (proven_regimes_for) — exactly as the evolution loop writes it. Without this a promoted
-                    # finder survivor would have origin=None → paper_age_days 0 forever → never forward_ready →
-                    # never live-armable (paper is HARD-enforced in api/routers/live.py). So a finder survivor
-                    # gets the SAME track_opened mark, carrying the regimes its screen proved positive net edge in.
-                    proven = sorted(proven_regimes(r.metrics.regime_returns))
+                # PER-CELL TRACKS: open ONE standalone paper track for each cell that passed the gate AND confirmed
+                # on its OWN holdout. Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances
+                # the forward columns from real marks. The track_opened event is keyed to the CELL (cell_id) so
+                # master/live_eligibility reads this cell's OWN clock origin + proven-regime passport — never a
+                # sibling cell's. Each cell stands alone; no sibling comparison decides funding.
+                _capital = self.settings.sim_track_capital
+                for _sym, cell in r.cells.items():
+                    if not (cell.passed and cell.holdout_passed):
+                        continue
+                    open_paper_track(b, version_id=version_id, starting_capital=_capital, target_vol=cell.target_vol,
+                                     symbol=cell.symbol, venue_id=cell.venue_id)
+                    proven = sorted(proven_regimes(cell.metrics.regime_returns))
                     b.append_event(
-                        actor="master",
-                        kind="track_opened",
-                        ref_type="strategy_version",
-                        ref_id=version_id,
+                        actor="master", kind="track_opened", ref_type="strategy_version",
+                        ref_id=cell_id(version_id, cell.symbol, cell.venue_id),
                         payload={
-                            "deflated_sharpe": round(r.deflated_sharpe, 6),
-                            "config_tag": r.config_tag,
-                            "origin": "finder",
+                            "deflated_sharpe": round(cell.deflated_sharpe, 6),
+                            "config_tag": r.config_tag, "origin": "finder",
+                            "symbol": cell.symbol, "venue_id": cell.venue_id,
                             "proven_regimes": proven,
                         },
                     )
                     b.append_event(
-                        actor="master",
-                        kind="finder_survivor",
-                        ref_type="strategy_version",
-                        ref_id=version_id,
+                        actor="master", kind="finder_survivor", ref_type="strategy_version",
+                        ref_id=cell_id(version_id, cell.symbol, cell.venue_id),
                         payload={
-                            "config_tag": r.config_tag,
-                            "profit_factor": round(r.profit_factor, 4),
-                            "deflated_sharpe": round(r.deflated_sharpe, 6),
-                            "net_profit": round(r.net_profit, 6),
-                            "holdout_passed": holdout_ok,
+                            "config_tag": r.config_tag, "symbol": cell.symbol, "venue_id": cell.venue_id,
+                            "deflated_sharpe": round(cell.deflated_sharpe, 6),
+                            "holdout_passed": cell.holdout_passed,
                         },
                     )
 
-        # After the version rows are committed, record each CHAMPION's one-shot holdout verdict through the
-        # ledger (separate transaction; idempotent on version_id) so the finder can never re-pick on the holdout.
-        # Only promoted representatives ever took the exam (champion-only holdout) — recording a non-promoted
-        # gate-passer here would mark its holdout "spent, failed" for an exam it never sat.
+        # After the version rows are committed, record each surviving CHAMPION's one-shot holdout verdict through
+        # the ledger (separate transaction; idempotent on version_id) so the finder can never re-pick on the
+        # holdout. Only variants with a passing cell ever took the exam (champion-only holdout).
         ledger = HoldoutLedger(self.store)
         for r in results:
-            if r.version_id and r.promoted and not ledger.consumed(r.version_id):
+            if r.version_id and r.gate_passed and not ledger.consumed(r.version_id):
                 ledger.evaluate_once(
                     r.version_id,
-                    lambda r=r: {"passed": r.holdout_passed, "deflated_sharpe": round(float(r.metrics.holdout_deflated_sharpe), 6)},
+                    lambda r=r: {"passed": r.holdout_passed, "deflated_sharpe": round(r.deflated_sharpe, 6)},
                 )
 
         # FREEZE each promoted survivor into its strategy_promotions record — the single source of truth live
@@ -770,47 +712,7 @@ class StrategyFinder:
 
 
 
-# --------------------------------------------------------------------------- correlation / clustering / CSCV
-
-
-def _corr(a: list[float], b: list[float]) -> float | None:
-    """Pearson correlation of two return streams aligned on their common tail. None when undefined. Thin alias
-    over the shared `master.cohort.corr` (the single implementation the loop reuses)."""
-    return _shared_corr(a, b)
-
-
-def _cluster_representatives(
-    results: list[VariantResult], returns_by_tag: dict[str, list[float]], *, threshold: float
-) -> list[str]:
-    """Greedy correlation clustering: walk variants best-first (profit_factor, then per-obs Sharpe) and fold each
-    into the first existing representative it correlates with at >= `threshold`; otherwise it starts a new
-    cluster as its own representative. Returns the representative config_tags — one DISTINCT hypothesis per
-    cluster — so BH-FDR is never fed a grid of near-duplicates. Variants with no usable return stream are
-    excluded (they cannot clear the trade gate anyway).
-
-    The finder-specific best-first ORDERING (profit_factor, then per-obs Sharpe) lives here; the greedy
-    correlation walk itself is the shared `master.cohort.cluster_representatives` the autonomous loop reuses."""
-    ordered = sorted(
-        (r for r in results if len(returns_by_tag.get(r.config_tag, [])) >= 2),
-        key=lambda r: (r.profit_factor, float(r.metrics.sharpe_per_obs)),
-        reverse=True,
-    )
-    return _shared_cluster_representatives(
-        [r.config_tag for r in ordered], returns_by_tag, threshold=threshold
-    )
-
-
-def _cohort_pbo(reps: list[str], returns_by_tag: dict[str, list[float]]) -> float:
-    """Real CSCV-PBO across the DISTINCT representatives' return streams (a legitimate, diverse config
-    population). < 2 representatives → 1.0 (maximally overfit: CSCV cannot certify a single config), matching
-    the gate's convention. Thin alias over the shared `master.cohort.cohort_cscv_pbo`."""
-    return _shared_cohort_cscv_pbo(reps, returns_by_tag)
-
-
-def _with_pbo(candidate: CohortCandidate, pbo: float) -> CohortCandidate:
-    """A copy of the candidate whose metrics carry the cohort's real CSCV-PBO, so promote_cohort's pbo gate uses
-    the real overfit estimate, not the per-variant proxy."""
-    return replace(candidate, metrics=candidate.metrics.model_copy(update={"pbo": Decimal(str(round(pbo, 6)))}))
+# --------------------------------------------------------------------------- cost / display helpers
 
 
 def _round_trip_cost(metrics: BacktestMetrics, venue) -> float:  # noqa: ANN001
