@@ -1,0 +1,44 @@
+{
+  "name": "DVOL crush continuation — implied-vol collapse confirms a stabilizing uptrend (long spot)",
+  "rationale": "CROSS-METRIC + cross-event op (dvol cross_down x momentum). dvol-calm-regime-momentum reads a STATIC low DVOL level. This reads the EVENT — DVOL crossing DOWN through a level (a vol CRUSH / implied-vol collapse) — as a distinct catalyst: a vol crush after a stress episode is the options market actively re-pricing calm, and when it coincides with price momentum turning UP, it marks a regime TRANSITION from fear to a stabilizing uptrend (the post-capitulation grind begins as hedges are unwound and the vol risk-premium normalizes). Mechanism before data: long spot when dvol crosses DOWN through a fitted level (the crush) AND a short ret is positive (price stabilizing up); exit when dvol spikes back up (fear returns) or barriers fire. The novelty vs dvol-calm-regime-momentum is the DERIVATIVE event (the crush transition) rather than a steady-state level, and vs g2-dvol-spike-oversold-reversion it is the OPPOSITE leg (vol falling + price up = continuation, not vol rising + price oversold = reversion). Disconfirmer 1: replace cross_down with a dvol LEVEL lt — if the static read matches the deflated Sharpe, the crush-timing adds nothing (duplicates the calm-momentum spec). Disconfirmer 2: drop the momentum arm — if a bare vol crush matches, it is a vol-direction proxy. Disconfirmer 3 (PIT/cost): DVOL daily next-day-available; net of ~20bps the continuation must clear. tier0 dvol + tier0 ret_Nd, fresh DVOL prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "dvol crosses down (implied-vol crush) WHILE price momentum turns up — a fear-to-stabilization regime transition, ridden on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "cross_down", "threshold": { "param": "crush_level" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "crush_level": { "kind": "float", "lo": 42.0, "hi": 58.0 },
+    "dvol_exit":   { "kind": "float", "lo": 50.0, "hi": 66.0 },
+    "mom_lb":      { "kind": "int",   "lo": 3,    "hi": 15,  "step": 1 },
+    "mom_floor":   { "kind": "float", "lo": 0.0,  "hi": 0.04 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":          { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":   { "kind": "int",   "lo": 3,    "hi": 16,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

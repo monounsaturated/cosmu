@@ -1,0 +1,44 @@
+{
+  "name": "Macro-regime-gated reversion — buy dips only in a risk-on macro regime (long spot)",
+  "rationale": "REGIME-SWITCHING: a macro regime SELECTS whether a sub-strategy (here mean-reversion) is allowed to fire. Mean-reversion dip-buying works in benign regimes and is a catastrophe in a macro de-risking (every dip keeps dipping). macro_regime is a FRED-derived composite (curve slope, real rates, liquidity) that tags the shared cross-asset risk regime — exactly the switch that should turn dip-buying ON only when the macro backdrop supports a bounce. Mechanism before data: long spot when macro_regime is above a fitted risk-on floor (benign backdrop) AND price is oversold (RSI below a fitted floor — the dip); exit on RSI recovery or barriers. This is a true regime-conditional strategy: the SAME oversold trigger is gated by an orthogonal MACRO state, distinct from rsi-dip-buy-in-an-uptrend (gated by the asset's OWN trend + realized vol, no macro), funding-reset-reversion (funding gate), and reg-risk-derisk-momentum (regulatory index gating MOMENTUM, not reversion). Disconfirmer 1: drop the macro_regime gate — if bare oversold dip-buying matches the deflated Sharpe, the macro regime adds nothing. Disconfirmer 2: macro_regime is slow (next-day FRED, infrequent updates); if it changes so rarely it is a near-constant over the sample, it is not actually selecting regimes — the gate's behaviour-vs-control comparison will show it. Disconfirmer 3 (PIT/cost): FRED next-day-available; net of ~20bps the reversion must clear. tier0 macro_regime + tier0 rsi, fresh-enough prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "oversold price (the dip) gated to fire ONLY when the FRED macro regime is risk-on (benign backdrop) — regime-conditional reversion, long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "macro_regime" }, "op": "gt", "threshold": { "param": "regime_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "regime_floor": { "kind": "float", "lo": 0.30, "hi": 0.55 },
+    "rsi_lb":       { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":    { "kind": "float", "lo": 22.0, "hi": 40.0 },
+    "rsi_exit":     { "kind": "float", "lo": 50.0, "hi": 68.0 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":           { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

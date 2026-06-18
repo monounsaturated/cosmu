@@ -1,0 +1,44 @@
+{
+  "name": "Sustained basis carry harvest — hold spot while the term premium persists (long)",
+  "rationale": "TERM-STRUCTURE / CARRY, the harvest side that the existing basis specs (both CONTRARIAN reversion plays) never build. perp_spot_basis is the perp-spot price spread = the market's revealed price of leverage / term premium. A SUSTAINED moderate-positive basis means the futures curve is in steady contango: longs persistently value the leverage, a structurally-bid carry regime. Rather than fade an EXTREME (the contrarian specs), this HARVESTS the persistence: long spot while a moderate-positive basis holds (not so extreme it is a blow-off, gated by an upper guard via the symmetric between exit), and exit only when the basis decays back toward zero (carry exhausted). Mechanism before data: enter when basis is above a fitted carry floor AND a slow trend confirms the regime is intact; the signal exit fires when basis falls below a decay level. Distinct from perp-basis-discount-contrarian-long-spot (basis EXTREME-LOW reversion) and g2-basis-funding-orthogonal-carry-long (basis + a FUNDING orthogonality gate) — this is a pure single-axis term-carry persistence play with no funding arm. Disconfirmer 1: a plain unconditional spot long over the same sample/costs must not match the deflated Sharpe — the basis floor must add timing. Disconfirmer 2: if the edge is identical whether basis is moderate OR extreme, it is just a long-bias proxy, not a carry-persistence read. Disconfirmer 3 (PIT/cost): basis is small (~1e-3 scale here); net of ~20bps the carry-plus-drift must clear or it is fee-dead. tier0 perp_spot_basis + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "a sustained moderate-positive perp_spot_basis (steady contango / term carry) with a confirming slow trend — harvested by holding spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 21
+  },
+  "entry": [
+    { "feature": { "name": "perp_spot_basis" }, "op": "gt", "threshold": { "param": "carry_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "perp_spot_basis" }, "op": "lt", "threshold": { "param": "carry_decay" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "carry_floor": { "kind": "float", "lo": 0.00005, "hi": 0.0008 },
+    "carry_decay": { "kind": "float", "lo": -0.001, "hi": 0.0001 },
+    "trend_lb":    { "kind": "int",   "lo": 14,    "hi": 50,   "step": 1 },
+    "trend_floor": { "kind": "float", "lo": -0.02, "hi": 0.03 },
+    "stop":        { "kind": "float", "lo": 0.04,  "hi": 0.14 },
+    "tp":          { "kind": "float", "lo": 0.06,  "hi": 0.26 },
+    "time_stop":   { "kind": "int",   "lo": 5,     "hi": 21,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

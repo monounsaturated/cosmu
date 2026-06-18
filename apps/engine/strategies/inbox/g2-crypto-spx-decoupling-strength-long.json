@@ -1,0 +1,44 @@
+{
+  "name": "Crypto-vs-equity decoupling strength — crypto leads while SPX lags (long spot)",
+  "rationale": "CROSS-MARKET RELATIVE-STRENGTH / statistical-arb flavor (spx_index x crypto momentum). A single-instrument approximation of a crypto-vs-equity relative-value trade with no pairs engine: when crypto is rallying (own momentum strongly positive) WHILE the broad equity benchmark (SPX) is NOT (flat or down — read via SPX cross_down through a level, the equity side failing to confirm), crypto is exhibiting genuine idiosyncratic strength / DECOUPLING rather than just riding equity beta. Decoupling-up has historically marked crypto-native demand (a self-sustaining leg) rather than a borrowed risk-on move that reverses when equities roll. Mechanism before data: long spot when crypto ret over a window is strongly positive AND spx_index crosses DOWN through a fitted level (equity NOT confirming — the divergence); exit when crypto momentum fades. Distinct from nasdaq-risk-appetite-leadlag (NDX UP CONFIRMING — the OPPOSITE, beta-on regime) and cross-market-dollar-weak-momentum (FX). The novelty is buying DIVERGENCE (crypto strong, equity weak), the inverse of the confirmation specs. Disconfirmer 1: drop the SPX arm — if bare crypto momentum matches the deflated Sharpe, the decoupling read adds nothing. Disconfirmer 2: decoupling can resolve DOWN (crypto catches down to equities); if requiring SPX-weak makes the edge WORSE than SPX-strong, crypto is beta-driven and the confirmation specs are right, not this one. Disconfirmer 3 (PIT/cost): SPX daily next-day-available; net of ~20bps the decoupling leg must clear. tier0 spx_index + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "strong crypto momentum WHILE SPX crosses down (equity not confirming) — idiosyncratic crypto decoupling strength, long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "spx_index" }, "op": "cross_down", "threshold": { "param": "spx_level" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb":    { "kind": "int",   "lo": 5,    "hi": 25,  "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.01, "hi": 0.08 },
+    "spx_level": { "kind": "float", "lo": 3600.0, "hi": 7600.0 },
+    "mom_exit":  { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":      { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":        { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop": { "kind": "int",   "lo": 2,    "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

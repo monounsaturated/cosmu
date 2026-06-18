@@ -1,0 +1,43 @@
+{
+  "name": "Prediction-market probability over-extension fade (short the over-priced contract)",
+  "rationale": "PREDICTION SEGMENT (asset_classes=[prediction], polymarket) — a distinct asset class no inbox spec trades directly (existing polymarket specs use pm_* as CRYPTO features; this trades the prediction contract ITSELF). Mechanism: prediction-market probabilities exhibit favorite-longshot and momentum-overshoot biases — a contract whose implied probability has spiked UP fast and now sits at a rich level often over-extends before resolution and drifts back down as the move is faded. This shorts the over-priced contract: enter short when pm_implied_prob is above a fitted rich level (extended toward certainty but not yet resolved) AND pm_prob_velocity has rolled over (cross_down through ~0 — the upward repricing momentum is exhausting); stop ABOVE entry, take-profit BELOW; exit when velocity turns back up (repricing resumes) or barriers fire. The instrument is the Polymarket contract; pm_book_depth-style capacity is a real constraint (max_position_pct conservative). Distinct from polymarket-positioning-risk-flip and g2-pm-prob-velocity-drift-long (both use pm_* to trade CRYPTO, long). Disconfirmer 1: drop the velocity-rollover arm — if shorting any rich level matches the deflated Sharpe, the momentum-exhaustion timing adds nothing. Disconfirmer 2: rich contracts can keep rising to resolution (the favorite wins); if the edge is dominated by resolution losses, the fade is on the wrong side of the longshot bias. Disconfirmer 3 (PIT/cost): Polymarket CLOB is PIT; net of CLOB fees + thin depth the fade must clear. tier0 pm_implied_prob + pm_prob_velocity, fresh prod data — low-confidence until OOS; shorting a prediction contract = buying the complementary side.",
+  "catalyst": "pm_implied_prob at a rich, over-extended level WHILE pm_prob_velocity rolls over (cross_down) — an over-priced contract faded short",
+  "universe": {
+    "venues": ["polymarket"],
+    "asset_classes": ["prediction"],
+    "min_liquidity_usd": 1000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "pm_implied_prob" }, "op": "gt", "threshold": { "param": "rich_level" } },
+    { "feature": { "name": "pm_prob_velocity" }, "op": "cross_down", "threshold": { "param": "vel_rollover" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "pm_prob_velocity" }, "op": "gt", "threshold": { "param": "vel_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "rich_level":   { "kind": "float", "lo": 0.55, "hi": 0.85 },
+    "vel_rollover": { "kind": "float", "lo": -0.02, "hi": 0.03 },
+    "vel_exit":     { "kind": "float", "lo": 0.0,  "hi": 0.10 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "tp":           { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": null
+}

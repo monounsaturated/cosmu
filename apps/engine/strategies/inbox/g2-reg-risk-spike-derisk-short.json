@@ -1,0 +1,44 @@
+{
+  "name": "Regulatory-shock de-risk — crackdown spike x momentum rollover (perp short)",
+  "rationale": "EVENT-STUDY / REGIME, SHORT — the active de-risking complement of reg-risk-derisk-momentum (which goes LONG when reg risk is LOW). reg_risk_crypto is an LLM-as-judge [0,1] crackdown-pressure index; a SPIKE marks rising regulatory risk (enforcement, bans, restrictive rulings) that historically precedes crypto de-risking as institutions and retail reduce exposure ahead of the overhang. This shorts the de-risk: enter short when reg_risk_crypto crosses UP through a fitted crackdown level (fresh regulatory shock) AND price momentum has rolled over (confirming the market is already pricing the overhang, not ignoring it); stop ABOVE, take-profit BELOW; exit when reg risk subsides through a low level (overhang cleared). Mechanism uses the VELOCITY (cross_up = a fresh spike) plus price confirmation, distinct from reg-risk-derisk-momentum (reg_risk LEVEL low + momentum LONG). Disconfirmer 1: drop the reg-risk arm — if bare momentum-rollover shorting matches the deflated Sharpe, the regulatory shock adds nothing. Disconfirmer 2: regulatory spikes are sometimes bought (sell-the-rumor-buy-the-news); if requiring the spike makes the edge WORSE, the overhang is already priced and the event-study sign is wrong. Disconfirmer 3 (PIT/cost): reg_risk_crypto is PIT at evidence-availability; thin sample (LLM index, ~5 prod points so far) means effective-N may be below the gate floor — the gate's min-trades will catch it. perp short pays/earns funding; net of ~20bps+. tier1 reg_risk_crypto + tier0 ret_Nd, thin-but-fresh prod data — low-confidence until OOS; SHORT = perp.",
+  "catalyst": "reg_risk_crypto crosses up into a crackdown spike WHILE price momentum rolls over — active regulatory de-risking, shorted on perp",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "reg_risk_crypto" }, "op": "cross_up", "threshold": { "param": "crackdown_level" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "reg_risk_crypto" }, "op": "lt", "threshold": { "param": "reg_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "crackdown_level": { "kind": "float", "lo": 0.15, "hi": 0.50 },
+    "reg_exit":        { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "mom_lb":          { "kind": "int",   "lo": 3,    "hi": 15,  "step": 1 },
+    "mom_ceiling":     { "kind": "float", "lo": -0.06, "hi": 0.0 },
+    "stop":            { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":              { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":       { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

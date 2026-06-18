@@ -1,0 +1,44 @@
+{
+  "name": "Equity dip-buy gated by a non-inverted yield curve (long)",
+  "rationale": "EQUITY SEGMENT + REGIME-SWITCHING on an equity-only macro switch (yield_curve_2s10s). The 2s10s curve slope is the most-watched recession/regime gauge: a steep/positive curve signals an expansion where equity dips are buyable, while an INVERTED curve (negative slope) precedes recessions where dip-buying is a trap. This gates an EQUITY mean-reversion (oversold dip-buy) by the curve regime — fire the dip only when the curve is NOT inverted. Mechanism before data: long when yield_curve_2s10s is above a fitted slope floor (curve not inverted) AND RSI is oversold (the dip); exit on RSI recovery or barriers. Distinct from g2-equity-credit-spread-calm-momentum (credit gate on MOMENTUM), g2-macro-regime-gated-reversion (crypto, and macro_regime happens to equal the curve in current data — but THIS one is equity-class and uses the curve explicitly as the recession switch), and the equity TAA arms (allocation models). Note macro_regime and yield_curve_2s10s currently carry identical values in prod; this spec is on the EQUITY class and frames the curve as the recession switch, the crypto macro-regime spec is on crypto — the two test the same gauge on different asset classes, a deliberate cross-asset generalization check, not a duplicate. Disconfirmer 1: drop the curve gate — if bare equity oversold dip-buying matches the deflated Sharpe, the curve regime adds nothing. Disconfirmer 2: if the curve never inverts in-sample, the gate is a constant and selects nothing. Disconfirmer 3 (PIT/cost): yield_curve_2s10s is daily next-day-available; net of equity costs the reversion must clear. tier0 yield_curve_2s10s + tier0 rsi (equity), has prod data — low-confidence until OOS.",
+  "catalyst": "oversold equity price gated to fire ONLY when the 2s10s yield curve is not inverted (expansion regime) — curve-gated equity reversion",
+  "universe": {
+    "venues": ["ibkr"],
+    "asset_classes": ["equity"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "yield_curve_2s10s" }, "op": "gt", "threshold": { "param": "slope_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "slope_floor": { "kind": "float", "lo": 0.0,  "hi": 0.45 },
+    "rsi_lb":      { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":   { "kind": "float", "lo": 22.0, "hi": 40.0 },
+    "rsi_exit":    { "kind": "float", "lo": 50.0, "hi": 68.0 },
+    "stop":        { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":          { "kind": "float", "lo": 0.04, "hi": 0.18 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

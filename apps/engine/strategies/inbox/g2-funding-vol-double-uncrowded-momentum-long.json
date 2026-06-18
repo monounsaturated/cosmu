@@ -1,0 +1,47 @@
+{
+  "name": "Double-uncrowded calm momentum — low funding x low vol gate (long spot)",
+  "rationale": "CROSS-METRIC (funding_rate x vol_realized) two-gate momentum — distinct from the single-gate funding-gated-momentum (funding ceiling only) by requiring BOTH an UNCROWDED leverage state AND a CALM volatility regime simultaneously. The economic claim: momentum's favorable-skew premium is maximized precisely when the trade is NOT crowded (funding below a ceiling = leverage hasn't piled in, so there is room to run) AND vol is contained (calm = no whipsaw/crash). Either gate alone leaves a failure mode open: low-funding-but-turbulent (the move runs but gets stopped by noise) or calm-but-crowded (low vol masking a crowded top). Requiring both prunes both failure modes — orthogonal confirmations of 'momentum's friendly weather'. Mechanism before data: long spot when ret is positive AND funding is below a fitted ceiling AND realized vol is below a fitted ceiling; exit when momentum flips. Distinct from funding-gated-momentum (funding only), vol-regime-gated-momentum (vol only), and xsec-momentum-funding-gated (adds funding+vol but on a CROSS-SECTIONAL rank primary; this is a per-instrument time-series momentum with the double gate). Disconfirmer 1: drop EITHER gate — if a single-gate version matches the deflated Sharpe, the second gate is redundant and this duplicates an existing single-gate spec. Disconfirmer 2: both gates may co-fire so often the joint state is just 'calm bull market' = a long-bias proxy; a plain spot long over the same sample/costs must not match. Disconfirmer 3 (PIT/cost): net of ~20bps the gated momentum must clear. tier0 funding_rate + tier0 vol_realized/ret, fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "positive momentum WHILE funding is uncrowded AND realized vol is calm — a double-confirmed friendly-weather trend, long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 16
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_ceiling" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lb":          { "kind": "int",   "lo": 7,    "hi": 35,  "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": 0.01, "hi": 0.10 },
+    "mom_exit":        { "kind": "float", "lo": -0.05, "hi": 0.01 },
+    "funding_ceiling": { "kind": "float", "lo": -0.00001, "hi": 0.0001 },
+    "vol_lb":          { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "vol_ceiling":     { "kind": "float", "lo": 0.03, "hi": 0.11 },
+    "stop":            { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":              { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":       { "kind": "int",   "lo": 4,    "hi": 16,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

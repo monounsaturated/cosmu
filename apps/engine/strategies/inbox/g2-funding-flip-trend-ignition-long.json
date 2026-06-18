@@ -1,0 +1,44 @@
+{
+  "name": "Funding flip ignition — sentiment turns positive, ride the trend birth (long spot)",
+  "rationale": "CROSS-METRIC + cross-event op capturing a REGIME-BIRTH no existing spec targets. Funding sign is the perp market's revealed directional bias: it spends downtrends NEGATIVE (shorts dominant) and the MOMENT it crosses UP through zero into positive marks bears capitulating and the leverage tide turning bullish. Most funding specs read funding as a steady-state level (carry to harvest, or a crowding ceiling). This one reads the DERIVATIVE event — the flip — as a trend-ignition catalyst, and CONFIRMS it with price momentum already turning up (so we ride a born trend, not a single funding blip). Mechanism before data: long spot when funding crosses UP through a small positive level (bias flipped bullish) AND a short-window ret is positive (price confirming); hold while the trend runs; exit when funding flips back negative (bias died) or barriers fire. Distinct from funding-gated-momentum (funding LEVEL ceiling, momentum must already be high) and funding-carry-long-spot (positive funding LEVEL to harvest, not the flip instant). Disconfirmer 1: replace cross_up with a funding LEVEL gt — if the static read matches the deflated Sharpe, the flip timing adds nothing. Disconfirmer 2: drop the momentum arm — if a bare funding flip matches, it is a funding-direction proxy, not an ignition edge. Disconfirmer 3 (PIT/cost): net of ~20bps the post-flip continuation must clear. tier0 funding_rate + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "funding crosses UP through zero (perp bias flips bullish) WHILE price momentum confirms — a trend ignition, ridden on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 18
+  },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "cross_up", "threshold": { "param": "flip_level" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "flip_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "flip_level": { "kind": "float", "lo": -0.00001, "hi": 0.00003 },
+    "flip_exit":  { "kind": "float", "lo": -0.00005, "hi": 0.0 },
+    "mom_lb":     { "kind": "int",   "lo": 3,    "hi": 15,  "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0,  "hi": 0.04 },
+    "stop":       { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":  { "kind": "int",   "lo": 3,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

@@ -1,0 +1,47 @@
+{
+  "name": "Funding capitulation washout — long the cleansed short-crowd (spot)",
+  "rationale": "CROSS-METRIC + a CROSS-event op no existing funding spec uses. Mechanism stated before the data: when perp funding crosses DOWN through a fitted negative floor it marks the moment perp SHORTS become crowded and over-pay to stay short (a leverage capitulation in progress, not a static level). Pairing that capitulation INSTANT with price having already stopped falling (a short-window ret above a fitted knife-guard floor) buys the cleansed short-squeeze bottom: the marginal short is exhausted and spot reverts UP as covers chase price. The orthogonal second metric is REALIZED VOL — we require vol BELOW a fitted ceiling so we fade an orderly capitulation, not a free-falling crash where the funding print lags. This is distinct from funding-reset-reversion (RSI + funding LEVEL, no cross, no vol gate), from funding-contrarian-crash-filter (a SHORT that fades positive-funding crowded LONGS — the opposite leverage side), and from funding-gated-momentum (funding as a LEVEL ceiling on a momentum LONG). Disconfirmer 1: the edge must be the funding cross_down EXTREME mean-reverting; a plain spot long over the same sample/costs must not match the deflated Sharpe. Disconfirmer 2: replace the funding cross_down with a funding LEVEL lt — if the static-level read does as well, the cross adds nothing and this is a re-skin of the existing funding-reversion. Disconfirmer 3 (PIT/cost): net of ~20bps Binance spot round-trip the bounce must clear. tier0 features (funding_rate, vol_realized, ret_Nd), fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "funding crosses DOWN into a crowded-short capitulation while price has stopped declining and vol is contained — a cleansed short-squeeze bottom, bought on spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 14
+  },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "cross_down", "threshold": { "param": "funding_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "guard_lb" } }, "op": "gt", "threshold": { "param": "guard_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "funding_rate" }, "op": "gt", "threshold": { "param": "funding_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor": { "kind": "float", "lo": -0.0003, "hi": -0.00002 },
+    "funding_exit":  { "kind": "float", "lo": 0.0,     "hi": 0.0001 },
+    "guard_lb":      { "kind": "int",   "lo": 2,       "hi": 7,    "step": 1 },
+    "guard_floor":   { "kind": "float", "lo": -0.08,   "hi": -0.005 },
+    "vol_lb":        { "kind": "int",   "lo": 10,      "hi": 30,   "step": 1 },
+    "vol_ceiling":   { "kind": "float", "lo": 0.03,    "hi": 0.12 },
+    "stop":          { "kind": "float", "lo": 0.04,    "hi": 0.15 },
+    "tp":            { "kind": "float", "lo": 0.05,    "hi": 0.25 },
+    "time_stop":     { "kind": "int",   "lo": 3,       "hi": 14,   "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

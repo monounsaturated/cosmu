@@ -1,0 +1,44 @@
+{
+  "name": "Gold risk-off x crypto weakness — fade the continuation (perp short)",
+  "rationale": "CROSS-MARKET REGIME, SHORT leg (perp; direction=-1). Gold is the canonical risk-off / real-rate hedge: a sharp gold rally is capital fleeing TO safety, a macro risk-off signal that historically coincides with high-beta risk assets (crypto) bleeding. The existing cross-market specs are all LONG (dollar-weak momentum, NDX-up momentum). This is the orthogonal short: when gold is in a risk-off surge AND crypto momentum is already NEGATIVE, the cross-market regime confirms the down-move has macro fuel and is likely to continue rather than bounce — so we fade it with a perp short. Mechanism before data: short when gold_xau crosses UP through a fitted risk-off level (safety bid, read via the direction of the cross since the raw level is non-stationary) AND crypto ret over a window is negative (the weakness is already in price); stop ABOVE entry, take-profit BELOW; exit when crypto momentum turns back up (regime relief). Distinct from every long cross-market spec and from the funding/basis SHORTS (those are crowding-unwind, not a macro-regime confirmation). Disconfirmer 1: drop the gold arm — if bare negative-momentum shorting matches the deflated Sharpe, the gold risk-off regime adds nothing. Disconfirmer 2: gold and crypto are only weakly/inconsistently correlated; if the edge is identical with gold REMOVED or REPLACED by silver, the specific gold-risk-off read is not load-bearing. Disconfirmer 3 (PIT/cost): gold is daily next-day-available (Stooq); a perp short pays/earns funding (funding_feature set) and must clear ~20bps+ net. tier0 gold_xau + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS; SHORT requires perp (not spot-executable on Binance spot).",
+  "catalyst": "gold_xau crosses up into a risk-off surge WHILE crypto momentum is negative — a macro-confirmed down-continuation, faded with a perp short",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "gold_xau" }, "op": "cross_up", "threshold": { "param": "gold_level" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "gold_level":  { "kind": "float", "lo": 1700.0, "hi": 5200.0 },
+    "mom_lb":      { "kind": "int",   "lo": 5,    "hi": 25,  "step": 1 },
+    "mom_ceiling": { "kind": "float", "lo": -0.08, "hi": -0.01 },
+    "mom_exit":    { "kind": "float", "lo": 0.0,  "hi": 0.05 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

@@ -1,0 +1,46 @@
+{
+  "name": "Double-crowding fade — high funding x rich basis confirm crowded longs (perp short)",
+  "rationale": "CROSS-METRIC (funding_rate x perp_spot_basis), SHORT — the two-gauge crowding confirmation on the SHORT side. funding-contrarian-crash-filter fades positive-funding crowded longs using funding ALONE. This requires a SECOND orthogonal confirmation: a RICH (positive) perp_spot_basis says the perp is also trading at a premium to spot (longs over-paying on the term structure too). When BOTH the realized funding payment AND the term-structure basis are stretched rich simultaneously, the crowded-long state is double-confirmed and the eventual unwind/cascade is more reliable than either gauge alone — a meta-labeling-by-confirmation short. Mechanism before data: short when funding is above a fitted crowding ceiling AND perp_spot_basis is above a fitted premium ceiling AND price has stopped making new highs (a short ret roll-over guard so we short exhaustion, not a melt-up); stop ABOVE, take-profit BELOW; exit when funding normalizes down. Distinct from funding-contrarian-crash-filter (funding only), perp-basis-premium-contrarian-short (basis only + momentum), and g2-greed-distribution-top-fade-short (survey greed, not derivatives crowding). Disconfirmer 1: drop the basis arm — if funding-only shorting matches the deflated Sharpe, basis adds nothing (it duplicates the existing funding short). Disconfirmer 2: drop funding — if basis-only matches, it duplicates the basis-premium short. The edge must require BOTH gauges rich. Disconfirmer 3 (PIT/cost): perp short pays/earns funding (funding_feature set); net of ~20bps+. tier0 funding_rate + tier0 perp_spot_basis, fresh prod data, unproven combination — low-confidence until OOS; SHORT = perp.",
+  "catalyst": "perp funding rich AND perp_spot_basis rich simultaneously (double-confirmed crowded longs) with price rolling over — faded with a perp short",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "gt", "threshold": { "param": "funding_ceiling" } },
+    { "feature": { "name": "perp_spot_basis" }, "op": "gt", "threshold": { "param": "basis_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "guard_lb" } }, "op": "lt", "threshold": { "param": "guard_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "funding_ceiling": { "kind": "float", "lo": 0.00005, "hi": 0.0003 },
+    "funding_exit":    { "kind": "float", "lo": -0.00002, "hi": 0.00005 },
+    "basis_ceiling":   { "kind": "float", "lo": 0.0001, "hi": 0.001 },
+    "guard_lb":        { "kind": "int",   "lo": 2,    "hi": 8,   "step": 1 },
+    "guard_ceiling":   { "kind": "float", "lo": 0.0,  "hi": 0.04 },
+    "stop":            { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":              { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":       { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

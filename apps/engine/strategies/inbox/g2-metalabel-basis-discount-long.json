@@ -1,0 +1,49 @@
+{
+  "name": "Meta-labeled perp-basis discount reversion (long spot)",
+  "rationale": "META-LABELING on a BASIS primary — a third orthogonal meta-label lane (the existing two gate momentum/RSI; the funding-contrarian meta is a sibling in this wave). PRIMARY (permissive, decides SIDE only): long spot when perp_spot_basis is below a fitted discount floor (perp trades cheap to spot / shorts over-paying — a crowded-short squeeze setup). SECONDARY regularized-logistic gate decides ACT vs SKIP, trained expanding-window + PIT on which barrier each PAST basis-discount entry hit first netted of cost, reading: perp_spot_basis, funding_rate, ret_Nd, rsi, vol_realized. The secondary only sizes/skips, never flips direction. Economic bet: the basis-discount reversion is real but fails when the discount reflects a justified sell-off rather than transient short-crowding; the secondary reads funding/momentum/vol to separate the squeeze setups from the falling knives — the regime classification the bare basis floor (as in perp-basis-discount-contrarian-long-spot) cannot do. Distinct from perp-basis-discount-contrarian-long-spot (same primary, NO secondary model), metalabel-momentum, metalabel-reversion, and g2-metalabel-funding-contrarian (funding primary, not basis). HONEST PRIOR: meta-labeling only amplifies an existing edge; if the bare basis primary is fee-dead, this is a powered FAIL run cleanly. Disconfirmer 1: the secondary must ADD deflated Sharpe over the bare primary, not merely cut trades. Disconfirmer 2: must beat a random skip of the same trade fraction. tier0 perp_spot_basis primary + orthogonal meta features, fresh prod data — low-confidence until OOS.",
+  "catalyst": "the secondary model green-lights a perp-basis-discount long in a regime where the squeeze-reversion has historically paid",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "perp_spot_basis" }, "op": "lt", "threshold": { "param": "basis_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" }
+  },
+  "meta_label": {
+    "features": [
+      { "name": "perp_spot_basis" },
+      { "name": "funding_rate" },
+      { "name": "ret_Nd", "lookback": 10 },
+      { "name": "rsi", "lookback": 14 },
+      { "name": "vol_realized", "lookback": 14 }
+    ],
+    "prob_threshold": { "param": "meta_thr" },
+    "sizing": "skip"
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "basis_floor": { "kind": "float", "lo": -0.003, "hi": -0.0005 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 12,  "step": 1 },
+    "meta_thr":    { "kind": "float", "lo": 0.45, "hi": 0.65 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

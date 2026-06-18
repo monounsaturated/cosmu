@@ -1,0 +1,44 @@
+{
+  "name": "Greed distribution-top fade — extreme greed x stalling price (perp short)",
+  "rationale": "CROSS-METRIC (fear_greed x momentum), SHORT leg. The existing fear-greed spec only buys EXTREME FEAR (long). This is the symmetric distribution-top fade: EXTREME GREED is the crowd maximally long, and when greed is extreme WHILE price momentum has STALLED or rolled over (the buyers are exhausted but euphoric), it marks a distribution top that mean-reverts DOWN — a contrarian short. The two metrics are orthogonal: fear_greed is crowd POSITIONING/mood, momentum-stall is PRICE confirming the mood is no longer being rewarded (the divergence that distinguishes a real top from a greedy-but-still-trending market). Mechanism before data: short when fear_greed is above a fitted extreme-greed ceiling AND a short-window ret has rolled negative (cross_down through a small floor — momentum exhausting); stop ABOVE entry, take-profit BELOW; exit when greed cools through a neutral level. Distinct from fear-greed-contrarian (long fear), theory-mean-reversion-fade (bb_z + adx, no sentiment), and funding-contrarian-crash-filter (funding crowding, not survey greed). Disconfirmer 1: drop the momentum-stall arm — if shorting extreme greed unconditionally matches the deflated Sharpe, the price-confirmation adds nothing (and greedy markets can melt up for weeks — high risk without it). Disconfirmer 2: extreme greed + still-rising price is a momentum LONG, not a top; the cross_down arm must be load-bearing. Disconfirmer 3 (PIT/cost): fear_greed daily next-day-available; a perp short pays/earns funding (funding_feature set), net of ~20bps+. tier0 fear_greed + tier0 ret_Nd, fresh prod data, unproven combination — low-confidence until OOS; SHORT = perp, not spot-executable.",
+  "catalyst": "extreme crowd greed WHILE price momentum rolls over (cross_down) — a distribution top faded with a perp short",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "cross_down", "threshold": { "param": "stall_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "greed_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.4
+  },
+  "param_space": {
+    "greed_ceiling": { "kind": "float", "lo": 70.0, "hi": 88.0 },
+    "mom_lb":        { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 },
+    "stall_floor":   { "kind": "float", "lo": -0.02, "hi": 0.01 },
+    "greed_exit":    { "kind": "float", "lo": 45.0, "hi": 62.0 },
+    "stop":          { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":     { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

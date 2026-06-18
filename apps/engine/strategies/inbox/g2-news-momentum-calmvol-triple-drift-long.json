@@ -1,0 +1,46 @@
+{
+  "name": "Triple-confirmed post-news drift — bullish headline x momentum x calm DVOL (long spot)",
+  "rationale": "CROSS-METRIC THREE-WAY confirmation (news_event_score x ret_Nd x dvol) — a meta-labeling-by-confirmation refinement of llm-narrative-pressure-long (which uses only news + momentum). The post-news drift hypothesis is real but noisy: a bullish headline only drifts cleanly when (a) price is already confirming (momentum up) AND (b) the regime is calm (low implied vol), because in a high-DVOL/stress regime a bullish headline gets swamped by macro fear and the drift fails. Adding the orthogonal DVOL calm gate is the third, independent confirmation that prunes the failed-drift regime the two-arm news spec cannot. Mechanism before data: long spot when news_event_score is above a fitted bullish floor AND ret over a window is positive AND dvol is below a fitted calm ceiling; exit on momentum flip. Distinct from llm-narrative-pressure-long (news + momentum, no vol regime), g2-news-overreaction-reversion (extreme-NEGATIVE news, contrarian), and dvol-calm-regime-momentum (no news arm). Disconfirmer 1: drop the dvol arm — if news + momentum alone matches the deflated Sharpe, the calm gate adds nothing and this is the existing narrative-pressure spec. Disconfirmer 2: drop the news arm — if calm momentum alone matches, the news adds nothing. The edge must require all three. Disconfirmer 3 (PIT/cost): three gates may shrink effective-N below the gate floor (the min-trades guard catches it); news_event_score is PIT; net of ~20bps the drift must clear. tier1 news_event_score + tier0 ret_Nd/dvol, fresh prod data, unproven combination — low-confidence until OOS.",
+  "catalyst": "a bullish news_event_score CONFIRMED by positive momentum AND a calm DVOL regime — triple-confirmed post-news drift, long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "news_event_score" }, "op": "gt", "threshold": { "param": "news_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "dvol" }, "op": "lt", "threshold": { "param": "dvol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "news_floor":   { "kind": "float", "lo": 0.2,  "hi": 0.8 },
+    "mom_lb":       { "kind": "int",   "lo": 3,    "hi": 15,  "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": 0.0,  "hi": 0.04 },
+    "dvol_ceiling": { "kind": "float", "lo": 42.0, "hi": 58.0 },
+    "mom_exit":     { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 12,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

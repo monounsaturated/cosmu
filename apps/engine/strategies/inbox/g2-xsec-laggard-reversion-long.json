@@ -1,0 +1,48 @@
+{
+  "name": "Cross-sectional laggard reversion — buy the worst-ranked oversold name (long spot)",
+  "rationale": "STATISTICAL-ARB / CROSS-SECTIONAL, the REVERSION mirror of every existing xsec-momentum LEADER spec. xsec_momentum_rank is the percentile rank of N-day return across the universe (1 = leader, 0 = laggard). All existing cross-sectional specs go LONG the LEADERS (top rank). This spec exploits the opposite, well-documented short-horizon effect: the EXTREME LAGGARD (bottom-rank) that has also become statistically oversold tends to mean-revert UP relative to the pack as the over-selling exhausts — a single-instrument approximation of a cross-sectional reversal / dispersion-compression trade (no pairs engine needed; the rank IS the relative-value coordinate). Mechanism before data: long spot when xsec_momentum_rank is below a fitted laggard floor (worst relative performers) AND RSI is oversold (the over-selling is mechanical, ripe to snap) AND realized vol is contained (an orderly laggard, not a name in terminal collapse); exit on rank recovery via RSI or barriers. Distinct from cross-asset-social-rotation and xsec-neutral-momentum-long-leg (both buy LEADERS). Disconfirmer 1: drop the rank arm — if a bare oversold RSI dip-buy matches the deflated Sharpe, the cross-sectional laggard coordinate adds nothing. Disconfirmer 2: laggards can be laggards for a reason (terminal decline); if requiring the LOWEST rank makes the edge worse than a mid-rank dip, this is value-trap risk, not reversion. Disconfirmer 3 (PIT/cost): rank is PIT (instruments present at bar close); net of ~20bps the relative bounce must clear. tier0 xsec_momentum_rank + tier0 rsi/vol, computed-at-backtest, unproven combination — low-confidence until OOS.",
+  "catalyst": "an asset at the BOTTOM of the cross-sectional momentum rank that is also oversold in a contained-vol regime — a laggard reversion, long spot",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "rank_lb" } }, "op": "lt", "threshold": { "param": "laggard_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rank_lb":       { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "laggard_floor": { "kind": "float", "lo": 0.05, "hi": 0.30 },
+    "rsi_lb":        { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":     { "kind": "float", "lo": 20.0, "hi": 38.0 },
+    "vol_lb":        { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "vol_ceiling":   { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "rsi_exit":      { "kind": "float", "lo": 48.0, "hi": 65.0 },
+    "stop":          { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":     { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
