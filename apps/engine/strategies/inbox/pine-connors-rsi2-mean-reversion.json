@@ -1,0 +1,51 @@
+{
+  "name": "Connors RSI(2) mean reversion (MA-trend-filtered) (Pine import)",
+  "rationale": "Faithful import of Larry Connors' RSI(2) system (Connors & Alvarez, 'Short Term Trading Strategies That Work'; the canonical TradingView/Pine community port: long only when close is above the 200-period MA, enter when a very-short RSI drops into a deep-oversold extreme, exit when RSI snaps back above a high level). Economic mechanism: inside an established uptrend (price above its long MA), a sharp 2-day RSI washout is a short-term liquidity/overreaction dip — forced or panicked selling that overshoots — and price reverts to the prevailing trend once the flush exhausts. The long-MA filter is load-bearing: it restricts dip-buying to assets that are structurally trending up, so 'oversold' is a pullback to be bought rather than the start of a downtrend (the classic 'falling knife' that an unfiltered RSI(2) catches). The defining, distinct structural piece vs our other reversion specs is the MaTrendFilter (setup.ma_trend_filter) — a fitted long-MA regime gate — paired with a very SHORT RSI lookback pushed to a deep-oversold floor (Connors used RSI(2) < 5-10, far more extreme than a generic RSI(14)<30 dip) and an RSI-normalization signal exit (Connors exits the snap-back, he does not run to a target). Translation losses (noted, not fabricated): (1) Connors deliberately used NO hard stop (he found stops hurt index mean-reversion); we ADD a fitted stop_loss + time_stop purely as a risk disconfirmer so a regime break is bounded — this is a deliberate, conservative deviation from the source, not the source's rule; (2) the RSI period is a fitted lookback the Finder pins toward the very-short Connors regime; (3) the 200-MA is a fitted ma_lookback. Honest prior: RSI(2) is a heavily-published equity-index edge; on crypto spot net of ~20bps it is far less established and may not survive — expected a powered fail/marginal that maps the deep-reversion surface; the Gate disposes. Disconfirmer: the RSI-snap-back signal exit fires when the dip is bought (thesis realized); the stop + time-stop close a dip that keeps falling (thesis wrong — the uptrend was breaking).",
+  "catalyst": "deep 2-period RSI washout while price remains above its long-MA uptrend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "rsi", "lookback": {"param": "rsi_lb"}},
+      "op": "lt",
+      "threshold": {"param": "rsi_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi", "lookback": {"param": "rsi_lb"}}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "setup": {
+    "ma_trend_filter": {
+      "ma_lookback": {"param": "ma_lb"}
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rsi_lb": {"kind": "int", "lo": 2, "hi": 6, "step": 1},
+    "rsi_floor": {"kind": "float", "lo": 5, "hi": 20},
+    "rsi_exit": {"kind": "float", "lo": 60, "hi": 80},
+    "ma_lb": {"kind": "int", "lo": 100, "hi": 200, "step": 5},
+    "stop": {"kind": "float", "lo": 0.05, "hi": 0.18},
+    "tp": {"kind": "float", "lo": 0.06, "hi": 0.25},
+    "time_stop": {"kind": "int", "lo": 3, "hi": 12, "step": 1}
+  }
+}

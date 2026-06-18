@@ -1,0 +1,54 @@
+{
+  "name": "Opening-range breakout — long-only (Pine import)",
+  "rationale": "Faithful import of the classic Opening-Range Breakout (ORB) intraday strategy (e.g. VolumeVigilante's open-source 'Long-Only Opening Range Breakout (ORB)' and the broad ORB community family): define a range over the first N bars of the window, then go long when price breaks ABOVE the range high by a small buffer. Economic mechanism: the opening range is where the session's liquidity and two-sided disagreement concentrate; a decisive break above the range high resolves that disagreement to the upside and tends to trend for the rest of the window as latecomers and stops chase it (an intraday liquidity/auction-imbalance edge distinct from multi-day price momentum). This is the FIRST spec to exercise the dedicated OpeningRangeBreakout module (setup.orb) as a JSON strategy — range_bars defines the opening-range window and buffer is the fitted break-above margin, both ParamRefs (no magic numbers). We add a light momentum confirmation (a small positive short-horizon ret_Nd) so the break is backed by real upside thrust rather than a one-tick poke, and an ATR/realized-vol context the Finder fits. Crypto runs 24/7 so 'opening range' is a rolling window anchor (anchor='rolling') rather than a fixed exchange session — the honest crypto adaptation of an equities-session concept. Translation losses (noted, not fabricated): (1) there is no exchange 'open' in 24/7 crypto — anchor is rolling, so the range is the trailing N-bar high rather than a fixed session open; (2) the literal opening-range minutes (5/15/30m) become a fitted range_bars window on 1h bars; (3) the source's opposite-side / midpoint / 1.5x-ATR stop choices collapse to one fitted stop fraction; (4) pivot-point confluence in some ORB variants is dropped (pivots are not a registry feature). Honest prior: ORB is a well-documented intraday equities/futures edge but its crypto-spot, higher-timeframe, net-of-~20bps survival is unproven and breakout fakeouts are common in chop — expected a powered fail that maps the breakout surface; the Gate disposes. Disconfirmer: a tight stop below the range and a short time-stop bound a false breakout (the defining ORB failure mode — break that immediately reverts); an RSI-overbought exit takes profit on an exhausted thrust.",
+  "catalyst": "price breaks above the opening-range high by a fitted buffer with positive short-horizon thrust",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 5
+  },
+  "direction": 1,
+  "entry": [
+    {
+      "feature": {"name": "ret_Nd", "lookback": {"param": "thrust_lb"}},
+      "op": "gt",
+      "threshold": {"param": "thrust_floor"}
+    }
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "setup": {
+    "orb": {
+      "range_bars": {"param": "orb_bars"},
+      "buffer": {"param": "orb_buffer"},
+      "anchor": "rolling"
+    }
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.1,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "orb_bars": {"kind": "int", "lo": 4, "hi": 24, "step": 1},
+    "orb_buffer": {"kind": "float", "lo": 0.001, "hi": 0.02},
+    "thrust_lb": {"kind": "int", "lo": 1, "hi": 6, "step": 1},
+    "thrust_floor": {"kind": "float", "lo": 0.0, "hi": 0.02},
+    "rsi_exit": {"kind": "float", "lo": 70, "hi": 88},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.15},
+    "time_stop": {"kind": "int", "lo": 1, "hi": 5, "step": 1}
+  }
+}
