@@ -188,6 +188,101 @@ def edge_bearing_screen_market(*, seed: int = 3, n: int = 900) -> dict[str, list
     return {symbol: bars for symbol in ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")}
 
 
+# The alt features the autonomous research brain's authored specs reference OFFLINE. Once the propose-only
+# research bus folds its prior-art context in (lab/research._prior_art_from_context), EVERY authored brief gets
+# `rsi<30 AND macro_regime>0 AND osint_air_activity>0` ANDed into its entry, on top of its own brief feature
+# (alt_rank / fear_greed / funding_rate / …). The price screen computes rsi from bars, but macro_regime /
+# osint_air_activity / alt_rank / fear_greed / funding_rate are ALT features with no offline source — absent,
+# their `> 0` condition reads None and can NEVER fire, so the spec books zero trades and the brut per-cell gate
+# correctly kills it. The offline edge fixture therefore must SERVE these (permissively positive, below) so the
+# binding entry collapses to the real `rsi<30` dip-buy the bars carry — which the locked scorer still judges
+# honestly. Canonical metric names (StoreBackedAltProvider routes them to their providers); funding stays small.
+_AUTONOMY_ALT_FEATURES: tuple[str, ...] = (
+    "macro_regime", "osint_air_activity", "fear_greed", "alt_rank", "funding_rate",
+)
+
+
+class _FixtureAltStore:
+    """A minimal in-memory point-in-time alt store for the OFFLINE edge fixture, exposing the `read_all` seam
+    StoreBackedAltProvider consumes (the same interface as AltDataStore / PgAltDataStore). It serves the SAME
+    positive series for every (provider, key) so a MARKET-wide feature (macro_regime, osint_air_activity,
+    fear_greed) and a per-SYMBOL feature (alt_rank, funding_rate) both resolve — the values are deliberately
+    PERMISSIVE (always above the midpoint-0 threshold) so they never become the binding signal; the edge under
+    test stays the price `rsi<30` dip-buy the bars carry, which the deterministic scorer measures on the real
+    return stream. Read-only; the gate's per-bar as-of join (align_asof) still does the point-in-time selection."""
+
+    def __init__(self, by_metric: dict[str, list[AltDataPoint]]) -> None:
+        self._by_metric = by_metric
+
+    def read_all(self, provider: str, symbol: str, metric: str) -> list[AltDataPoint]:  # noqa: ARG002 — same series for any (provider, key)
+        return list(self._by_metric.get(metric, []))
+
+
+def edge_bearing_autonomy_market(*, seed: int = 3, n: int = 1300) -> tuple[dict[str, list[Bar]], _FixtureAltStore]:
+    """A COMPLETE offline market (bars + permissive alt data) carrying a clean RSI-OVERSOLD DIP-BUY edge, for the
+    autonomous research tick. Unlike [edge_bearing_screen_market] (a pure-momentum fixture), this matches what the
+    research brain ACTUALLY authors offline: the propose-only bus ANDs `rsi<30 AND macro_regime>0 AND
+    osint_air_activity>0` into every brief, so a momentum (`ret_Nd>0`) entry can never co-fire with `rsi<30` and
+    a trend fixture books zero trades. Here the bars OSCILLATE — a repeating decline→recovery cycle around a
+    positive drift — so each cycle dips into oversold (rsi<30) then RALLIES: buying that dip is a real,
+    trade-rich, exploitable edge the locked scorer judges honestly (NO injected returns — the bars carry it).
+    The alt features ([_AUTONOMY_ALT_FEATURES]) are served permissively positive so they never gate entry; the
+    planted edge is the price dip-buy alone. Returns (bars_by_symbol, alt_store). Reproducible for (seed, n)."""
+    rng = random.Random(f"edge-autonomy-{seed}")
+    start = datetime(2021, 1, 1, tzinfo=UTC)
+    # One CAPITULATION→SNAP cycle: a gradual sell-off long enough to drag Wilder RSI-14 under 30, then a sharp
+    # multi-bar V-snap that more than recovers it, then a brief consolidation. Buying the oversold trough catches
+    # the snap and sidesteps the next sell-off — a clean, repeating dip-buy edge. The snap is steep so take-profit
+    # fills within a couple of bars (short holds ⇒ the strategy re-arms for the NEXT trough quickly), and the
+    # period is short, so the ~1000-bar fetched window (data/backtest _bar_limit caps it) packs well over the
+    # 30-trade per-cell floor across the validation slice. The snap modestly exceeds the sell-off so the cycle
+    # NETS UP (regime breadth, positive drift), and rsi-14 still resets between cycles (the snap clears the
+    # 14-bar window before the next trough). Tuned for comfortable margin: ~35 trades, deflated-Sharpe ≈ 1.0.
+    decline_len = 14       # gradual sell-off bars — dominate the rsi-14 window ⇒ rsi < 30 at the trough
+    snap_len = 3           # sharp V-recovery bars — hit take-profit fast ⇒ short holds, more round-trips
+    flat_len = 4           # brief consolidation so rsi resets toward neutral before the next sell-off
+    down_rate = -0.012     # per-bar log drift through the sell-off
+    snap_rate = 0.060      # per-bar log drift through the V-snap (3 × 6% > 14 × 1.2% ⇒ net-up cycle)
+    period = decline_len + snap_len + flat_len
+    price = 100.0
+    bars: list[Bar] = []
+    for i in range(n):
+        phase = i % period
+        if phase < decline_len:
+            drift = down_rate
+        elif phase < decline_len + snap_len:
+            drift = snap_rate
+        else:
+            drift = 0.0  # consolidation
+        ret = drift + rng.gauss(0, 0.0015)  # light noise: keeps the dip-buy edge clean but non-degenerate
+        open_ = price
+        price = max(0.01, price * (1 + ret))
+        bars.append(
+            Bar(
+                ts=start + timedelta(days=i),
+                open=Decimal(str(round(open_, 6))),
+                high=Decimal(str(round(max(open_, price) * 1.004, 6))),
+                low=Decimal(str(round(min(open_, price) * 0.996, 6))),
+                close=Decimal(str(round(price, 6))),
+                volume=Decimal("5000000"),
+            )
+        )
+    bars_by_symbol = {symbol: bars for symbol in ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")}
+
+    # Permissive positive alt series — one point per bar, available_at == ts (causal, no look-ahead). Values sit
+    # clear of the midpoint-0 threshold so `macro_regime/osint/fear_greed/alt_rank > 0` (and `funding_rate > 0`)
+    # are always satisfiable: they inform but never gate, leaving rsi<30 as the binding (and real) entry signal.
+    by_metric: dict[str, list[AltDataPoint]] = {}
+    for feat in _AUTONOMY_ALT_FEATURES:
+        base = 0.0005 if feat == "funding_rate" else 1.0  # funding is a small rate; the rest are level proxies
+        pts: list[AltDataPoint] = []
+        for i in range(n):
+            ts = start + timedelta(days=i)
+            pts.append(AltDataPoint(ts=ts, available_at=ts, value=round(base * (1.0 + 0.05 * math.sin(i / 7.0)), 8)))
+        by_metric[feat] = pts
+    return bars_by_symbol, _FixtureAltStore(by_metric)
+
+
 def synthetic_gate_inputs(*, edge: bool = True, seed: int = 7, n: int = 600) -> tuple[dict[str, list[Bar]], FixtureAltDataProvider]:
     market: dict[str, list[Bar]] = {}
     series: dict[tuple[str, str], list[AltDataPoint]] = {}

@@ -20,7 +20,7 @@ from cosmu.knowledge.store import Store
 from cosmu.lab.author import AuthorDraft, draft_from_brief
 from cosmu.lab.tools.registry import ToolBus
 from cosmu.lab.tools.research_tools import research_tool_bus
-from cosmu.research.fixtures import edge_bearing_screen_market
+from cosmu.research.fixtures import edge_bearing_autonomy_market
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.static_check import validate_spec
 
@@ -110,12 +110,15 @@ class ResearchReport:
 
 
 class _EdgeBearingBars:
-    """Deterministic offline bars that CARRY a real momentum edge, so at least one authored crypto candidate
-    clears the deterministic gate (exercises the survivor track-open path end-to-end). Reuses the shared
-    edge_bearing_screen_market fixture; the screen/scorer still judge honestly (no injected returns)."""
+    """Deterministic offline bars that CARRY a real RSI-oversold dip-buy edge, so at least one authored crypto
+    candidate clears the deterministic gate (exercises the survivor track-open path end-to-end). Built from the
+    shared `edge_bearing_autonomy_market` fixture, which ALSO supplies the permissive alt series the authored
+    specs reference offline (macro_regime/osint/alt_rank/…, surfaced via `.alt_store`) — without them the
+    research bus's `rsi<30 AND macro_regime>0 AND …` entry can never fire and every spec books zero trades. The
+    screen/scorer still judge honestly (no injected returns — the bars carry the dip-buy edge)."""
 
     def __init__(self, *, seed: int = 3) -> None:
-        self._by_symbol = edge_bearing_screen_market(seed=seed)
+        self._by_symbol, self.alt_store = edge_bearing_autonomy_market(seed=seed)
         self._default = next(iter(self._by_symbol.values()))
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
@@ -334,16 +337,23 @@ def run_research_pass(
     )
     extra_seeds = [draft.spec for draft, rec in authored if rec.compiled]
 
+    alt_store: object | None = None
     if market_data is not None:
         provider: MarketDataProvider | None = market_data
     elif edge_market:
-        provider = _EdgeBearingBars()
+        # CI/offline: the edge-bearing fixture is a COMPLETE market — bars + the permissive alt series the
+        # authored specs reference — so the screen joins both with no DB/network (else the research bus's
+        # macro_regime/osint/alt_rank entry conditions read None and nothing trades).
+        bars = _EdgeBearingBars()
+        provider = bars
+        alt_store = bars.alt_store
     else:
         # PRODUCTION default: no provider → FarmLoop._screen fetches REAL Binance spot bars
-        # (BinanceSpotOHLCVProvider, cache-backed). Synthetic fixtures are CI/offline only. We never
-        # screen — or fund — SIM tracks on fabricated data; the app must not display synthetic edge.
+        # (BinanceSpotOHLCVProvider, cache-backed) and the SETTINGS-resolved alt store. Synthetic fixtures are
+        # CI/offline only. We never screen — or fund — SIM tracks on fabricated data; the app must not display
+        # synthetic edge.
         provider = None
-    loop = FarmLoop(settings=store.settings, store=store, market_data=provider)
+    loop = FarmLoop(settings=store.settings, store=store, market_data=provider, alt_data_store=alt_store)
     # Cohort = the authored candidates only (no extra mutation/explore waves) so the report maps 1:1 onto
     # what the brain proposed; the deterministic screen + out-of-reach scorer decide PASS/STOP per candidate.
     cohort = loop.run_cohort(seed=seed, cohort_size=len(extra_seeds), explore_pct=0.0, extra_seeds=extra_seeds)

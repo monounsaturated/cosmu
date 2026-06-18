@@ -169,6 +169,11 @@ class FarmLoop:
     settings: Settings
     store: Store
     market_data: MarketDataProvider | None = None
+    # OFFLINE-fixture seam: an explicit point-in-time alt store the screen joins instead of the settings-resolved
+    # one. ONLY the edge_market CI/offline path sets it (so the synthetic bars' authored specs — whose entry the
+    # research bus gates on macro_regime/osint/alt_rank — can read those features with no DB/network). None in
+    # production ⇒ `_alt_store()` resolves the real store exactly as before (this lane is byte-identical to prior).
+    alt_data_store: object | None = None
     _cache: dict = field(default_factory=dict, compare=False)
 
     def _enabled(self) -> tuple[set[str], set[str]]:
@@ -755,7 +760,11 @@ class FarmLoop:
 
     def _alt_store(self):  # noqa: ANN202 — AltDataStore | PgAltDataStore
         """The point-in-time alt-data store, chosen the SAME way ingest/api do: postgres URL → PgAltDataStore
-        over the knowledge Store, else the JSONL AltDataStore. Cached per loop."""
+        over the knowledge Store, else the JSONL AltDataStore. Cached per loop. An injected `alt_data_store`
+        (the edge_market offline fixture only) wins — production never sets it, so the resolution below is
+        unchanged there."""
+        if self.alt_data_store is not None:
+            return self.alt_data_store
         if "alt_store" not in self._cache:
             url = self.settings.database_url
             if url.startswith("postgres://") or url.startswith("postgresql://"):
