@@ -1,0 +1,31 @@
+{
+  "name": "DVOL-spike IV capitulation reversion — buy crypto into a crypto-native implied-vol panic",
+  "rationale": "ECONOMIC MECHANISM (the CONTRARIAN mirror of dvol-calm-regime-momentum, which trades trend in LOW dvol; this trades reversion out of HIGH dvol, and is crypto-NATIVE unlike macro-vix-spike-capitulation): Deribit DVOL is the BTC/ETH options market's 30-day implied vol — the crypto VIX. A DVOL spike means options dealers are pricing extreme fear and demanding a fat volatility premium; historically these IV panics mark the point of maximum forced deleveraging, after which realized vol mean-reverts below implied and spot snaps back (the documented short-vol / post-spike reversion premium). Crucially DVOL is read from the OPTIONS market, an orthogonal panic gauge to spot drawdown, funding, or liquidation prints. Entry: dvol above a fitted panic floor AND price not in freefall (trend floor = knife guard). Exit: dvol crosses DOWN through a calm threshold (IV premium decayed, reversion played out) or stop/TP/time. Disconfirmer 1: if an unconditional dip-buy matches the deflated Sharpe, the DVOL extreme adds nothing. Disconfirmer 2: DVOL spikes co-occur with VIX spikes and fear_greed lows; if substituting vix_level or fear_greed does as well this carries no orthogonal CRYPTO-OPTIONS information. Disconfirmer 3 (data depth): only ~148 DVOL points — low-confidence, paper-only until the series deepens. Disconfirmer 4 (cost): the bounce must clear ~20bps round-trip net. tier0 crypto-native vol feature.",
+  "catalyst": "Deribit DVOL implied-vol panic spike — crypto-native capitulation spot reverts from",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_panic_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "dvol" }, "op": "cross_down", "threshold": { "param": "dvol_calm_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dvol_panic_floor": { "kind": "float", "lo": 55.0, "hi": 68.0 },
+    "dvol_calm_exit":   { "kind": "float", "lo": 40.0, "hi": 55.0 },
+    "trend_lb":         { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "trend_floor":      { "kind": "float", "lo": -0.25, "hi": -0.02 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":        { "kind": "int",   "lo": 5,    "hi": 16,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

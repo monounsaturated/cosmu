@@ -1,0 +1,31 @@
+{
+  "name": "Macro VIX calm risk-on — long crypto only when equity fear is low",
+  "rationale": "ECONOMIC MECHANISM (distinct from dvol-calm-regime-momentum, which gates on CRYPTO-NATIVE implied vol): the equity VIX is the cross-asset price of fear; crypto's beta to broad risk assets means that when equity-implied vol is LOW the macro liquidity tide is risk-on and crypto's drawdown tail is compressed, so a long earns its risk premium without the regime-crash overhang. This conditions a crypto long on an EXTERNAL macro state (US equity options), not on crypto's own vol — an orthogonal regime read. Entry: VIX below a fitted calm ceiling AND price in a non-broken uptrend (trend floor). Exit: VIX crosses UP through a stress threshold (the regime flips risk-off — get flat) or stop/TP/time. Disconfirmer 1: if the same trend long UNCONDITIONALLY (drop the VIX gate) matches the deflated Sharpe, VIX adds nothing — the edge must be the regime conditioning. Disconfirmer 2: VIX and crypto-native dvol are correlated; if substituting dvol does as well, this is dvol-calm re-skinned and adds no orthogonal MACRO information. Disconfirmer 3 (cost): net of ~20bps Binance spot round-trip the conditional long must beat buy-and-hold's deflated Sharpe. tier0 macro feature, low-confidence until OOS.",
+  "catalyst": "equity VIX in a calm (low-fear) regime — macro risk-on tide for a crypto long",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 30 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_up", "threshold": { "param": "vix_stress_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_ceiling":     { "kind": "float", "lo": 14.0, "hi": 22.0 },
+    "vix_stress_exit": { "kind": "float", "lo": 22.0, "hi": 35.0 },
+    "trend_lb":        { "kind": "int",   "lo": 20,   "hi": 80,  "step": 1 },
+    "trend_floor":     { "kind": "float", "lo": -0.03, "hi": 0.05 },
+    "stop":            { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":              { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":       { "kind": "int",   "lo": 7,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

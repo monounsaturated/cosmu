@@ -1,0 +1,31 @@
+{
+  "name": "Macro yield-curve steepening risk-on — long crypto when the 2s10s is steep",
+  "rationale": "ECONOMIC MECHANISM (orthogonal to every existing spec — yield_curve_2s10s is used by nothing): the 2s10s Treasury slope is the bond market's growth/recession dial. A STEEP (positive, widening) curve prices reflation, ample liquidity and a growth upswing — the macro backdrop in which the highest-beta risk asset (crypto) earns its premium. A FLAT or inverting curve prices a coming slowdown and a liquidity drain. Conditioning a crypto long on a steep-enough curve is a slow, causally-motivated macro-regime filter no crypto-native or vol signal captures (it leads the cycle by quarters, not days). Entry: yield_curve_2s10s above a fitted steepness floor AND price in a non-broken uptrend. Exit: the curve crosses DOWN through a flattening threshold (the cycle is rolling over) or stop/TP/time. Disconfirmer 1: if the unconditional trend long matches the deflated Sharpe, the curve gate adds nothing. Disconfirmer 2: the 2s10s, credit_spread and vix all proxy the macro regime; if substituting credit_spread does as well this is macro-credit-spread re-skinned — the curve must add orthogonal CYCLE-PHASE information. Disconfirmer 3 (data depth): only ~60 daily curve points exist — this needs more history to be anything but suggestive; flagged low-confidence, paper-only until the series deepens. Disconfirmer 4 (cost): conditional long must beat buy-and-hold deflated Sharpe net of ~20bps. tier0 macro feature.",
+  "catalyst": "a steep 2s10s curve — reflation/growth macro regime for a crypto long",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 5, "max_hold_days": 30 },
+  "entry": [
+    { "feature": { "name": "yield_curve_2s10s" }, "op": "gt", "threshold": { "param": "slope_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "yield_curve_2s10s" }, "op": "cross_down", "threshold": { "param": "flatten_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "slope_floor":  { "kind": "float", "lo": 0.35, "hi": 0.52 },
+    "flatten_exit": { "kind": "float", "lo": 0.29, "hi": 0.40 },
+    "trend_lb":     { "kind": "int",   "lo": 20,   "hi": 80,  "step": 1 },
+    "trend_floor":  { "kind": "float", "lo": -0.03, "hi": 0.05 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":           { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":    { "kind": "int",   "lo": 7,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
