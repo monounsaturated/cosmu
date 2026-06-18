@@ -94,11 +94,13 @@ def test_prediction_branch_builds_odds_panel(tmp_path):
     finder = StrategyFinder(settings=store.settings, store=store, alt_store=_alt_with_odds(tmp_path))
 
     spec = _prediction_spec()
-    market = finder._market(spec)  # noqa: SLF001 — exercising the branch directly
+    market, cell_meta = finder._market(spec)  # noqa: SLF001 — exercising the branch directly
     # Both conditionIds are in the panel, keyed by conditionId, priced on the odds series (close ∈ (0,1)).
     assert set(market) == {_CID_A, _CID_B}
     assert all(0.0 < float(b.close) < 1.0 for b in market[_CID_A])
     assert len(market[_CID_A]) == 280
+    # The cell_meta stamps each prediction market at the polymarket venue (the fee axis the funder reads).
+    assert cell_meta[_CID_A] == (_CID_A, "polymarket")
 
 
 def test_prediction_spec_backtests_end_to_end(tmp_path):
@@ -127,7 +129,7 @@ def test_prediction_brut_cells_are_produced_with_verdicts(tmp_path):
     finder = StrategyFinder(settings=store.settings, store=store, alt_store=_alt_with_odds(tmp_path))
     spec = _prediction_spec()
 
-    market = finder._market(spec)  # noqa: SLF001
+    market, cell_meta = finder._market(spec)  # noqa: SLF001
     grid = build_grid(spec, max_variants=6)
     catalog = default_catalog()
     venue = catalog.venue_for(spec.universe.venues)
@@ -140,6 +142,7 @@ def test_prediction_brut_cells_are_produced_with_verdicts(tmp_path):
         spec, grid[0], market, venue, alt_by_symbol=None, grid_size=len(grid),
         fee_schedule=fee_schedule, depth_schedule=depth_schedule,
         asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol,
+        cell_meta=cell_meta,
     )
     assert result is not None, "the prediction variant failed to compile/backtest"
     assert set(result.cells) == {_CID_A, _CID_B}  # one brut cell per market, keyed by conditionId

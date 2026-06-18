@@ -15,7 +15,8 @@ from cosmu.data.backtest import (
     metrics_for_run,
     run_strategy_backtest_detailed,
 )
-from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
+from cosmu.data.market import MarketDataProvider, UniversalOHLCVProvider
+from cosmu.data.price_cells import build_crypto_cells
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
@@ -80,8 +81,12 @@ class _Screened:
     impact_bps: float = float(DEFAULT_IMPACT_BPS)
     parent: _Screened | None = None
     pre_kill: str | None = None  # kill reason injected before _persist (e.g. per-symbol floor)
-    # The BRUT per-cell verdicts {symbol: _BrutCell}, filled in run_cohort before _persist. Each cell judged alone.
+    # The BRUT per-cell verdicts {cell_key: _BrutCell}, filled in run_cohort before _persist. Each cell judged alone.
     cells: dict = field(default_factory=dict)
+    # cell_key -> (canonical symbol, venue_id): maps the market/cell key (bare symbol for the Binance reference,
+    # 'PAIR@venue' otherwise) to the S×A×V triple stamped on each cell + backtest_symbols row. Empty on the legacy
+    # Binance-only path (cells then stamp sc.venue_id), so the crypto path stays byte-identical.
+    cell_meta: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -475,7 +480,7 @@ class FarmLoop:
         except ValueError:
             return None  # invalid spec — never persisted, counted as invalid
 
-        metrics, venue, min_symbol_trades, val_returns, per_symbol, per_symbol_runs, per_symbol_bh = self._screen(cand, compiled.code_hash, seed)
+        metrics, venue, min_symbol_trades, val_returns, per_symbol, per_symbol_runs, per_symbol_bh, cell_meta = self._screen(cand, compiled.code_hash, seed)
         # BRUT: a per-combo cell is NOT part of any cross-combo family, so the autonomous loop NO LONGER registers
         # a global trial here (the old register_trial fed the pooled FDR/DSR deflation this lane has dropped, and
         # would otherwise also contaminate the POOLED research lanes' global ledger with autonomous mutants). Each
@@ -495,7 +500,7 @@ class FarmLoop:
             per_symbol_runs=per_symbol_runs, per_symbol_buy_and_hold=per_symbol_bh,
             venue_id=venue.id, fee_bps=float(venue.taker_fee_bps),
             slippage_bps=float(venue.slippage_bps), impact_bps=float(venue.impact_bps),
-            pre_kill=pre_kill,
+            pre_kill=pre_kill, cell_meta=cell_meta,
         )
 
     def _score_cells(self, sc: _Screened) -> dict[str, _BrutCell]:
@@ -506,21 +511,25 @@ class FarmLoop:
         grid). promote_brut scores each cell alone (TrialStats(count=1), the min-trades floor on the cell's OWN
         trades). A cell passes iff promoted AND it cleared the per-cell trade floor AND the candidate wasn't
         pre-killed for thinness."""
+        meta = sc.cell_meta or {}
         cell_metrics: dict[str, BacktestMetrics] = {}
-        for sym, run in (sc.per_symbol_runs or {}).items():
-            cell_metrics[sym] = metrics_for_run(run, trials=1, buy_and_hold=sc.per_symbol_buy_and_hold.get(sym, 0.0))
-        candidates = [CohortCandidate(id=sym, metrics=m, net_profit=0.0, source="farmloop") for sym, m in cell_metrics.items()]
+        for key, run in (sc.per_symbol_runs or {}).items():
+            cell_metrics[key] = metrics_for_run(run, trials=1, buy_and_hold=sc.per_symbol_buy_and_hold.get(key, 0.0))
+        candidates = [CohortCandidate(id=key, metrics=m, net_profit=0.0, source="farmloop") for key, m in cell_metrics.items()]
         promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
         out: dict[str, _BrutCell] = {}
-        for sym, m in cell_metrics.items():
-            p = promotions[sym]
+        for key, m in cell_metrics.items():
+            p = promotions[key]
             trades = m.num_trades
             reasons = list(p.reasons)
             floor_ok = trades >= _MIN_TRADES_PER_SYMBOL and not sc.pre_kill
             if trades < _MIN_TRADES_PER_SYMBOL:
                 reasons.append("min_trades_per_symbol")
-            out[sym] = _BrutCell(
-                symbol=sym, venue_id=sc.venue_id, metrics=m,
+            # Stamp the cell's CANONICAL symbol + REAL venue (the S×A×V triple): a 'BTC/USDT@kraken' key stamps
+            # symbol='BTC/USDT', venue_id='kraken'; the legacy Binance-only key stamps itself + sc.venue_id.
+            symbol, venue_id = meta.get(key, (key, sc.venue_id))
+            out[key] = _BrutCell(
+                symbol=symbol, venue_id=venue_id, metrics=m,
                 deflated_sharpe=p.deflated_sharpe_prob, trades=trades,
                 passed=p.promoted and floor_ok, reasons=reasons,
             )
@@ -633,25 +642,25 @@ class FarmLoop:
             },
         )
         # First-class per-CELL rows — the autonomous loop populates the queryable per-(strat,symbol,venue) unit of
-        # truth identically to the finder sweep. venue_id = the fee axis; `verdict` carries the BRUT per-cell
-        # pass/fail ('pass' iff this cell cleared the gate on its OWN data, else its own kill reason — the funder
-        # fans out a paper track per 'pass' cell). NEVER a pooled or sibling-compared label — each cell judged ALONE.
-        # NOTE: a single sc.venue_id is correct only because this loop is crypto-only today (every symbol is Binance
-        # spot). The finder, which screens equity+HL legs, stamps the per-symbol venue map. When this loop's universe
-        # widens, carry venue_id_by_symbol onto the cells or it will mislabel the fee axis.
-        # GENEROUS-PAPER routing (mirrors the finder sweep): a gate-FAILED near-miss cell (in _watch_syms, computed
-        # above) is tagged 'watch' (not its kill reason) and ALSO funds a paper track below. The gate verdict
-        # ('pass') and the true-negative kill reasons stand.
-        for _sym, _pm in (sc.per_symbol or {}).items():
-            cell = sc.cells.get(_sym)
+        # truth identically to the finder sweep. The PERSISTED `symbol` is the cell's CANONICAL pair (cell.symbol —
+        # never the namespaced 'PAIR@venue' market key) and `venue_id` is the cell's REAL venue (the fee axis of the
+        # S×A×V triple), so backtest_symbols CAN now carry non-Binance venues (the venue-axis de-collapse, shared
+        # with the finder via data/price_cells). GENEROUS-PAPER routing (mirrors the finder sweep): a gate-FAILED
+        # near-miss cell (in _watch_syms, keyed by cell key) is tagged 'watch' (not its kill reason) and ALSO funds a
+        # paper track below; the gate verdict ('pass') and the true-negative kill reasons stand. The legacy
+        # Binance-only path stamps the bare symbol + sc.venue_id.
+        for _key, _pm in (sc.per_symbol or {}).items():
+            cell = sc.cells.get(_key)
+            cell_symbol = cell.symbol if cell else _key
+            cell_venue = cell.venue_id if cell else sc.venue_id
             if cell and cell.passed:
                 cell_verdict = "pass"
-            elif _sym in _watch_syms:
+            elif _key in _watch_syms:
                 cell_verdict = WATCH_VERDICT
             else:
                 cell_verdict = (",".join(cell.reasons) or "fail") if cell else None
             b.insert("backtest_symbols", {
-                "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": sc.venue_id,
+                "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": cell_symbol, "venue_id": cell_venue,
                 "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                 "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
                 "verdict": cell_verdict, "created_at": utcnow(),
@@ -729,22 +738,20 @@ class FarmLoop:
         and fee-net fills instead of a candidate-shape surrogate.
         """
         del code_hash, seed
-        provider = self.market_data or BinanceSpotOHLCVProvider()
         enabled_venues, enabled_classes = self._enabled()
-        symbols = _binance_symbols(cand.spec, enabled_venues, enabled_classes)
-        market = {
-            symbol: provider.fetch_bars(symbol, cand.spec.horizon.bar_size, limit=_bar_limit(cand.spec))
-            for symbol in symbols
-        }
+        market, cell_meta = self._crypto_cells(cand.spec, enabled_venues, enabled_classes)
         catalog = default_catalog()
         venue = catalog.venue_for(cand.spec.universe.venues)   # price against the spec's OWN venue (one source of fee truth)
+        # The crypto cell → venue map (cell_key -> venue_id) so build_cost_context overlays each cross-venue crypto
+        # cell with ITS OWN venue's fee/depth (the venue-axis de-collapse, shared with the Strategy Finder via
+        # master/screen_universe). Empty / single-venue (the Binance-only common case) → byte-identical to before.
+        crypto_cell_venues = {k: v for k, (_s, v) in cell_meta.items()}
         # Per-symbol cost + calendar context from the SHARED source the finder also uses (master/screen_universe),
-        # so the FarmLoop and the Strategy Finder can never diverge on cost. This loop is CRYPTO-ONLY today —
-        # _binance_symbols feeds only Binance crypto symbols, so build_cost_context finds no equity/HL leg and
-        # returns (None, None, None, None); the backtest then uses the scalar venue fee/depth below and this call
-        # is byte-identical to the prior crypto path. The day the loop's universe widens, the per-venue fee +
-        # depth + calendar flow automatically — no second implementation to keep in sync (audit landmine closed).
-        fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(cand.spec, market, catalog)
+        # so the FarmLoop and the Strategy Finder can never diverge on cost. Crypto-only single-venue → returns
+        # (None, …) and the scalar venue fee/depth below is used; a multi-venue crypto cohort gets per-cell overlays.
+        fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(
+            cand.spec, market, catalog, crypto_cell_venues=crypto_cell_venues
+        )
         # Detailed backtest: `.metrics` is BYTE-IDENTICAL to run_strategy_backtest (which is a thin .metrics
         # wrapper over this), so no verdict drifts — but it also exposes per-symbol trade counts so the
         # per-symbol floor can test the true MINIMUM-per-symbol (finder.py semantic), not a pooled total.
@@ -761,7 +768,7 @@ class FarmLoop:
             slippage_bps=venue.slippage_bps,
             impact_bps=venue.impact_bps,
             depth_schedule=depth_schedule,
-            alt_by_symbol=self._alt_by_symbol(cand.spec, market),
+            alt_by_symbol=self._alt_by_cell(cand.spec, market, cell_meta),
             # SELECTION sees VALIDATION evidence only — the untouched, purged+embargoed holdout is evaluated
             # exactly once per gate+FDR survivor in run_cohort's champion-only holdout step (mirrors lab/finder).
             # Screening every candidate WITH the holdout (the old default) made the always-on loop SELECT on the
@@ -771,7 +778,7 @@ class FarmLoop:
         )
         return (
             result.metrics, venue, result.min_symbol_trades, list(result.val_returns),
-            result.per_symbol, result.per_symbol_runs, result.per_symbol_buy_and_hold,
+            result.per_symbol, result.per_symbol_runs, result.per_symbol_buy_and_hold, cell_meta,
         )
 
     def _champion_holdout_runs(self, spec: StrategySpec, params: dict[str, float]) -> tuple[dict, dict[str, float]]:
@@ -780,19 +787,22 @@ class FarmLoop:
         per_symbol_buy_and_hold) — same market / venue / cost model the screen priced against, so the exam is
         charged identically. The brut gate confirms EACH passing cell on ITS OWN holdout run. Pure compute, no DB
         write. Called once per candidate with a passing cell (a fresh version per cohort → structurally one-shot)."""
-        provider = self.market_data or BinanceSpotOHLCVProvider()
         enabled_venues, enabled_classes = self._enabled()
-        symbols = _binance_symbols(spec, enabled_venues, enabled_classes)
-        market = {s: provider.fetch_bars(s, spec.horizon.bar_size, limit=_bar_limit(spec)) for s in symbols}
+        # SAME cell-keyed market the screen used (per pair × venue, UNIFY/FALLBACK) so per_symbol_holdout_runs is
+        # keyed by the SAME cell keys the cells are — a 'BTC/USDT@kraken' cell confirms on its own holdout run.
+        market, cell_meta = self._crypto_cells(spec, enabled_venues, enabled_classes)
         catalog = default_catalog()
         venue = catalog.venue_for(spec.universe.venues)
-        fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(spec, market, catalog)
+        crypto_cell_venues = {k: v for k, (_s, v) in cell_meta.items()}
+        fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(
+            spec, market, catalog, crypto_cell_venues=crypto_cell_venues
+        )
         result = run_strategy_backtest_detailed(
             spec, params, market, fee_bps=venue.taker_fee_bps,
             fee_schedule=fee_schedule,
             slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
             depth_schedule=depth_schedule,
-            alt_by_symbol=self._alt_by_symbol(spec, market),
+            alt_by_symbol=self._alt_by_cell(spec, market, cell_meta),
             include_holdout=True,
             asset_class_by_symbol=asset_class_by_symbol,
         )
@@ -824,6 +834,51 @@ class FarmLoop:
         screen and the sweep evaluate a funding/meta spec identically. Offline / no alt store → None (price-only,
         unchanged). Never raises."""
         return build_alt_by_symbol(self._alt_store(), spec, market)
+
+    def _crypto_cells(
+        self, spec: StrategySpec, enabled_venues: set[str], enabled_classes: set[str]
+    ) -> tuple[dict[str, list], dict[str, tuple[str, str]]]:
+        """The cell-keyed crypto screen panel + a cell_meta map (cell_key -> (canonical symbol, venue_id)), built
+        from the venue-tagged universe_pairs (UNIVERSAL PRICE LAYER) so the FarmLoop screens per (pair × venue) —
+        a UNIFY venue reuses the pair's shared reference series, a FALLBACK venue gets its own bars. Honors the SAME
+        gate as the legacy _binance_symbols: when crypto/binance aren't enabled, returns ({}, {}) (no trades →
+        killed). When the universe table is empty, falls back to CRYPTO_SCREEN_UNIVERSE on the Binance reference —
+        byte-identical to the prior 5-symbol Binance screen. cell_meta stamps the S×A×V triple on each cell."""
+        if not _binance_symbols(spec, enabled_venues, enabled_classes):
+            return {}, {}  # the venue/class gate is closed → no crypto cells (same as before)
+        reference = UniversalOHLCVProvider(self.market_data) if self.market_data is not None else UniversalOHLCVProvider()
+        market: dict[str, list] = {}
+        cell_meta: dict[str, tuple[str, str]] = {}
+        for cell in build_crypto_cells(
+            self.store, timeframe=spec.horizon.bar_size, limit=_bar_limit(spec),
+            enabled_venues=enabled_venues, reference=reference, fallback_symbols=CRYPTO_SCREEN_UNIVERSE,
+        ):
+            if cell.bars:
+                market[cell.key] = cell.bars
+                cell_meta[cell.key] = (cell.symbol, cell.venue_id)
+        return market, cell_meta
+
+    def _alt_by_cell(
+        self, spec: StrategySpec, market: dict[str, list], cell_meta: dict[str, tuple[str, str]]
+    ) -> dict | None:
+        """The alt-data join keyed by CELL KEY but FETCHED by each cell's CANONICAL symbol (alt data is a property
+        of the pair, not the venue cell — a 'BTC/USDT@kraken' cell reads BTC/USDT's funding). Builds the join once
+        per canonical symbol (deduped across a pair's venue cells) and replicates under each cell key. None exactly
+        when _alt_by_symbol would be (price-only path unchanged)."""
+        canon_market: dict[str, list] = {}
+        for key, bars in market.items():
+            symbol = cell_meta.get(key, (key, ""))[0]
+            canon_market.setdefault(symbol, bars)
+        joined = self._alt_by_symbol(spec, canon_market)
+        if joined is None:
+            return None
+        out: dict = {}
+        for key in market:
+            symbol = cell_meta.get(key, (key, ""))[0]
+            feats = joined.get(symbol)
+            if feats is not None:
+                out[key] = feats
+        return out or None
 
 
 # THE crypto screen universe — the symbols every Binance gate-lane candidate is screened against. The funder

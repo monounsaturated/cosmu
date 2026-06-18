@@ -18,6 +18,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from cosmu.adapters.data.alpaca import AlpacaDailyBarsProvider
+from cosmu.adapters.exec.registry import EXEC_ADAPTER_VENUES
 from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, YahooDailyBarsProvider
 
 if TYPE_CHECKING:
@@ -31,15 +32,26 @@ from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
 
-# ASSET-CLASS → its funding venue (one tradable venue per class, mirroring PricingRouter's mark routing). It MUST
-# be a venue with a real ExecutionAdapter (adapters/exec/registry.EXEC_ADAPTER_VENUES = binance/alpaca/polymarket),
+# ASSET-CLASS → its DEFAULT funding venue (the fallback when a cell's own screen venue can't execute). It MUST be a
+# venue with a real ExecutionAdapter (adapters/exec/registry.EXEC_ADAPTER_VENUES = binance/kraken/alpaca/polymarket),
 # else a funded survivor can never route live — it sim-fills forever while the UI shows 'armed'. crypto → Binance
-# spot; equity/ETF → ALPACA (was 'ibkr', which has data but NO exec adapter, so every equity survivor — the only
-# class with Gate survivors today — was structurally unable to go live). Alpaca mirrors the same 31 equities in the
-# catalog and the mark leg already prices equities off Alpaca-when-keyed-else-Yahoo total-return. A class absent
-# here has NO funding venue → its survivors are SKIPPED (never forced onto a crypto symbol). NOTE: pre-existing
-# ibkr-funded sim tracks are not migrated (they keep marking via the router); NEW equity survivors fund on alpaca.
+# spot; equity/ETF → ALPACA (ibkr has data but NO exec adapter, so every equity survivor — the only class with Gate
+# survivors today — was structurally unable to go live). Alpaca mirrors the same 31 equities in the catalog and the
+# mark leg prices equities off Alpaca-when-keyed-else-Yahoo total-return. A class absent here has NO default funding
+# venue → its survivors are SKIPPED unless their own cell venue can execute (never forced onto a crypto symbol).
 _FUNDING_VENUE_BY_ASSET_CLASS: dict[str, str] = {"crypto": "binance", "equity": "alpaca"}
+
+
+def _funding_venue_for_cell(cell_venue: str | None, asset_class: str) -> str | None:
+    """The venue a passing cell FUNDS on, PRESERVING the cell's OWN screen venue (the S×A×V triple) whenever that
+    venue has a real exec adapter — so a cell the gate passed on KRAKEN funds on Kraken, NOT collapsed back onto
+    Binance (the bug that re-collapses the venue axis at funding time, defeating the whole universal-price layer).
+    Only when the cell's own venue can't execute (a data/research-only venue, or a missing venue_id on a legacy
+    row) do we fall back to the asset class's DEFAULT execution venue. None when neither resolves → the cell is
+    SKIPPED (never mispriced onto a venue it wasn't proven on)."""
+    if cell_venue and cell_venue in EXEC_ADAPTER_VENUES:
+        return cell_venue
+    return _FUNDING_VENUE_BY_ASSET_CLASS.get(asset_class)
 
 
 def _instrument_venue(catalog: VenueCatalog, instrument_id: str) -> str | None:
@@ -127,13 +139,16 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
     paper test is the fluke safeguard (live stays human-only, and watch never reaches it). Returns (version_id,
     Track, symbol, funding_venue_id) — one tuple per fundable cell. `rolling_dsr` = the cell's deflated Sharpe.
 
-    The funding venue is the cell's asset-class EXECUTION venue (crypto → Binance, equity → Alpaca — the venue with
-    a real exec adapter), independent of the SCREEN venue stored on the cell row. A cell whose asset class has no
-    funding venue wired, or whose symbol isn't tradable there, is SKIPPED (never mislabel/misprice a position)."""
+    The funding venue PRESERVES the cell's OWN screen venue (bs.venue_id — the S×A×V triple) whenever that venue
+    has a real exec adapter, so a cell proven on KRAKEN funds on Kraken and the venue axis stays de-collapsed; only
+    a data/research-only screen venue falls back to the asset class's default execution venue (crypto → Binance,
+    equity → Alpaca). A cell with no resolvable funding venue, or whose symbol isn't a catalog instrument there, is
+    SKIPPED (never mislabel/misprice a position)."""
     rows = store.rows(
         f"""
         SELECT sv.id AS version_id, sv.spec AS spec,
-               bs.symbol AS symbol, b.deflated_sharpe AS deflated_sharpe, bs.verdict AS verdict
+               bs.symbol AS symbol, bs.venue_id AS cell_venue,
+               b.deflated_sharpe AS deflated_sharpe, bs.verdict AS verdict
         FROM strategy_versions sv
         JOIN backtests b ON b.strategy_version_id = sv.id AND b.kind = 'screen'
         JOIN backtest_symbols bs ON bs.strategy_version_id = sv.id
@@ -145,18 +160,22 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
         ORDER BY CAST(b.deflated_sharpe AS REAL) DESC
         """
     )
-    symbols_by_class: dict[str, set[str]] = {}
+    symbols_by_venue: dict[tuple[str, str], set[str]] = {}
     out: list[tuple[str, Track, str, str]] = []
     seen: set[tuple[str, str, str]] = set()  # de-dup (version, symbol, funding_venue) across rescreens
     for r in rows:
         asset_class = _survivor_asset_class(r.get("spec"))
-        venue_id = _FUNDING_VENUE_BY_ASSET_CLASS.get(asset_class)
+        # PRESERVE the cell's OWN venue at funding (the fix): only fall back to the class default when the cell's
+        # screen venue can't execute. This is what stops the venue axis re-collapsing onto Binance at funding time.
+        venue_id = _funding_venue_for_cell(r.get("cell_venue"), asset_class)
         if venue_id is None:
-            continue  # no funding venue wired for this asset class → SKIP (never force onto a crypto symbol)
-        tradable = symbols_by_class.setdefault(asset_class, set(_venue_symbols(catalog, venue_id, asset_class)))
+            continue  # no resolvable funding venue for this cell → SKIP (never force onto a crypto symbol)
+        tradable = symbols_by_venue.setdefault(
+            (venue_id, asset_class), set(_venue_symbols(catalog, venue_id, asset_class))
+        )
         symbol = r["symbol"]
         if symbol not in tradable:
-            continue  # the proven cell's symbol isn't tradable at the funding venue → SKIP (no fabricated symbol)
+            continue  # the proven cell's symbol isn't a catalog instrument at the funding venue → SKIP (no fabrication)
         key = (r["version_id"], symbol, venue_id)
         if key in seen:
             continue

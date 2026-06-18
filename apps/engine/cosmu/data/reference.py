@@ -103,7 +103,9 @@ class CanonicalPair:
         return f"{self.base}/{self.quote}"
 
 
-def pair_for(symbol: str, venue: str, *, base: str | None = None, quote: str | None = None) -> CanonicalPair:  # noqa: ARG001
+def pair_for(  # noqa: ARG001 — `venue` kept for API symmetry / future venue-specific spelling rules
+    symbol: str, venue: str, *, base: str | None = None, quote: str | None = None
+) -> CanonicalPair:
     """The CANONICAL pair a (symbol, venue) trades — normalizing the base spelling (Kraken XBT -> BTC) AND the
     quote currency bucket (USD/USDC -> USDT) DELIBERATELY so kraken XBTUSD and binance BTCUSDT BOTH resolve to
     BTC/USDT and CAN be unified-or-not by the alignment check. `base`/`quote` (from a universe_pairs row) are

@@ -52,7 +52,7 @@ def test_screen_is_validation_only_no_holdout_simulated(tmp_path):
     # per-symbol RUNS + per-symbol B&H (the streams each cell is judged on) — never the pooled holdout.
     loop = _loop(tmp_path)
     cand = Candidate(spec=seed_orb_fvg_spec(), origin="seed", lane="gate")
-    metrics, _venue, _mst, _vr, per_symbol, per_symbol_runs, per_symbol_bh = loop._screen(cand, "code-hash", 7)
+    metrics, _venue, _mst, _vr, per_symbol, per_symbol_runs, per_symbol_bh, _cell_meta = loop._screen(cand, "code-hash", 7)
     assert metrics.holdout_deflated_sharpe == Decimal("-0.5")  # the exam was never sat during the screen
     assert set(per_symbol_runs) == set(per_symbol)  # a run per screened symbol — the per-cell streams
     assert set(per_symbol_bh) <= set(per_symbol)    # each cell's own buy-and-hold benchmark
@@ -73,12 +73,12 @@ def test_score_cells_judges_each_symbol_on_its_own_streams(tmp_path):
     # is killed on min_trades_per_symbol; a cell never re-pools sibling streams.
     loop = _loop(tmp_path)
     cand = Candidate(spec=seed_orb_fvg_spec(), origin="seed", lane="gate")
-    metrics, venue, mst, vr, per_symbol, per_symbol_runs, per_symbol_bh = loop._screen(cand, "h", 7)
+    metrics, venue, mst, vr, per_symbol, per_symbol_runs, per_symbol_bh, cell_meta = loop._screen(cand, "h", 7)
     from cosmu.evolution.loop import _Screened
 
     sc = _Screened(cand=cand, params={}, compiled=None, metrics=metrics, survival_score=0.0, proven=[],
                    per_symbol=per_symbol, per_symbol_runs=per_symbol_runs, per_symbol_buy_and_hold=per_symbol_bh,
-                   venue_id=venue.id, pre_kill=None)
+                   venue_id=venue.id, pre_kill=None, cell_meta=cell_meta)
     cells = loop._score_cells(sc)
     assert set(cells) == set(per_symbol_runs)
     for sym, cell in cells.items():
