@@ -224,6 +224,7 @@ body{
 /* Per-column widths (table-layout:fixed honours these). The identity .col-strat is left WITHOUT a fixed width so
    it absorbs all the slack and the default set fits ~1280px with NO horizontal scroll on load; toggling extra
    columns adds the JS min-width floor (symbols-table.tsx) which is what introduces the scroll. */
+.col-combo{width:74px}
 .col-strat{min-width:200px}
 .col-sym{width:96px}
 .col-venue{width:88px}
