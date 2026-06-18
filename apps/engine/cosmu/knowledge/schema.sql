@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS universe_pairs (
   delisted_at TEXT,
   active INTEGER NOT NULL DEFAULT 1,
   source TEXT NOT NULL,                -- live | curated | vision
+  multiplier NUMERIC,                  -- contract multiplier (USD/EUR per price point); NULL for spot/equity/perp
   fetched_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_universe_pairs_venue ON universe_pairs(venue);

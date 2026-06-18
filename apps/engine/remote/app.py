@@ -173,8 +173,9 @@ def tick() -> int:
     _run(["cosmu.orchestrator.loop"])        # paper clock: mark held positions to the latest real close
     _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
     _run(["cosmu.strategy.agent_run"])       # observe-only LLM strategies: reason (Mind panel) + record traces ($0)
-    if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts
+    if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts + universe refresh
         _run(["cosmu.costs.refresh"])
+        _run(["cosmu.data.universe_build"])  # refresh universe_pairs + R2 snapshot from live venue APIs
     return rc
 
 

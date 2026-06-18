@@ -192,9 +192,19 @@ def test_polymarket_dedupes_and_dates():
 
 def test_ibkr_curated_is_tiered():
     pairs = ibkr_curated_pairs()
-    assert all(p.source == "curated" and p.asset_class == "equity" for p in pairs)
+    # All are curated; asset_class is equity OR futures (expanded universe includes futures + EU equities)
+    assert all(p.source == "curated" and p.asset_class in ("equity", "futures") for p in pairs)
+    # Key equities present
     assert {p.symbol for p in pairs} >= {"SPY", "AAPL", "NVDA"}
     assert next(p for p in pairs if p.symbol == "SPY").tier_hint == 0
+    # Futures carry a multiplier; equities/ETFs do not
+    futures = [p for p in pairs if p.instrument_type == "future"]
+    assert futures, "expected futures pairs in the IBKR universe"
+    assert all(p.multiplier is not None and p.multiplier > 0 for p in futures)
+    equity_pairs = [p for p in pairs if p.instrument_type in ("equity", "etf")]
+    assert all(p.multiplier is None for p in equity_pairs)
+    # ~200+ total instruments
+    assert len(pairs) >= 200
 
 
 # ---------------------------------------------------------------------------------------------------------------
