@@ -72,6 +72,17 @@ export function bestOosPct(backtests: Backtest[]): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
+// CAGR of the best OOS return — the cross-window comparable (a +6% over 3mo and +6% over 2yr are NOT the same
+// edge). Reads the engine-computed oos_return_annualized; null when no backtest carries a window length.
+export function bestOosAnnualizedPct(backtests: Backtest[]): number | null {
+  const passed = backtests.filter((b) => b.passed_gates);
+  const pool = passed.length ? passed : backtests;
+  const anns = pool.map((b) => b.oos_return_annualized).filter((v): v is number => typeof v === "number");
+  if (!anns.length) return null;
+  const v = Math.max(...anns) * 100;
+  return Number.isFinite(v) ? v : null;
+}
+
 // The OOS window as a human span ("~2.4yr" / "~8mo" / "~120d") — the actual length behind the OOS %, so the
 // Duration row reads "~2.4yr" instead of the bare literal "OOS". null when the engine has no window length.
 function formatOosWindow(days: number | null | undefined): string | null {
@@ -152,6 +163,7 @@ function PhaseComparison({
   trades,
   ageDays,
   bestOos,
+  bestOosAnn,
   cell
 }: {
   headlineBt: Backtest | null;
@@ -159,10 +171,12 @@ function PhaseComparison({
   trades: Execution[];
   ageDays: number | null;
   bestOos: number | null;
+  bestOosAnn: number | null;
   cell?: LabSymbolRow | null;
 }) {
   // Prefer the per-cell standalone numbers when a cell is focused. return_pct / max_drawdown are FRACTIONS.
   const cellReturnPct = cell ? cell.return_pct * 100 : null;
+  const cellAnnPct = cell && typeof cell.return_pct_annualized === "number" ? cell.return_pct_annualized * 100 : null;
   const cellMaxDdPct = cell ? cell.max_drawdown * 100 : null;
   const cellTrades = cell ? cell.trades : null;
   // The GATED deflated-Sharpe value is the PROBABILITY (deflated_sharpe_prob, the 0–1 number the 0.95 bar checks),
@@ -201,6 +215,24 @@ function PhaseComparison({
             ? formatUsd(0, 0)
             : `${paperPnl > 0 ? "+" : "-"}${formatUsd(Math.abs(paperPnl), 0)}`,
       paperTone: paperPnl === null || paperPnl === 0 ? undefined : paperPnl > 0 ? "up" : "dn",
+      live: "—"
+    },
+    {
+      metric: "Return (annualized)",
+      tip: "CAGR — the Return compounded to a yearly rate, so edges measured over DIFFERENT window lengths are comparable (a +6% over 3 months and a +6% over 2 years are not the same edge). Short windows amplify — read it alongside Trades and the test window.",
+      bt:
+        cellAnnPct !== null
+          ? `${cellAnnPct >= 0 ? "+" : ""}${cellAnnPct.toFixed(1)}%/yr`
+          : bestOosAnn !== null
+            ? `${bestOosAnn >= 0 ? "+" : ""}${bestOosAnn.toFixed(1)}%/yr`
+            : "—",
+      btTone:
+        cellAnnPct !== null
+          ? cellAnnPct >= 0 ? "up" : "dn"
+          : bestOosAnn !== null
+            ? bestOosAnn >= 0 ? "up" : "dn"
+            : undefined,
+      paper: "—",
       live: "—"
     },
     {
@@ -400,6 +432,7 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
   const ageDays = trackAgeDays(trades);
   const headlineBt = headlineBacktest(backtests);
   const bestOos = bestOosPct(backtests);
+  const bestOosAnn = bestOosAnnualizedPct(backtests);
   // Forward P&L = the engine's MARKED total (realized + unrealized = value − starting_capital), off the
   // scope='track' snapshot — NEVER the cash-flow sum of opening buys. null until the track is marked.
   const paperPnl = strategy.pnl_usd ?? null;
@@ -477,7 +510,7 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
         }
       />
 
-      <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} cell={cell} />
+      <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} bestOosAnn={bestOosAnn} cell={cell} />
 
       {/* Composed lifecycle verdict (backtest → paper → forward-ready → live-ready) + the audit trace, off the
           engine's GET /readiness/{version_id}. Advisory — it never arms money. */}

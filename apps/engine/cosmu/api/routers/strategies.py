@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _json, _metric, oos_window_days, store
+from cosmu.api._shared import _json, _metric, annualized_return, oos_window_days, store
 from cosmu.api.models import (
     Backtest,
     Execution,
@@ -135,7 +135,7 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             for trade in executions
         ],
         backtests=[
-            Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), deflated_sharpe_prob=_deflated_sharpe_prob(bt), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]), oos_window_days=oos_window_days(bt["oos_start"], bt["oos_end"]))
+            Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), deflated_sharpe_prob=_deflated_sharpe_prob(bt), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]), oos_window_days=oos_window_days(bt["oos_start"], bt["oos_end"]), oos_return_annualized=annualized_return(bt["oos_return"], oos_window_days(bt["oos_start"], bt["oos_end"])))
             for bt in backtests
         ],
         notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",

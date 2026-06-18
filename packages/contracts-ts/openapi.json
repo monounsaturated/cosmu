@@ -473,6 +473,17 @@
             "title": "Oos Return",
             "type": "number"
           },
+          "oos_return_annualized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oos Return Annualized"
+          },
           "oos_window_days": {
             "anyOf": [
               {
@@ -3639,6 +3650,17 @@
             "title": "Max Drawdown",
             "type": "number"
           },
+          "oos_window_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oos Window Days"
+          },
           "pooled_return_pct": {
             "anyOf": [
               {
@@ -3653,6 +3675,17 @@
           "return_pct": {
             "title": "Return Pct",
             "type": "number"
+          },
+          "return_pct_annualized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Pct Annualized"
           },
           "sharpe": {
             "title": "Sharpe",
@@ -8662,6 +8695,68 @@
           }
         },
         "summary": "Live Venues"
+      }
+    },
+    "/market/bars": {
+      "get": {
+        "description": "Closed-candle OHLCV for a Binance spot symbol, fetched in a Binance-reachable region. `bars` is a list of\n{ts(ms), open, high, low, close, volume} (OHLCV as strings \u2192 exact Decimals). Empty `bars` on any failure\n(offline / unknown symbol) \u2014 never a synthetic fill.",
+        "operationId": "market_bars_market_bars_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeframe",
+            "required": false,
+            "schema": {
+              "default": "1d",
+              "title": "Timeframe",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Market Bars Market Bars Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Market Bars"
       }
     },
     "/memory/insights": {

@@ -92,6 +92,7 @@ export interface Backtest {
   max_dd: number;
   num_trades: number;
   oos_return: number;
+  oos_return_annualized?: number | null;
   oos_window_days?: number | null;
   passed_gates: boolean;
   pbo: number;
@@ -714,8 +715,10 @@ export interface LabSymbolRow {
   created_at: string;
   kind: string;
   max_drawdown: number;
+  oos_window_days?: number | null;
   pooled_return_pct: number | null;
   return_pct: number;
+  return_pct_annualized?: number | null;
   sharpe: number;
   status: string;
   strategy_id: string;

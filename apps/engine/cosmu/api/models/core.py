@@ -155,6 +155,9 @@ class Backtest(BaseModel):
     # Length of the OOS window in days (from the YYYY-MM bounds) so the sheet's "Duration" row shows the OOS %
     # WITH its window ("+8.2% over ~2.4yr") instead of the literal "OOS". None when the bounds are missing.
     oos_window_days: float | None = None
+    # CAGR of oos_return over oos_window_days — the cross-backtest comparable (windows differ); the sheet shows it
+    # next to the total OOS return so a 3-month and a 2-year edge can be compared. None when the window is unknown.
+    oos_return_annualized: float | None = None
 
 
 class StrategyDetailResponse(BaseModel):

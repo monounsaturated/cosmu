@@ -36,6 +36,27 @@ def oos_window_days(oos_start: object, oos_end: object) -> float | None:
     return months * _DAYS_PER_MONTH
 
 
+def annualized_return(total_return: object, window_days: float | None) -> float | None:
+    """CAGR — the total OOS return compounded to a YEARLY rate so combos of different window lengths are directly
+    comparable (a +6% over 3 months and a +6% over 2 years are NOT the same edge; annualized they read +27%/yr vs
+    +3%/yr). `total_return` is a FRACTION (0.08 = +8%); `window_days` from oos_window_days(). Returns a fraction
+    (0.034 = +3.4%/yr), or None when the window is unknown/≤0 or the total wiped out (≤ -100%). Uses CALENDAR days
+    (365.25/yr) — the right convention for a holding-period return (trading-session counts annualize vol/Sharpe, a
+    separate axis). Short windows AMPLIFY (a +50% month → a huge CAGR) — honest, but read alongside the window."""
+    if window_days is None or window_days <= 0:
+        return None
+    try:
+        total = float(total_return)
+    except (TypeError, ValueError):
+        return None
+    if total <= -1.0:
+        return None
+    years = window_days / 365.25
+    if years <= 0:
+        return None
+    return (1.0 + total) ** (1.0 / years) - 1.0
+
+
 settings = get_settings()
 try:
     store = Store(settings)

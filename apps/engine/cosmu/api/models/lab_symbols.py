@@ -15,7 +15,10 @@ class LabSymbolRow(BaseModel):
     status: str                   # the version's lifecycle status (screened/paper/live/killed/…) — advisory context
     symbol: str
     venue_id: str | None          # the fee axis (the same edge costs differently per venue)
-    return_pct: float             # standalone validation return on THIS symbol+venue (NEVER a pooled mean)
+    return_pct: float             # standalone validation TOTAL return over the OOS window on THIS symbol+venue (NEVER pooled)
+    return_pct_annualized: float | None = None  # CAGR of return_pct over oos_window_days — the cross-combo comparable
+    #                                             (windows differ); NULL when the window is unknown. Fraction (0.034=+3.4%/yr).
+    oos_window_days: float | None = None  # the OOS window (days) return_pct covers; NULL = legacy/unknown
     sharpe: float
     max_drawdown: float
     trades: int
