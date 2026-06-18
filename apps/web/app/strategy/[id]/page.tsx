@@ -136,7 +136,7 @@ async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: stri
       {comparison.rows.length > 0 ? (
         <div className="card">
           <div className="card-hdr">
-            <span className="card-lbl" data-tip="Every (asset × venue) cell of THIS algo — each with its own P&L/verdict. Nothing averaged; the pooled column is advisory only.">
+            <span className="card-lbl" data-tip="Every (asset × venue) cell of THIS algo — each with its own P&L/verdict. Nothing averaged. Click a cell to open its fiche.">
               Comparison · {comparison.rows.length}
             </span>
           </div>
@@ -147,6 +147,7 @@ async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: stri
               venues={comparison.venues}
               title="Comparison"
               caption={false}
+              navigateOnClick
               highlight={triplet.cell ? { strategy_version_id: triplet.cell.strategy_version_id, symbol: triplet.cell.symbol, venue_id: triplet.cell.venue_id } : undefined}
             />
           </div>
