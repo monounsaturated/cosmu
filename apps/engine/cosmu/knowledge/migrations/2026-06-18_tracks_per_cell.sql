@@ -39,7 +39,11 @@ WHERE t.strategy_version_id = p.strategy_version_id
   AND t.symbol IS NULL AND t.venue_id IS NULL;
 
 -- 3. Drop the version-wide UNIQUE so a version can hold one track per cell. The constraint Postgres auto-named
---    when the column was declared `unique` is <table>_<col>_key. IF EXISTS keeps this a no-op when already dropped.
+--    when the column was declared `unique` is <table>_<col>_key. The table was RENAMED sleeves→tracks, so on a DB
+--    created before that rename the live constraint name is the OLD `sleeves_strategy_version_id_key` (that is the
+--    one actually dropped on prod); on a DB created after, it is `tracks_strategy_version_id_key`. Drop BOTH names
+--    (IF EXISTS → each is a no-op when absent / already dropped) so a fresh-or-aged DB both end up cell-keyed.
+ALTER TABLE tracks DROP CONSTRAINT IF EXISTS sleeves_strategy_version_id_key;
 ALTER TABLE tracks DROP CONSTRAINT IF EXISTS tracks_strategy_version_id_key;
 
 -- 4. The per-CELL UNIQUE: one track per (version, symbol, venue). Postgres treats NULLs as distinct, so legacy
