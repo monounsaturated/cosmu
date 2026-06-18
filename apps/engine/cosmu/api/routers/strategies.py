@@ -6,11 +6,15 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, HTTPException
 
 from cosmu.api._shared import _json, _metric, annualized_return, oos_window_days, store
 from cosmu.api.models import (
     Backtest,
+    CellCurvePoint,
+    CellCurveResponse,
     Execution,
     LabSymbolsResponse,
     Point,
@@ -24,7 +28,7 @@ from cosmu.api.models import (
 # strategy-triplet routes here can never drift from /lab/symbols (same columns, same pooled-advisory join).
 from cosmu.api.routers.lab import _CELL_SELECT, _cell_row, _dedup_cells
 from cosmu.api.routers.leaderboard import _money_or_none  # the shared finite-or-None money coercion (never null→0)
-from cosmu.knowledge.store import utcnow
+from cosmu.knowledge.store import backtest_symbols_has_equity_curve, utcnow
 from cosmu.master.scorer import BacktestMetrics, TrialStats, deflated_sharpe_prob
 from cosmu.research.summary_facts import facts_hash, summary_facts
 
@@ -245,6 +249,54 @@ def strategy_triplet(version_id: str, symbol: str | None = None, venue: str | No
         strategy_version_id=version_id,
         strategy_name=sv["strategy_name"],
         cell=cell,
+    )
+
+
+@router.get("/strategies/{version_id}/cell-curve", response_model=CellCurveResponse)
+def strategy_cell_curve(version_id: str, symbol: str, venue: str | None = None) -> CellCurveResponse:
+    """The persisted PER-CELL net-of-fee backtest equity curve for ONE focused (symbol, venue) cell — the
+    cumulated per-bar net equity the cell's metrics score on, stored at screen time on
+    backtest_symbols.equity_curve_json (never re-run, never the pooled basket). The strat sheet's Backtest tab
+    requests this for the focused cell, which has no fills to draw a curve from. Honest empty
+    (available=False, points=[]) when the cell has no stored curve yet — a cell that never traded, or a
+    pre-migration prod row whose column doesn't exist. Pure read.
+
+    `venue` mirrors the /triplet selector: None → the latest cell for the symbol (don't constrain venue);
+    "" → the NULL-venue cell explicitly; a real id → that venue."""
+    # Pre-migration prod has no equity_curve_json column — SELECTing it would raise UndefinedColumn, so probe
+    # first and return the honest empty curve. The probe is memoized per DSN (see store.py).
+    if not backtest_symbols_has_equity_curve(store):
+        return CellCurveResponse(version_id=version_id, symbol=symbol, venue=venue, available=False, points=[])
+    conds = ["bs.strategy_version_id = ?", "bs.symbol = ?"]
+    params: list[object] = [version_id, symbol]
+    if venue is not None:
+        if venue == "":
+            conds.append("bs.venue_id IS NULL")
+        else:
+            conds.append("bs.venue_id = ?")
+            params.append(venue)
+    where = " WHERE " + " AND ".join(conds)
+    with store.reading():
+        row = store.row(
+            f"SELECT bs.equity_curve_json FROM backtest_symbols bs{where} ORDER BY bs.created_at DESC LIMIT 1",
+            tuple(params),
+        )
+    raw = row.get("equity_curve_json") if row else None
+    points: list[CellCurvePoint] = []
+    if raw:
+        try:
+            data = json.loads(raw) if isinstance(raw, str) else raw
+            for p in data or []:
+                ts, net = p.get("ts"), p.get("net")
+                if ts is None or net is None:
+                    continue
+                points.append(CellCurvePoint(ts=str(ts), net=float(net)))
+        except (ValueError, TypeError, AttributeError):
+            points = []
+    # A chart needs ≥ 2 points to draw a line; below that it's honestly "not available" (the UI renders its
+    # per-cell empty state rather than a degenerate single dot).
+    return CellCurveResponse(
+        version_id=version_id, symbol=symbol, venue=venue, available=len(points) >= 2, points=points,
     )
 
 

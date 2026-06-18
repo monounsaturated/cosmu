@@ -88,6 +88,28 @@ class ExplorerDetailResponse(BaseModel):
     stats: ExplorerStats
 
 
+class CellCurvePoint(BaseModel):
+    """A single (ts, net_value) point of a PER-CELL net-of-fee backtest equity curve."""
+
+    ts: str
+    net: float
+
+
+class CellCurveResponse(BaseModel):
+    """The persisted PER-CELL (algo × symbol × venue) net-of-fee backtest equity curve — the cumulated per-bar
+    net equity the cell's metrics score on, stored at screen time (backtest_symbols.equity_curve_json), NEVER
+    re-run and NEVER the pooled basket. The strat sheet's Backtest tab requests this for the focused cell when
+    there are no fills to draw a curve from. `available` is False (points empty) when the cell has no stored
+    curve yet — a cell that never traded, or a pre-migration prod row whose column doesn't exist — an honest
+    empty state, never a fabricated curve."""
+
+    version_id: str
+    symbol: str
+    venue: str | None
+    available: bool
+    points: list[CellCurvePoint]
+
+
 class CostBasisCell(BaseModel):
     """A strategy's net performance under ONE cost basis — either the friction-free baseline ("No fees") or a
     specific venue's REAL fee + market depth. This is what the fee-basis selector swaps between."""

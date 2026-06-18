@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -12,6 +13,7 @@ from cosmu.data.alt_join import build_alt_by_symbol
 from cosmu.data.backtest import (
     DEFAULT_IMPACT_BPS,
     DEFAULT_SLIPPAGE_BPS,
+    equity_curve_points,
     metrics_for_run,
     run_strategy_backtest_detailed,
 )
@@ -20,7 +22,13 @@ from cosmu.data.price_cells import alt_ingest_symbol, build_crypto_cells
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
-from cosmu.knowledge.store import Store, Writer, tracks_has_cell_columns, utcnow
+from cosmu.knowledge.store import (
+    Store,
+    Writer,
+    backtest_symbols_has_equity_curve,
+    tracks_has_cell_columns,
+    utcnow,
+)
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
@@ -158,6 +166,10 @@ class _BrutCell:
     passed: bool
     reasons: list[str] = field(default_factory=list)
     holdout_passed: bool = False
+    # This cell's OWN net-of-fee backtest equity curve as a list of {ts, net} points (cumulated bar_returns,
+    # the SAME stream `metrics` scores on). Serialized to backtest_symbols.equity_curve_json at persist time so
+    # the strat sheet draws THIS (symbol, venue) cell's real curve. Default-empty (a cell that never traded).
+    equity_curve: list = field(default_factory=list)
 
 
 # Minimum trades on a SCREENED symbol — the cheap per-cell thinness pre-screen (the larger min_trades=30 floor is
@@ -513,8 +525,10 @@ class FarmLoop:
         pre-killed for thinness."""
         meta = sc.cell_meta or {}
         cell_metrics: dict[str, BacktestMetrics] = {}
+        cell_curves: dict[str, list] = {}  # each cell's OWN net-of-fee equity curve (cumulated bar_returns)
         for key, run in (sc.per_symbol_runs or {}).items():
             cell_metrics[key] = metrics_for_run(run, trials=1, buy_and_hold=sc.per_symbol_buy_and_hold.get(key, 0.0))
+            cell_curves[key] = equity_curve_points(run)
         candidates = [CohortCandidate(id=key, metrics=m, net_profit=0.0, source="farmloop") for key, m in cell_metrics.items()]
         promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
         out: dict[str, _BrutCell] = {}
@@ -532,6 +546,7 @@ class FarmLoop:
                 symbol=symbol, venue_id=venue_id, metrics=m,
                 deflated_sharpe=p.deflated_sharpe_prob, trades=trades,
                 passed=p.promoted and floor_ok, reasons=reasons,
+                equity_curve=cell_curves.get(key, []),
             )
         return out
 
@@ -655,6 +670,9 @@ class FarmLoop:
         # near-miss cell (in _watch_syms, keyed by cell key) is tagged 'watch' (not its kill reason) and ALSO funds a
         # paper track below; the gate verdict ('pass') and the true-negative kill reasons stand. The legacy
         # Binance-only path stamps the bare symbol + sc.venue_id.
+        # Persist each cell's net-of-fee equity curve ONLY when the live schema carries the column (pre-migration
+        # prod lacks it — writing it there would crash the whole persist; see backtest_symbols_has_equity_curve).
+        _curve_col = backtest_symbols_has_equity_curve(self.store)
         for _key, _pm in (sc.per_symbol or {}).items():
             cell = sc.cells.get(_key)
             cell_symbol = cell.symbol if cell else _key
@@ -665,12 +683,15 @@ class FarmLoop:
                 cell_verdict = WATCH_VERDICT
             else:
                 cell_verdict = (",".join(cell.reasons) or "fail") if cell else None
-            b.insert("backtest_symbols", {
+            _bs_row = {
                 "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": cell_symbol, "venue_id": cell_venue,
                 "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                 "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
                 "verdict": cell_verdict, "created_at": utcnow(),
-            })
+            }
+            if _curve_col and cell is not None and cell.equity_curve:
+                _bs_row["equity_curve_json"] = json.dumps(cell.equity_curve)
+            b.insert("backtest_symbols", _bs_row)
         # PER-CELL TRACKS: one standalone paper track per cell that passed the gate AND confirmed on its OWN
         # holdout. Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances forward columns
         # from real marks. track_opened is keyed to the CELL (cell_id) so master/live_eligibility reads this cell's

@@ -12,7 +12,7 @@
 // GENERATED TYPES ONLY — never hand-type API models (packages/contracts-ts).
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { ExplorerDetailResponse } from "@cosmu/contracts-ts";
+import type { CellCurveResponse, ExplorerDetailResponse, LabSymbolRow } from "@cosmu/contracts-ts";
 import { engineGetJson } from "@/lib/engine";
 import { cn, formatUsd } from "@/lib/utils";
 
@@ -22,7 +22,10 @@ import { cn, formatUsd } from "@/lib/utils";
 // a single value array). This component is standalone and does not conflict with EquityChart.
 
 type TwoLineChartProps = {
-  gross: number[];
+  // `gross` is optional: the executions-based curve overlays gross (pre-cost) + net, but the PER-CELL backtest
+  // curve has only a net-of-fee series (we never persisted a gross/pre-cost reconstruction), so it renders the
+  // net line alone. Omit / pass [] for the net-only render.
+  gross?: number[];
   net: number[];
   labels?: string[];
   height?: number;
@@ -32,7 +35,7 @@ type TwoLineChartProps = {
 };
 
 function TwoLineChart({
-  gross,
+  gross = [],
   net,
   labels,
   height = 150,
@@ -46,7 +49,8 @@ function TwoLineChart({
   const dotRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
 
-  const n = Math.min(gross.length, net.length);
+  const hasGross = gross.length > 0;
+  const n = hasGross ? Math.min(gross.length, net.length) : net.length;
   const netColor = n > 1 && net[n - 1] >= net[0] ? "var(--up)" : "var(--down)";
   const grossColor = "var(--muted)";
 
@@ -56,7 +60,7 @@ function TwoLineChart({
     const H = height;
     const PT = 14;
     const PB = 14;
-    const allVals = [...gross.slice(0, n), ...net.slice(0, n)];
+    const allVals = hasGross ? [...gross.slice(0, n), ...net.slice(0, n)] : [...net.slice(0, n)];
     const mn = Math.min(...allVals);
     const mx = Math.max(...allVals);
     const rng = mx - mn || Math.abs(mx) * 0.01 || 1;
@@ -65,9 +69,8 @@ function TwoLineChart({
     const R = hi - lo;
     const X = (i: number) => (i / (n - 1)) * W;
     const Y = (v: number) => PT + (H - PT - PB) * (1 - (v - lo) / R);
-    const grossPts = gross.slice(0, n).map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
+    const grossLine = hasGross ? gross.slice(0, n).map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(" ") : "";
     const netPts = net.slice(0, n).map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`);
-    const grossLine = grossPts.join(" ");
     const netLine = netPts.join(" ");
     // Net area fill (under the net line)
     const netArea = `M0,${Y(net[0]).toFixed(1)} L${netPts.join(" L")} L${W},${H} L0,${H}Z`;
@@ -83,8 +86,8 @@ function TwoLineChart({
       ddBandY = PT + usable * (1 - maxDdFrac);
     }
 
-    return { W, H, X, Y, grossLine, netLine, netArea, grids, ddBandY, netColor };
-  }, [gross, net, n, height, maxDdFrac, netColor]);
+    return { W, H, X, Y, grossLine, netLine, netArea, grids, ddBandY, netColor, hasGross };
+  }, [gross, net, n, height, maxDdFrac, netColor, hasGross]);
 
   if (!geom) {
     return (
@@ -121,7 +124,9 @@ function TwoLineChart({
     if (tvEl)
       tvEl.textContent = valueFormat
         ? valueFormat(idx, "net")
-        : `Net ${formatUsd(net[idx], 2)} / Gross ${formatUsd(gross[idx], 2)}`;
+        : hasGross
+          ? `Net ${formatUsd(net[idx], 2)} / Gross ${formatUsd(gross[idx], 2)}`
+          : `Net ${formatUsd(net[idx], 2)}`;
     if (tdEl) tdEl.textContent = labels?.[idx] ?? "";
     onScrub?.(idx);
   }
@@ -167,16 +172,18 @@ function TwoLineChart({
         {/* Net area fill */}
         <path d={geom.netArea} fill={`url(#bt-ng-${gid})`} />
 
-        {/* Gross line (faint — the "before costs" reference) */}
-        <polyline
-          points={geom.grossLine}
-          fill="none"
-          stroke={grossColor}
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          strokeDasharray="4 3"
-          vectorEffect="non-scaling-stroke"
-        />
+        {/* Gross line (faint — the "before costs" reference). Omitted for the net-only per-cell curve. */}
+        {geom.hasGross ? (
+          <polyline
+            points={geom.grossLine}
+            fill="none"
+            stroke={grossColor}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
 
         {/* Net line (bold — the real after-costs equity) */}
         <polyline
@@ -209,8 +216,8 @@ function StatRow({ label, value, tone }: { label: string; value: string; tone?: 
   );
 }
 
-// ── Legend — gross vs net line legend ──
-function Legend({ netColor }: { netColor: string }) {
+// ── Legend — gross vs net line legend. `showGross` is false for the net-only per-cell curve. ──
+function Legend({ netColor, showGross = true }: { netColor: string; showGross?: boolean }) {
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 6 }}>
       <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
@@ -219,22 +226,48 @@ function Legend({ netColor }: { netColor: string }) {
         </svg>
         <span style={{ fontSize: 10, color: "var(--quiet)" }}>Net (after costs)</span>
       </div>
-      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-        <svg width="22" height="8" style={{ flexShrink: 0 }}>
-          <line x1="0" y1="4" x2="22" y2="4" stroke="var(--muted)" strokeWidth="1.5" strokeDasharray="4 3" />
-        </svg>
-        <span style={{ fontSize: 10, color: "var(--quiet)" }}>Gross (pre-cost)</span>
-      </div>
+      {showGross ? (
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+          <svg width="22" height="8" style={{ flexShrink: 0 }}>
+            <line x1="0" y1="4" x2="22" y2="4" stroke="var(--muted)" strokeWidth="1.5" strokeDasharray="4 3" />
+          </svg>
+          <span style={{ fontSize: 10, color: "var(--quiet)" }}>Gross (pre-cost)</span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 // ── BacktestEquity — the backtest equity body rendered in the strategy sheet ──
+// A pure dispatcher (NO hooks here, so the cell/version branch can't reorder hooks): when the sheet is focused
+// on ONE (algo × asset × venue) cell, render THAT cell's standalone net-of-fee backtest curve
+// (CellBacktestEquity → GET /strategies/{id}/cell-curve); otherwise the version-level /explorer curve
+// (VersionBacktestEquity). The /explorer curve is built from executions (fills), so a backtest-only cell shows
+// nothing — the per-cell curve is the stored bar-by-bar net equity the cell's metrics scored on. Paper/Live
+// tracks keep the executions-based curve (rendered by PhasedEquity, not this component).
+// `embedded`: render only the inner body (chart + legend + stats), with NO outer `.psec` box or `.eq-head`
+// title — used inside the shared EquityPanel, which owns the single box + phase toggle.
+export function BacktestEquity({
+  versionId,
+  height = 140,
+  embedded = false,
+  cell = null
+}: {
+  versionId: string;
+  height?: number;
+  embedded?: boolean;
+  cell?: LabSymbolRow | null;
+}) {
+  return cell ? (
+    <CellBacktestEquity versionId={versionId} cell={cell} height={height} embedded={embedded} />
+  ) : (
+    <VersionBacktestEquity versionId={versionId} height={height} embedded={embedded} />
+  );
+}
+
+// ── VersionBacktestEquity — the version-level /explorer curve (gross + net from stored fills). ──
 // Fetches GET /explorer/{versionId} lazily on mount; shows a skeleton while loading.
-// Renders the two-line equity chart + drawdown band + stats row.
-// `embedded`: render only the inner body (chart + legend + stats), with NO outer `.psec` box or
-// `.eq-head` title — used inside the shared EquityPanel, which owns the single box + phase toggle.
-export function BacktestEquity({ versionId, height = 140, embedded = false }: { versionId: string; height?: number; embedded?: boolean }) {
+function VersionBacktestEquity({ versionId, height = 140, embedded = false }: { versionId: string; height?: number; embedded?: boolean }) {
   const [data, setData] = useState<ExplorerDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -369,6 +402,152 @@ export function BacktestEquity({ versionId, height = 140, embedded = false }: { 
 
   // Embedded: the EquityPanel owns the box + header (title + phase toggle); we render only the body.
   // The hovered Net/Gross value still surfaces via the in-chart crosshair tooltip.
+  if (embedded) return body;
+
+  return (
+    <div className="psec">
+      <div className="eq-head">
+        <span className="eq-title-txt">
+          {headlineText ? `Backtest equity · ${headlineText}` : "Backtest equity"}
+        </span>
+      </div>
+      {body}
+    </div>
+  );
+}
+
+// ── CellBacktestEquity — the PER-CELL standalone net-of-fee backtest curve. ──
+// Fetches GET /strategies/{versionId}/cell-curve?symbol=&venue= (the cumulated bar-by-bar net equity this exact
+// (symbol, venue) cell's metrics scored on — stored at screen time, NEVER re-run, NEVER the pooled basket). There
+// is no persisted gross/pre-cost series per cell, so this renders the NET line alone. The stats below bind to the
+// focused cell's OWN standalone fields (return_pct / max_drawdown / trades / sharpe) — the SAME granular truth the
+// rest of the sheet uses — never the pooled backtest aggregate.
+function CellBacktestEquity({
+  versionId,
+  cell,
+  height = 140,
+  embedded = false
+}: {
+  versionId: string;
+  cell: LabSymbolRow;
+  height?: number;
+  embedded?: boolean;
+}) {
+  const [data, setData] = useState<CellCurveResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [hover, setHover] = useState(-1);
+
+  // venue: "" addresses the NULL-venue cell explicitly (matches the engine's /cell-curve selector).
+  const venueParam = cell.venue_id ?? "";
+  const path = `/strategies/${versionId}/cell-curve?symbol=${encodeURIComponent(cell.symbol)}&venue=${encodeURIComponent(venueParam)}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    engineGetJson<CellCurveResponse>(path)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch(() => {
+        if (!cancelled) setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  const titleBox = (inner: React.ReactNode) =>
+    embedded ? (
+      inner
+    ) : (
+      <div className="psec">
+        <div className="eq-head">
+          <span className="eq-title-txt">Backtest equity</span>
+        </div>
+        {inner}
+      </div>
+    );
+
+  if (loading) {
+    return titleBox(<div className="skel" style={{ height, borderRadius: "var(--r-sm)" }} />);
+  }
+  if (error) {
+    return titleBox(<div className="eq-empty">Engine not reachable — backtest curve unavailable.</div>);
+  }
+  if (!data || !data.available || data.points.length < 2) {
+    // Honest per-cell empty state: forward-only — the curve accrues once this cell is (re-)screened + persisted.
+    return titleBox(
+      <div className="eq-empty">
+        No backtest curve yet for this {cell.symbol}
+        {cell.venue_id ? ` · ${cell.venue_id}` : ""} cell — it accrues as the combo is re-screened.
+      </div>
+    );
+  }
+
+  const net = data.points.map((p) => p.net);
+  const labels = data.points.map((p) => {
+    const d = new Date(p.ts);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+  });
+  const n = net.length;
+  const netColor = n > 1 && net[n - 1] >= net[0] ? "var(--up)" : "var(--down)";
+
+  // Stats from the focused cell's OWN standalone fields (return_pct / max_drawdown are FRACTIONS).
+  const maxDdFrac = typeof cell.max_drawdown === "number" ? cell.max_drawdown : null;
+  const maxDdPct = maxDdFrac !== null ? `${(maxDdFrac * 100).toFixed(1)}%` : "—";
+  const netRetPct =
+    typeof cell.return_pct === "number"
+      ? `${cell.return_pct >= 0 ? "+" : ""}${(cell.return_pct * 100).toFixed(1)}%`
+      : "—";
+  const annRetPct =
+    typeof cell.return_pct_annualized === "number" && cell.return_pct_annualized !== null
+      ? `${cell.return_pct_annualized >= 0 ? "+" : ""}${(cell.return_pct_annualized * 100).toFixed(1)}%`
+      : null;
+  const sharpe = typeof cell.sharpe === "number" ? cell.sharpe.toFixed(2) : "—";
+  const trades = typeof cell.trades === "number" ? String(cell.trades) : "—";
+  const netTone: "up" | "dn" | undefined =
+    typeof cell.return_pct === "number" ? (cell.return_pct >= 0 ? "up" : "dn") : undefined;
+  const ddTone: "dn" | undefined = maxDdFrac !== null && maxDdFrac > 0.2 ? "dn" : undefined;
+
+  const hoverVal = hover >= 0 && hover < net.length ? `Net ${formatUsd(net[hover], 2)}` : null;
+  const endVal = net.length > 0 ? `Net ${formatUsd(net[net.length - 1], 2)}` : null;
+  const headlineText = hoverVal ?? endVal;
+
+  const body = (
+    <>
+      <TwoLineChart
+        net={net}
+        labels={labels}
+        height={height}
+        maxDdFrac={maxDdFrac}
+        valueFormat={(i) => `Net ${formatUsd(net[i], 2)}`}
+        onScrub={setHover}
+      />
+
+      <Legend netColor={netColor} showGross={false} />
+
+      {maxDdFrac !== null ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 6 }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: "var(--down)", opacity: 0.22, flexShrink: 0 }} />
+          <span style={{ fontSize: 10, color: "var(--quiet)" }}>Max drawdown band: {maxDdPct} peak-to-trough</span>
+        </div>
+      ) : null}
+
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 12 }}>
+        <StatRow label="Net return" value={netRetPct} tone={netTone} />
+        {annRetPct ? <StatRow label="Net return / yr" value={annRetPct} tone={netTone} /> : null}
+        <StatRow label="Max drawdown" value={maxDdPct} tone={ddTone} />
+        <StatRow label="Trades" value={trades} />
+        <StatRow label="Sharpe" value={sharpe} />
+      </div>
+    </>
+  );
+
   if (embedded) return body;
 
   return (

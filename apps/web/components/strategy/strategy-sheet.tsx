@@ -484,7 +484,7 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
           curve from GET /explorer/{id}; Paper/Live = the engine's MARKED scope='track' trajectory
           (forward_equity), shown only when ≥ 2 real snapshots exist. Defaults to the most-advanced
           phase with data, so the operator sees the live read first and can toggle back to the edge. */}
-      <EquityPanel versionId={strategy.version_id ?? null} forwardCurve={strategy.forward_equity ?? []} stage={stage} perCell={!!cell} />
+      <EquityPanel versionId={strategy.version_id ?? null} forwardCurve={strategy.forward_equity ?? []} stage={stage} cell={cell ?? null} />
 
       <AiSummary
         summaryMd={strategy.summary_md}

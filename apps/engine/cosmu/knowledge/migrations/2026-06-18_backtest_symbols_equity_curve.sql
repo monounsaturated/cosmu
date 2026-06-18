@@ -1,0 +1,17 @@
+-- Migration: add equity_curve_json to backtest_symbols — the PER-CELL net-of-fee backtest equity curve (2026-06-18).
+--
+-- The strat sheet's Backtest equity panel built its curve from the `executions` table (paper/live fills), so a
+-- backtest-only cell (no fills yet) showed "No backtest curve". The per-bar net-equity series IS computed at
+-- backtest time (data/backtest.py: SymbolRun.bar_returns ∥ bar_ts, per symbol) but was never persisted. This
+-- column stores that cell's OWN cumulated net-of-fee equity curve as a JSON array of {ts, net} points (the same
+-- equity the metrics score on — fees + slippage + funding already charged), so the focused (symbol, venue) cell
+-- renders a real net-equity curve from STORED truth — never re-run, never the pooled basket.
+--
+-- Additive, nullable, idempotent. Forward-only: existing rows stay NULL (honest empty) and populate as the finder
+-- sweep / evolution cron re-screen and re-persist (the finder/loop persist is SCHEMA-ADAPTIVE — it probes for this
+-- column and only writes it when present, so a pre-migration prod never crashes). The deterministic gate math
+-- (scorer/fdr/trials/cohort) is byte-unchanged — this is VISIBILITY only, never a funding input.
+--
+-- PROD (Postgres) is applied OUT-OF-BAND in the Supabase SQL editor (see knowledge/store.py::migrate). Run this
+-- statement there, then redeploy Modal so the cron persists curves going forward.
+ALTER TABLE backtest_symbols ADD COLUMN IF NOT EXISTS equity_curve_json TEXT;
