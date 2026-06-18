@@ -23,7 +23,7 @@ from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider, Yaho
 if TYPE_CHECKING:
     from cosmu.config.settings import Settings
 from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES, PAPER_ALIASES, sql_in_list
-from cosmu.knowledge.store import Store, utcnow
+from cosmu.knowledge.store import Store, tracks_has_cell_columns, utcnow
 from cosmu.master.drift import DriftVerdict, assess_drift, track_return_series
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.neutral import accrue_funding, neutral_tracks
@@ -412,19 +412,28 @@ def _update_track_returns(store: Store, cells: list[tuple[str, str, str]]) -> in
     pre-migration version-wide track + version-keyed snapshot). Returns the count updated. A cell with no marked
     snapshot or no starting_capital is left untouched (offline-safe — never zero/synthetic-fill)."""
     updated = 0
+    # Probe the LIVE tracks schema ONCE. Post-migration the cell columns exist → match on (version,symbol,venue)
+    # and read the cell-keyed snapshot. Pre-migration (prod, columns absent) the cell-keyed SQL would raise
+    # UndefinedColumn BEFORE any `if track is None` fallback could run, so we go STRAIGHT to the legacy
+    # version-only path — byte-for-byte the pre-PR behaviour (mark_to_market also version-keys pre-migration).
+    has_cell_cols = tracks_has_cell_columns(store)
     for vid, symbol, venue_id in cells:
         cid = cell_id(vid, symbol, venue_id)
-        # Cell-keyed first, then the legacy version-only key (pre-migration rows).
-        track = store.row(
-            "SELECT starting_capital FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
-            (vid, symbol, venue_id),
-        )
-        ref = cid
-        snap = store.row(
-            "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
-            (cid,),
-        )
-        if track is None:  # legacy version-wide track / version-keyed snapshot
+        track = None
+        ref = vid
+        if has_cell_cols:
+            # Cell-keyed first, then the legacy version-only key (legacy version-wide rows left by the migration).
+            track = store.row(
+                "SELECT starting_capital FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+                (vid, symbol, venue_id),
+            )
+            if track is not None:
+                ref = cid
+                snap = store.row(
+                    "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
+                    (cid,),
+                )
+        if track is None:  # pre-migration table, OR a post-migration legacy version-wide track
             track = store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
             ref = vid
             snap = store.row(

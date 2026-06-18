@@ -629,7 +629,7 @@ class FarmLoop:
             if not (cell.passed and cell.holdout_passed):
                 continue
             open_paper_track(b, version_id=version_id, starting_capital=track_capital,
-                             symbol=cell.symbol, venue_id=cell.venue_id)
+                             symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)
             cell_proven = sorted(proven_regimes(cell.metrics.regime_returns))
             cid = cell_id(version_id, cell.symbol, cell.venue_id)
             b.append_event(

@@ -224,12 +224,17 @@ def test_finder_registers_no_trials_brut(tmp_path):
 
 
 def test_cell_deflated_sharpe_invariant_to_sibling_cell_count():
-    # NO RE-POOLING / no family leak via trials_counted: a cell's deflated Sharpe must depend ONLY on its OWN
-    # streams + the per-combo PARAM-grid count — NEVER on how many SIBLING cells (other symbols) the sweep ran.
-    # Build ONE cell's metrics from a fixed run at a fixed grid_size, then score it with the brut TrialStats(1):
-    # the verdict is identical whether the sweep had 2 symbols or 200. (The locked DSR math is untouched; only the
-    # INPUT — one cell — and trials_counted = grid_size change.)
-    from cosmu.master.cohort import promote_brut
+    # NO RE-POOLING / no family leak via the sibling count: a cell's deflated Sharpe must depend ONLY on its OWN
+    # streams + its OWN per-combo PARAM-grid count — NEVER on how many SIBLING cells (other symbols/cells) the sweep
+    # produced. This now ACTUALLY VARIES the sibling count: the SAME target cell is scored once inside a sweep of 2
+    # cells and once inside a sweep of 500 DISTINCT sibling cells, and its DSR must come out byte-identical. (The
+    # locked DSR/PBO math is untouched; only the COHORT SIZE handed to promote_brut changes — which, under brut,
+    # must not enter any cell's verdict because promote_brut registers no trials, runs no FDR, and scores each cell
+    # on its own metrics with TrialStats(count=1).)
+    import dataclasses as _dc
+    import random as _rnd
+
+    from cosmu.master.cohort import Candidate, promote_brut
 
     spec = seed_orb_fvg_spec()
     market = _correlated_market(0.006, n=320, symbols=("BTCUSDT", "ETHUSDT"))
@@ -239,17 +244,26 @@ def test_cell_deflated_sharpe_invariant_to_sibling_cell_count():
     run = res.per_symbol_runs[sym]
     bh = res.per_symbol_buy_and_hold.get(sym, 0.0)
 
-    # Same cell, same per-combo grid_size — the only thing that differs between two hypothetical sweeps is how
-    # many OTHER cells exist, which does NOT enter metrics_for_run or promote_brut. So the DSR is byte-identical.
-    grid_size = 32
-    m_a = metrics_for_run(run, trials=grid_size, buy_and_hold=bh)
-    m_b = metrics_for_run(run, trials=grid_size, buy_and_hold=bh)
-    from cosmu.master.cohort import Candidate
+    grid_size = 32  # the target cell's OWN per-combo param-grid count (the legitimate own-overfit deflation)
+    target = Candidate(id=sym, metrics=metrics_for_run(run, trials=grid_size, buy_and_hold=bh),
+                       net_profit=0.0, source="finder")
+
+    def _sibling(i: int) -> Candidate:
+        # A DISTINCT sibling cell with its OWN (perturbed) return stream, so the cohort is genuinely larger — not a
+        # copy of the target. Its presence must NOT touch the target cell's verdict under brut.
+        rng = _rnd.Random(1000 + i)
+        sib_run = _dc.replace(run, bar_returns=[r + rng.gauss(0, 0.001) for r in run.bar_returns])
+        return Candidate(id=f"sibling-{i}", metrics=metrics_for_run(sib_run, trials=grid_size, buy_and_hold=bh),
+                         net_profit=0.0, source="finder")
 
     settings = Settings(openrouter_api_key=None)
-    v_a = promote_brut([Candidate(id=sym, metrics=m_a, net_profit=0.0, source="finder")], settings.gates)[0]
-    v_b = promote_brut([Candidate(id=sym, metrics=m_b, net_profit=0.0, source="finder")], settings.gates)[0]
-    assert v_a.deflated_sharpe_prob == v_b.deflated_sharpe_prob
+    # SWEEP A: the target among 1 sibling (cohort of 2). SWEEP B: the target among 499 siblings (cohort of 500).
+    small = [target, _sibling(0)]
+    large = [target] + [_sibling(i) for i in range(499)]
+    by_id_small = {p.candidate_id: p for p in promote_brut(small, settings.gates)}
+    by_id_large = {p.candidate_id: p for p in promote_brut(large, settings.gates)}
+    # The target cell's deflated Sharpe is BYTE-IDENTICAL across a 2-cell and a 500-cell sweep.
+    assert by_id_small[sym].deflated_sharpe_prob == by_id_large[sym].deflated_sharpe_prob
 
 
 def test_cell_dsr_harder_as_param_grid_densifies():

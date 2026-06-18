@@ -631,7 +631,7 @@ class StrategyFinder:
                     if not (cell.passed and cell.holdout_passed):
                         continue
                     open_paper_track(b, version_id=version_id, starting_capital=_capital, target_vol=cell.target_vol,
-                                     symbol=cell.symbol, venue_id=cell.venue_id)
+                                     symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)
                     proven = sorted(proven_regimes(cell.metrics.regime_returns))
                     b.append_event(
                         actor="master", kind="track_opened", ref_type="strategy_version",

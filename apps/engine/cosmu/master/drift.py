@@ -192,7 +192,7 @@ def track_return_series(store: Store, version_id: str, *, limit: int = 500, symb
     the CELL'S OWN trajectory — never a sibling cell's, which would defund the wrong triple."""
     from cosmu.master.live_eligibility import _ref_ids
 
-    for ref in _ref_ids(version_id, symbol, venue_id):
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
         rows = store.rows(
             "SELECT equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
             (ref, limit),

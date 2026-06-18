@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from cosmu.config.settings import PAPER_MIN_FORWARD_DSR, PAPER_MIN_FORWARD_OBS
-from cosmu.knowledge.store import Store
+from cosmu.knowledge.store import Store, tracks_has_cell_columns
 from cosmu.master.paper_maturity import PaperMaturity, maturity
 from cosmu.master.scorer import probabilistic_sharpe, sample_moments
 from cosmu.ml.regime import Regime, current_regime, regime_eligible
@@ -38,13 +38,22 @@ def cell_id(version_id: str, symbol: str | None, venue_id: str | None) -> str:
     return f"{version_id}:{symbol}:{venue_id}"
 
 
-def _ref_ids(version_id: str, symbol: str | None, venue_id: str | None) -> tuple[str, ...]:
-    """Ref-id candidates for a cell-scoped lookup, newest convention first: the cell key, then the legacy
-    version-only key. A reader tries each in order so a per-cell row wins when present and a legacy version-only row
-    is still honoured (fail-safe back-compat). When symbol/venue are None this collapses to (version_id,)."""
+def _ref_ids(store: Store, version_id: str, symbol: str | None, venue_id: str | None) -> tuple[str, ...]:
+    """Ref-id candidates for a cell-scoped portfolio_snapshots / events lookup, schema-aware.
+
+    POST-migration (the live `tracks` table carries the per-cell columns): a cell is scoped STRICTLY to its OWN
+    ref_id — ``(cell_id,)`` with NO version-only fallback. This is the Blocker-B fix: a fresh cell with no own
+    snapshots must read EMPTY history, never INHERIT a coexisting legacy version-only series (another population's
+    forward P&L) — empty history is the intended "no history → no premature defund / no inherited live-proof".
+
+    PRE-migration (no cell columns — current prod): the version-only shape is the ONLY one that exists, so we read
+    ``(version_id,)`` exactly as before this PR. When symbol/venue are both None (a version-wide caller) it always
+    collapses to ``(version_id,)`` regardless of schema."""
     if symbol is None and venue_id is None:
         return (version_id,)
-    return (cell_id(version_id, symbol, venue_id), version_id)
+    if tracks_has_cell_columns(store):
+        return (cell_id(version_id, symbol, venue_id),)
+    return (version_id,)
 
 
 def proven_regimes_for(store: Store, version_id: str, *, symbol: str | None = None, venue_id: str | None = None) -> set[str]:
@@ -52,7 +61,7 @@ def proven_regimes_for(store: Store, version_id: str, *, symbol: str | None = No
     when the deterministic gate opened the cell's track). The event is keyed to the BRUT cell (version:symbol:venue)
     with a version-only LEGACY fallback. Empty if the cell never opened a track — which the gate then treats as
     'never proven anywhere' (blocked)."""
-    for ref in _ref_ids(version_id, symbol, venue_id):
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
         row = store.row(
             "SELECT payload FROM events WHERE kind = 'track_opened' AND ref_id = ? ORDER BY id DESC LIMIT 1",
             (ref,),
@@ -96,7 +105,7 @@ def paper_clock_origin(store: Store, version_id: str, *, symbol: str | None = No
     opened the standalone cell track), keyed to the BRUT cell (version:symbol:venue) with a version-only LEGACY
     fallback. None when the cell never opened a track — which the maturity reads as age 0 (never matured),
     the fail-safe."""
-    for ref in _ref_ids(version_id, symbol, venue_id):
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
         row = store.row(
             "SELECT MIN(ts) AS funded_at FROM events WHERE kind = 'track_opened' AND ref_id = ?",
             (ref,),
@@ -108,15 +117,22 @@ def paper_clock_origin(store: Store, version_id: str, *, symbol: str | None = No
 
 def paper_net_return_pct(store: Store, version_id: str, *, symbol: str | None = None, venue_id: str | None = None) -> float:
     """The paper track's net-of-fee return % — the cell's own FORWARD evidence (tracks.return_pct, the standalone
-    track that proves itself on real closes). Scoped to the BRUT cell (version,symbol,venue) with a version-only
-    LEGACY fallback. 0.0 when no track exists yet, which the gate reads as 'not net-positive' (fail-safe)."""
-    row = None
-    if symbol is not None or venue_id is not None:
+    track that proves itself on real closes). Schema-aware:
+
+    POST-migration (the live tracks table has the per-cell columns) AND a cell is requested (symbol/venue given):
+    scope STRICTLY to (version,symbol,venue) — NO version-only fallback (Blocker B: a fresh cell with no own track
+    row must NOT inherit a coexisting legacy version-wide track's return as its own forward proof).
+
+    PRE-migration (no cell columns — current prod), OR a version-wide caller (symbol/venue None): the version-only
+    lookup, byte-for-byte as before this PR (the cell-keyed SQL would raise UndefinedColumn on a pre-migration
+    table). 0.0 when no matching track exists, which the gate reads as 'not net-positive' (fail-safe)."""
+    cell_scoped = (symbol is not None or venue_id is not None) and tracks_has_cell_columns(store)
+    if cell_scoped:
         row = store.row(
             "SELECT return_pct FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
             (version_id, symbol, venue_id),
         )
-    if row is None:  # legacy fallback: version-only (pre-migration rows have NULL symbol/venue_id)
+    else:
         row = store.row("SELECT return_pct FROM tracks WHERE strategy_version_id = ?", (version_id,))
     if not row or row.get("return_pct") is None:
         return 0.0
@@ -186,7 +202,7 @@ def forward_daily_returns(store: Store, version_id: str, *, limit: int = 4000, s
     non-overlap discipline the deploy lane uses. Empty when the track has no snapshot history yet (a never-marked
     track has no forward evidence, the honest fail-safe)."""
     rows: list[dict] = []
-    for ref in _ref_ids(version_id, symbol, venue_id):
+    for ref in _ref_ids(store, version_id, symbol, venue_id):
         rows = store.rows(
             "SELECT ts, equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts ASC LIMIT ?",
             (ref, limit),

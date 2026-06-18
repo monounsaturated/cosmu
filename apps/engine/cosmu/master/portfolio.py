@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from cosmu.knowledge.store import Store, utcnow
+from cosmu.knowledge.store import Store, tracks_has_cell_columns, utcnow
 
 _SIM_BANKROLL = Decimal("100000")
 
@@ -205,14 +205,18 @@ class Portfolio:
         # leg's P&L must stay in the trajectory, and a fully-flat track is worth its capital ± realized, not
         # zero). A version with no tracks row (bare positions in tests/tools) falls back to the old
         # marked-positions + realized sum.
-        # Resolve each position to its CELL KEY (version:symbol:venue when cell_resolver places it, else the legacy
-        # version-only key) and remember the cell tuple so the tracks lookup below can match on version+symbol+venue.
+        # Resolve each position to its CELL KEY (version:symbol:venue when cell_resolver places it AND the live
+        # tracks schema carries the cell columns, else the legacy version-only key) and remember the cell tuple so
+        # the tracks lookup below can match on version+symbol+venue. Pre-migration (no cell columns on prod tracks)
+        # the resolver is IGNORED and every series is version-keyed — byte-for-byte the pre-PR (main) behaviour, so
+        # the cell-keyed SQL never touches a column the live table lacks.
+        has_cell_cols = tracks_has_cell_columns(self.store)
         cell_meta: dict[str, tuple[str, str, str] | None] = {}
 
         def _cell_key(p: PositionView) -> str | None:
             if p.strategy_version_id is None:
                 return None
-            triple = cell_resolver(p) if cell_resolver is not None else None
+            triple = cell_resolver(p) if (cell_resolver is not None and has_cell_cols) else None
             if triple is not None:
                 vid, symbol, venue_id = triple
                 key = f"{vid}:{symbol}:{venue_id}"
@@ -240,12 +244,16 @@ class Portfolio:
         for key in {*unrealized_by_track, *realized_by_track}:
             meta = cell_meta.get(key)
             if meta is not None:
+                # `meta` is only ever set when the cell columns are live (see `_cell_key`), so the cell-keyed
+                # SQL is safe here. The tracks row is the CELL row, matched on (version, symbol, venue).
                 vid, symbol, venue_id = meta
                 row = self.store.row(
                     "SELECT starting_capital FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
                     (vid, symbol, venue_id),
                 )
             else:
+                # The version-only key (pre-migration, or a position the resolver couldn't place): `key` IS the
+                # version. Never references symbol/venue_id, so a pre-migration prod table never raises.
                 row = self.store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (key,))
             pnl_track = unrealized_by_track.get(key, Decimal("0")) + realized_by_track.get(key, Decimal("0"))
             if row is not None and row.get("starting_capital") is not None:

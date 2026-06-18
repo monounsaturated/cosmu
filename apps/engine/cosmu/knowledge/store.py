@@ -335,3 +335,53 @@ class Store:
     def row(self, query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         rows = self.rows(query, params)
         return rows[0] if rows else None
+
+
+# --- schema probe: are the BRUT per-cell columns live on `tracks`? ---------------------------------
+# Postgres applies its schema/migrations OUT-OF-BAND (see Store.migrate). The brut per-cell migration
+# (2026-06-18_tracks_per_cell.sql) is deliberately HELD for the operator, so prod `tracks` still has NO
+# `symbol`/`venue_id` columns while a fresh schema (test SQLite, any new DB) DOES. Every cell-keyed read/write
+# of `tracks` must therefore probe the LIVE schema and pick the cell-keyed or the legacy version-only SQL —
+# referencing `symbol`/`venue_id` against a pre-migration prod table raises `UndefinedColumn` and crashes the
+# paper-clock cron BEFORE any `if row is None` fallback can run. Memoized per DSN (the schema is fixed for a
+# process's lifetime; a migration is an out-of-band, restart-bounded event), keyed so two test stores on
+# different files never share a verdict.
+_TRACKS_CELL_COLUMNS: dict[str, bool] = {}
+_TRACKS_CELL_LOCK = threading.Lock()
+
+
+def tracks_has_cell_columns(store: Store) -> bool:
+    """True when the live `tracks` table carries the BRUT per-cell columns (`symbol` AND `venue_id`).
+
+    The single gate every per-cell `tracks` access routes through: present → use the cell-keyed
+    (version+symbol+venue) SQL; absent → fall back to the legacy version-only SQL byte-for-byte (no
+    symbol/venue_id referenced at all), so the code is correct on BOTH a pre-migration prod table and a
+    post-migration / fresh schema with NO code change. Result is memoized per database_url. Tests that mutate a
+    store's schema in-process call `reset_tracks_cell_columns_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _TRACKS_CELL_COLUMNS.get(key)
+    if cached is not None:
+        return cached
+    with _TRACKS_CELL_LOCK:
+        cached = _TRACKS_CELL_COLUMNS.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'tracks'"
+            )
+            names = {r["column_name"] for r in rows}
+        else:
+            rows = store.rows("PRAGMA table_info(tracks)")
+            names = {r["name"] for r in rows}
+        present = "symbol" in names and "venue_id" in names
+        _TRACKS_CELL_COLUMNS[key] = present
+        return present
+
+
+def reset_tracks_cell_columns_cache() -> None:
+    """Clear the per-DSN `tracks` cell-column memo. For tests that ALTER a store's schema in-process (drop/add
+    the cell columns) so the next probe re-reads the live table; never needed in prod (schema is fixed per
+    process, a migration being an out-of-band restart-bounded event)."""
+    with _TRACKS_CELL_LOCK:
+        _TRACKS_CELL_COLUMNS.clear()
