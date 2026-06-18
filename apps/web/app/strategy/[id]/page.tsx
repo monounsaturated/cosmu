@@ -88,8 +88,10 @@ async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: stri
         <TripletCard cell={triplet.cell} comparison={comparison.rows} />
       ) : null}
 
-      {/* The shared sheet body — identical to the screener's side panel. */}
-      <StrategySheet strategy={strategy} />
+      {/* The shared sheet body — identical to the screener's side panel. When a triplet cell is focused (the
+          page was opened from a clicked cell), the backtest-phase headline reads that cell's STANDALONE truth
+          (Return / Max DD / Trades + equity), not the pooled `backtests` aggregate — the brut-combo garbage fix. */}
+      <StrategySheet strategy={strategy} cell={triplet.cell} />
 
       {/* Per-backtest Gate detail + the full spec/code/notes/holdout, given room on the standalone page. */}
       <GateTab backtests={backtests} holdout={holdout} />

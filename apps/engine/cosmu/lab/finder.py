@@ -44,7 +44,7 @@ from cosmu.master.screen_universe import (
     hyperliquid_symbols,
     prediction_markets,
 )
-from cosmu.master.tracks import open_paper_track
+from cosmu.master.tracks import WATCH_VERDICT, is_near_miss_cell, open_paper_track
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
@@ -628,10 +628,33 @@ class StrategyFinder:
             for r in results:
                 if self._version_exists(r.code_hash):
                     continue
-                # A variant is SCREENED (kept on /lab) iff ANY of its cells passed the brut gate; KILLED otherwise.
-                # The brut verdict is per CELL — the version status is just whether any cell is fundable.
-                status = "screened" if r.gate_passed else "killed"
-                kill_reason = None if r.gate_passed else (",".join(r.reasons) or "no_passing_cell")
+                # GENEROUS-PAPER near-miss set (computed once, used for the status, the per-cell verdict, AND the
+                # track fan-out): the gate-FAILED cells promising enough to forward-test (sharpe>1 / trades>=30 /
+                # return>0, net of fees — off the same per-cell display metrics persisted on backtest_symbols).
+                _watch_syms: set[str] = {
+                    _sym
+                    for _sym, _pm in (r.per_symbol or {}).items()
+                    if (_c := r.cells.get(_sym)) is not None and not _c.passed
+                    and is_near_miss_cell(
+                        sharpe=float(_pm.get("sharpe", 0.0)),
+                        trades=int(_pm.get("trades", 0)),
+                        return_pct=float(_pm.get("return", 0.0)),
+                    )
+                }
+                # A variant is SCREENED (kept on /lab) iff ANY of its cells passed the brut gate. A variant with NO
+                # gate pass but a WATCH near-miss goes to PAPER (it forward-tests on the generous lane, so it must be
+                # ALIVE for the funder + executor to step it — KILLED versions are skipped by both). Only a variant
+                # with neither a pass nor a watch cell is truly KILLED. The brut gate VERDICT is unchanged: the
+                # backtest's passed_gates flag still reflects the gate, and a watch version is never live-armable
+                # (live-eligibility reads the per-cell pass passport, which a watch cell lacks).
+                if r.gate_passed:
+                    status = "screened"
+                elif _watch_syms:
+                    status = "paper"
+                else:
+                    status = "killed"
+                _is_killed = status == "killed"
+                kill_reason = None if not _is_killed else (",".join(r.reasons) or "no_passing_cell")
                 fitted = r.fitted_params or fit_params(spec)
                 params = {**fitted, "config_tag": r.config_tag}
                 compiled = compile_spec(spec, fitted)
@@ -649,7 +672,7 @@ class StrategyFinder:
                         "origin": "finder",
                         "status": status,
                         "created_at": utcnow(),
-                        "killed_at": utcnow() if not r.gate_passed else None,
+                        "killed_at": utcnow() if _is_killed else None,
                         "kill_reason": kill_reason,
                     },
                 )
@@ -661,30 +684,44 @@ class StrategyFinder:
                 # funder fans out a paper track per 'pass' cell), else the cell's own kill reason. NEVER a pooled or
                 # sibling-compared label — each cell is judged alone.
                 _vmap = venue_id_by_symbol or {}
+                # GENEROUS-PAPER routing: a gate-FAILED near-miss cell (in _watch_syms, computed above) is tagged
+                # 'watch' (not its kill reason) and ALSO funds a paper track below. The gate verdict ('pass') and the
+                # true-negative kill reasons are untouched.
                 for _sym, _pm in (r.per_symbol or {}).items():
                     cell = r.cells.get(_sym)
                     cell_venue = cell.venue_id if cell else _vmap.get(_sym, venue.id)
-                    cell_verdict = "pass" if (cell and cell.passed) else ((",".join(cell.reasons) or "fail") if cell else None)
+                    if cell and cell.passed:
+                        cell_verdict = "pass"
+                    elif _sym in _watch_syms:
+                        cell_verdict = WATCH_VERDICT
+                    else:
+                        cell_verdict = (",".join(cell.reasons) or "fail") if cell else None
                     b.insert("backtest_symbols", {
                         "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": _sym, "venue_id": cell_venue,
                         "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                         "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
                         "verdict": cell_verdict, "created_at": utcnow(),
                     })
-                # PER-CELL TRACKS: open ONE standalone paper track for each cell that passed the gate AND confirmed
-                # on its OWN holdout. Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances
-                # the forward columns from real marks. The track_opened event is keyed to the CELL (cell_id) so
-                # master/live_eligibility reads this cell's OWN clock origin + proven-regime passport — never a
-                # sibling cell's. Each cell stands alone; no sibling comparison decides funding.
+                # PER-CELL TRACKS, TWO generous-paper lanes:
+                #   • GATE lane (lane='finder'): a cell that passed the gate AND confirmed on its OWN holdout.
+                #   • WATCH lane (lane='watch'): a gate-FAILED near-miss cell (verdict='watch' above) — routed to the
+                #     SAME zero-real-capital, born-honest paper test INSTEAD of being killed, so the forward record
+                #     separates real from lucky. A watch track is NOT a gate pass (live-eligibility never reads it as
+                #     proof) and it defunds on drift like any paper cell.
+                # Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances the forward columns
+                # from real marks. The track_opened event is keyed to the CELL (cell_id) so master/live_eligibility
+                # reads this cell's OWN clock origin — never a sibling cell's. Each cell stands alone.
                 _capital = self.settings.sim_track_capital
                 # Pre-migration the tracks table still has UNIQUE(strategy_version_id) (the per-cell UNIQUE arrives
-                # with the held migration), so a version with >1 passing cell would collide on the 2nd insert. Until
-                # migrated, degrade to ONE version-wide track per version (fund the first passing cell, skip the rest);
-                # post-migration every cell funds its own track. Schema-adaptive — crash-proof on both schemas.
+                # with the held migration), so a version with >1 fundable cell (either lane) would collide on the 2nd
+                # insert. Until migrated, degrade to ONE version-wide track per version (fund the first fundable cell,
+                # skip the rest); post-migration every cell funds its own track. Schema-adaptive — crash-proof on both.
                 _cell_cols = tracks_has_cell_columns(self.store)
                 _opened_version_wide = False
                 for _sym, cell in r.cells.items():
-                    if not (cell.passed and cell.holdout_passed):
+                    _is_pass = cell.passed and cell.holdout_passed
+                    _is_watch = (not cell.passed) and (_sym in _watch_syms)
+                    if not (_is_pass or _is_watch):
                         continue
                     if not _cell_cols and _opened_version_wide:
                         continue
@@ -699,19 +736,23 @@ class StrategyFinder:
                         payload={
                             "deflated_sharpe": round(cell.deflated_sharpe, 6),
                             "config_tag": r.config_tag, "origin": "finder",
+                            "lane": "watch" if _is_watch else "finder",
                             "symbol": cell.symbol, "venue_id": cell.venue_id,
                             "proven_regimes": proven,
                         },
                     )
-                    b.append_event(
-                        actor="master", kind="finder_survivor", ref_type="strategy_version",
-                        ref_id=cell_id(version_id, cell.symbol, cell.venue_id),
-                        payload={
-                            "config_tag": r.config_tag, "symbol": cell.symbol, "venue_id": cell.venue_id,
-                            "deflated_sharpe": round(cell.deflated_sharpe, 6),
-                            "holdout_passed": cell.holdout_passed,
-                        },
-                    )
+                    # Only a GATE-lane cell is a finder_survivor (the live-arming passport). A watch cell is observed
+                    # forward, never recorded as a survivor — it never enters the gate-pass funding join.
+                    if _is_pass:
+                        b.append_event(
+                            actor="master", kind="finder_survivor", ref_type="strategy_version",
+                            ref_id=cell_id(version_id, cell.symbol, cell.venue_id),
+                            payload={
+                                "config_tag": r.config_tag, "symbol": cell.symbol, "venue_id": cell.venue_id,
+                                "deflated_sharpe": round(cell.deflated_sharpe, 6),
+                                "holdout_passed": cell.holdout_passed,
+                            },
+                        )
 
         # After the version rows are committed, record each surviving CHAMPION's one-shot holdout verdict through
         # the ledger (separate transaction; idempotent on version_id) so the finder can never re-pick on the
