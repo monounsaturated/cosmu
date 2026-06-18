@@ -58,6 +58,23 @@ create index if not exists idx_universe_pairs_class on universe_pairs(asset_clas
 create index if not exists idx_universe_pairs_tier on universe_pairs(tier);
 create index if not exists idx_universe_pairs_liquidity on universe_pairs(liquidity_usd_24h);
 
+-- The UNIVERSAL PRICE LAYER alignment ledger: one inspectable UNIFY/FALLBACK verdict per (canonical pair ×
+-- venue) + the two stats it was decided from (return corr + median close-spread in bps) + the shared-bar
+-- overlap. UNIFY ⇒ the venue's cell reuses the pair's single REFERENCE series; FALLBACK ⇒ own bars (the safe
+-- default; a false-unify is a leakage bug). Persisted so the decision is inspectable + not recomputed per run.
+create table if not exists price_alignment (
+  id text primary key,                 -- "pair:venue"
+  pair text not null,
+  venue text not null,
+  verdict text not null,               -- UNIFY | FALLBACK
+  corr numeric not null default 0,
+  median_spread_bps numeric not null default 0,
+  n_overlap integer not null default 0,
+  decided_at text not null
+);
+create index if not exists idx_price_alignment_pair on price_alignment(pair);
+create index if not exists idx_price_alignment_verdict on price_alignment(verdict);
+
 create table if not exists strategies (
   id text primary key,
   name text not null,
