@@ -1,6 +1,6 @@
 # intent: lock the per-asset / per-category fee resolver (spine/asset_fees.py) + its wiring into the screen cost
-# path (master/screen_universe.build_cost_context). Covers: Polymarket per-category taker (incl. the 2026-03-23
-# PIT rollout = 0 before), IBKR per-asset-class (us_equity per-share+min, us_future per-contract×multiplier,
+# path (master/screen_universe.build_cost_context). Covers: Polymarket per-category taker (ALWAYS today's fee —
+# `as_of` ignored, operator rule), IBKR per-asset-class (us_equity per-share+min, us_future per-contract×multiplier,
 # eu_equity 0.05%+min, French FTT buy-leg-only asymmetry), always-taker entry+exit symmetry through the backtest,
 # and the control that a plain crypto spot symbol falls back to the flat catalog bps (Binance 10/10 unchanged).
 
@@ -13,7 +13,6 @@ import pytest
 
 from cosmu.spine.asset_fees import (
     FRENCH_FTT_RATE,
-    POLYMARKET_FEE_START,
     asset_taker_bps,
     ibkr_commission_usd,
     ibkr_ftt_buy_leg_bps,
@@ -54,12 +53,13 @@ def test_polymarket_taker_bps_uses_pnl_room_term():
     assert polymarket_taker_bps("geopolitics", 0.5, as_of=after) == Decimal("0")
 
 
-def test_polymarket_taker_is_zero_before_2026_03_23_rollout_pit():
-    """POINT-IN-TIME: the per-category fee did not exist before 2026-03-23 → charge 0 on earlier bars."""
-    before = datetime(2026, 3, 22, 23, 59, tzinfo=UTC)
-    on_day = datetime(POLYMARKET_FEE_START.year, POLYMARKET_FEE_START.month, POLYMARKET_FEE_START.day, tzinfo=UTC)
-    assert polymarket_taker_bps("crypto", 0.5, as_of=before) == Decimal("0")        # before → 0
-    assert polymarket_taker_bps("crypto", 0.5, as_of=on_day) > Decimal("0")          # on/after → charged
+def test_polymarket_taker_always_uses_today_fee_even_on_old_bars():
+    """Operator rule: fees are pinned to TODAY's schedule on EVERY bar — a historical `as_of` is IGNORED, so an old
+    bar (2022, when Polymarket charged 0) is still charged the CURRENT per-category fee → no surprise at live."""
+    old = datetime(2022, 1, 1, tzinfo=UTC)
+    # crypto 7.2% × (1 − 0.5) × 1e4 = 360 bps — identical to charging "now".
+    assert polymarket_taker_bps("crypto", 0.5, as_of=old) == pytest.approx(Decimal("360"))
+    assert polymarket_taker_bps("crypto", 0.5, as_of=old) == polymarket_taker_bps("crypto", 0.5)
 
 
 def test_polymarket_dispatch_reads_instrument_category():

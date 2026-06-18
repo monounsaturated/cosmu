@@ -2,15 +2,16 @@
 # flat bps for Polymarket or IBKR) into an effective TAKER bps the backtest cost path can charge per (symbol,venue).
 # inputs: an Instrument (asset_class / instrument_type / contract_multiplier / category) + a reference price; outputs:
 # effective taker bps. invariants: ALWAYS-TAKER (the OHLCV Bar model has no depth to justify a maker assumption, so
-# crediting a maker rebate would inflate edge = leak); POINT-IN-TIME (Polymarket's per-category fee only existed from
-# 2026-03-23, so a pre-rollout backtest bar is charged 0 taker, no look-ahead); CONSERVATIVE (no maker rebates
-# credited; unknown Polymarket category defaults to the most-expensive crypto rate). Venue base/tiered bps stays the
+# crediting a maker rebate would inflate edge = leak); FEES-PINNED-TO-TODAY (operator rule — every bar, even years
+# old, is charged TODAY's fee schedule so the backtest answers "what would this cost to run NOW"; funding/slippage
+# stay real-historical, fees do not); CONSERVATIVE (no maker rebates credited; unknown Polymarket category defaults
+# to the most-expensive crypto rate). Venue base/tiered bps stays the
 # single source for plain spot/perp (Binance/Kraken/OKX/HL) — this module ONLY overrides the asset classes whose real
 # fee is not a flat bps (prediction, equity/future at IBKR).
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from cosmu.spine.venue import Instrument, Venue
@@ -35,9 +36,6 @@ POLYMARKET_CATEGORY_FEE_RATE: dict[str, float] = {
 # Unknown / unmapped category → the most-expensive (crypto) rate, the conservative default (over-charge, never
 # under-charge, when we don't know the category).
 POLYMARKET_DEFAULT_FEE_RATE: float = POLYMARKET_CATEGORY_FEE_RATE["crypto"]
-# The per-category fee rollout date. BEFORE this date Polymarket charged NO taker fee, so a backtest bar dated
-# before it must be charged 0 — charging today's fee on old bars would be look-ahead.
-POLYMARKET_FEE_START: date = date(2026, 3, 23)
 
 
 def polymarket_category_fee_rate(category: str | None) -> float:
@@ -52,11 +50,11 @@ def polymarket_taker_bps(category: str | None, price: float, *, as_of: datetime 
     """Effective Polymarket taker fee in BPS of notional for a share priced at `price` (a probability in (0,1)).
 
     fee_per_share = feeRate × price × (1 − price); notional_per_share = price; so fee/notional = feeRate × (1 − price)
-    → bps = feeRate × (1 − price) × 10_000. POINT-IN-TIME: before POLYMARKET_FEE_START the taker fee was 0, so an
-    `as_of` earlier than the rollout charges 0 bps (no look-ahead). `as_of=None` means "now" (live/paper path)."""
-    moment = as_of or datetime.now(tz=UTC)
-    if moment.date() < POLYMARKET_FEE_START:
-        return Decimal("0")
+    → bps = feeRate × (1 − price) × 10_000. FEES ARE ALWAYS TODAY'S SCHEDULE (operator rule): we charge the CURRENT
+    per-category fee on EVERY bar, including historical ones — the backtest answers "what would this cost to run
+    NOW", so there is no surprise at live launch. `as_of` is accepted for signature compatibility but IGNORED (fees
+    are pinned to today, never point-in-time; funding/slippage stay real-historical, fees do not)."""
+    del as_of  # fees pinned to today's schedule on purpose — never point-in-time
     p = max(0.0, min(1.0, price))
     rate = polymarket_category_fee_rate(category)
     return Decimal(str(rate * (1.0 - p) * 10_000.0))
