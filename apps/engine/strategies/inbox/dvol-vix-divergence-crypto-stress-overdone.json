@@ -1,0 +1,33 @@
+{
+  "name": "DVOL-vs-VIX divergence — buy when crypto IV stress is overdone vs a calm equity tape",
+  "rationale": "ECONOMIC MECHANISM (a RELATIVE-VALUE read across two implied-vol surfaces, distinct from every single-gauge vol spec: dvol-calm/dvol-spike/macro-vix-* each read ONE vol index; this trades the SPREAD between crypto-native DVOL and equity VIX): DVOL is the crypto options market's implied vol, VIX the equity options market's. When DVOL is ELEVATED while VIX stays CALM, the stress is CRYPTO-SPECIFIC, not a systemic macro risk-off — and crypto-idiosyncratic IV spikes (a single hack, a leverage flush, an exchange scare) tend to mean-revert FASTER than macro panics because there is no broad-deleveraging feedback loop pinning them. So a high DVOL with a low VIX flags an over-priced crypto-only fear premium that decays: buy spot into it. The two-gauge structure is the edge — DVOL alone (dvol-spike) can't tell crypto-specific stress from a macro crash; pairing it with a CALM VIX isolates the idiosyncratic, fast-reverting case. Entry: dvol above a fitted crypto-stress floor AND vix_level below a fitted macro-calm ceiling (stress is crypto-only) AND price not in freefall (trend floor). Exit: dvol crosses down through a calm threshold (crypto IV premium decayed) or stop/TP/time. Disconfirmer 1: if dvol ALONE (dvol-spike-iv-capitulation) does as well, the VIX-calm leg adds nothing and the divergence thesis is unsupported. Disconfirmer 2: if an unconditional dip-buy matches the deflated Sharpe, neither vol gauge adds anything. Disconfirmer 3 (data depth): only ~148 DVOL and ~56 VIX points overlap — low-confidence, paper-only until both deepen. Disconfirmer 4 (cost): the reversion must clear ~20bps round-trip net. tier0 crypto-native + tier0 macro vol features.",
+  "catalyst": "elevated crypto DVOL while equity VIX is calm — an over-priced crypto-specific fear premium that decays",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_stress_floor" } },
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_calm_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "dvol" }, "op": "cross_down", "threshold": { "param": "dvol_calm_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dvol_stress_floor": { "kind": "float", "lo": 50.0, "hi": 62.0 },
+    "dvol_calm_exit":    { "kind": "float", "lo": 40.0, "hi": 52.0 },
+    "vix_calm_ceiling":  { "kind": "float", "lo": 16.0, "hi": 24.0 },
+    "trend_lb":          { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "trend_floor":       { "kind": "float", "lo": -0.2,  "hi": -0.02 },
+    "stop":              { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":         { "kind": "int",   "lo": 4,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

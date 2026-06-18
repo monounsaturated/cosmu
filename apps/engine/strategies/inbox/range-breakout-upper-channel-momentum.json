@@ -1,0 +1,32 @@
+{
+  "name": "Range upper-channel breakout momentum — buy the break of the range high",
+  "rationale": "ECONOMIC MECHANISM (the OPPOSITE-SIDE read of range_position vs range-floor-accumulation, which buys the range FLOOR for reversion; this buys the break of the range CEILING for continuation): range_position is the Donchian/stochastic channel position in [0,1] — near 0 = range floor, near 1 = range ceiling. range-floor-accumulation harvests grid-bot mean-reversion off the floor; this spec harvests the BREAKOUT: when price pushes through the TOP of its recent range (range_position crossing up toward 1) it signals the range has resolved UPWARD — accumulated demand has absorbed the overhead supply and a new trend leg begins (the classic Donchian channel breakout / turtle entry). Confirm with a rising ADX so we trade a real trend resolution, not a single-bar poke above a chop range that fails. Entry: range_position crosses UP through a fitted ceiling (range high breaking) AND adx above a fitted trend-strength floor (trend igniting). Exit: range_position crosses DOWN back into the range (failed breakout / back inside) or stop/TP/time. Disconfirmer 1: if an unconditional momentum long matches the deflated Sharpe, the channel breakout adds no timing edge. Disconfirmer 2: this is the directional inverse of range-floor-accumulation on the SAME feature — the two must NOT be double-counted (range floor reversion vs range ceiling breakout are distinct regimes). Disconfirmer 3: breakouts are notoriously fakeout-prone — if removing the ADX confirmation leaves the edge unchanged, the breakout itself is noise. Disconfirmer 4 (cost): the continuation must clear ~20bps round-trip net. Price/TA-only — always-on, no feed dependency.",
+  "catalyst": "price breaking the top of its recent range with a rising ADX — a Donchian channel breakout",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "cross_up", "threshold": { "param": "breakout_ceiling" } },
+    { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "cross_down", "threshold": { "param": "back_in_range_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "range_lb":           { "kind": "int",   "lo": 14,   "hi": 55,  "step": 1 },
+    "breakout_ceiling":   { "kind": "float", "lo": 0.85, "hi": 0.98 },
+    "back_in_range_exit": { "kind": "float", "lo": 0.5,  "hi": 0.8 },
+    "adx_lb":             { "kind": "int",   "lo": 10,   "hi": 20,  "step": 1 },
+    "adx_floor":          { "kind": "float", "lo": 18.0, "hi": 30.0 },
+    "stop":               { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":                 { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":          { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}

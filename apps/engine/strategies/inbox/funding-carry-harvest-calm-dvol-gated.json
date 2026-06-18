@@ -1,0 +1,35 @@
+{
+  "name": "Funding-carry harvest, calm-DVOL gated — collect positive carry only when implied vol is low",
+  "rationale": "ECONOMIC MECHANISM (distinct from funding-carry-long-spot [gated by realized vol + a trend filter] and funding-gated-momentum [funding ceiling, no carry accrual]; this conditions the CARRY harvest on crypto-native IMPLIED vol via DVOL, a gauge no funding spec uses): the funding carry trade — hold spot, accrue positive funding via the basis — earns a steady premium but blows up in regimes where the carry premium is actually compensation for tail risk (a frothy, high-IV market about to mean-revert violently, the funding-spike-before-crash pattern). Realized vol (the existing carry spec's gate) is BACKWARD-looking; DVOL is the options market's FORWARD-looking 30d implied vol — a leading read on whether the carry is safe or is a coiled spring. So harvest positive funding ONLY when DVOL is low (the market is not pricing a coming vol event): low DVOL means the positive carry is a genuine risk premium, not crash compensation. The funding_feature accrues the realized funding to the open long each bar. Entry: funding_rate above a fitted positive floor (real carry) AND dvol below a fitted calm ceiling (implied vol is low — carry is safe) AND price in a non-broken trend. Exit: funding_rate flips negative (carry gone) OR dvol crosses up into stress (the calm regime broke — exit before the spring uncoils); plus stop/TP/time. Disconfirmer 1: if the existing realized-vol-gated carry (funding-carry-long-spot) does as well, DVOL adds no forward-looking information and this is that spec re-skinned. Disconfirmer 2: if unconditional positive-funding carry matches the deflated Sharpe, the DVOL gate adds nothing. Disconfirmer 3 (cost): the carry minus ~20bps round-trip (entered/exited per signal) must be net positive — a carry that only pays gross is fee-dead. Disconfirmer 4 (data depth): only ~148 DVOL points — low-confidence, paper-only until it deepens. tier0 funding + tier0 crypto-native vol features.",
+  "catalyst": "positive perp carry in a low-implied-vol regime — a genuine carry premium, not crash compensation",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 30 },
+  "entry": [
+    { "feature": { "name": "funding_rate" }, "op": "gt", "threshold": { "param": "funding_floor" } },
+    { "feature": { "name": "dvol" }, "op": "lt", "threshold": { "param": "dvol_calm_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_exit_floor" } },
+      { "feature": { "name": "dvol" }, "op": "cross_up", "threshold": { "param": "dvol_stress_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "funding_floor":      { "kind": "float", "lo": 0.00001, "hi": 0.00015 },
+    "funding_exit_floor": { "kind": "float", "lo": -0.0001, "hi": 0.00005 },
+    "dvol_calm_ceiling":  { "kind": "float", "lo": 40.0, "hi": 52.0 },
+    "dvol_stress_exit":   { "kind": "float", "lo": 52.0, "hi": 65.0 },
+    "trend_lb":           { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "trend_floor":        { "kind": "float", "lo": -0.05, "hi": 0.05 },
+    "stop":               { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "tp":                 { "kind": "float", "lo": 0.04, "hi": 0.30 },
+    "time_stop":          { "kind": "int",   "lo": 5,    "hi": 21,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

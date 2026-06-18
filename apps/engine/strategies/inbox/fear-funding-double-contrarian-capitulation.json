@@ -1,0 +1,33 @@
+{
+  "name": "Fear + uncrowded-funding double contrarian — buy capitulation only when leverage is not stacked",
+  "rationale": "ECONOMIC MECHANISM (a CONFLUENCE distinct from fear-greed-contrarian [sentiment only] and funding-reset-reversion [funding+RSI]; here two ORTHOGONAL crowding gauges must agree): the classic dip-buy trap is buying extreme FEAR while leverage is still stacked LONG — funding positive — because that crowd hasn't capitulated yet and the squeeze is still ahead. The honest capitulation signal requires BOTH the sentiment crowd to be washed out (fear_greed at an extreme low) AND the leverage crowd to be uncrowded or net-short (funding at/below zero) — i.e. the spot AND the perp crowd have BOTH given up. That joint condition marks true positioning exhaustion, the precondition for a durable bottom, and filters out the false 'fear with longs still levered' bounces that fail. fear_greed (spot sentiment) and funding_rate (perp leverage) are genuinely orthogonal crowding reads, so the AND is more than a redundant double-count. Entry: fear_greed below a fitted fear floor AND funding_rate below a fitted uncrowded ceiling (at/below zero — shorts paying or neutral) AND price not in structural freefall (trend floor = knife guard). Exit: fear_greed crosses up into greed (sentiment recovered) or stop/TP/time. Disconfirmer 1: if fear_greed ALONE (the existing contrarian spec) does as well, the funding leg is redundant and the double-contrarian thesis is unsupported. Disconfirmer 2: if an unconditional dip-buy matches the deflated Sharpe, neither crowding gauge adds anything. Disconfirmer 3: the AND must not so thin the sample it fails the gate's min-trades floor — if it does, that is honest evidence the joint capitulation is too rare. Disconfirmer 4 (cost): the bounce must clear ~20bps round-trip net. tier0 sentiment + tier0 funding features.",
+  "catalyst": "extreme fear AND uncrowded/net-short funding together — true two-sided positioning capitulation",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 15 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } },
+    { "feature": { "name": "funding_rate" }, "op": "lt", "threshold": { "param": "funding_uncrowded_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "trend_lb" } }, "op": "gt", "threshold": { "param": "trend_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_floor":                { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "greed_exit":                { "kind": "float", "lo": 52.0, "hi": 75.0 },
+    "funding_uncrowded_ceiling": { "kind": "float", "lo": -0.0001, "hi": 0.00005 },
+    "trend_lb":                  { "kind": "int",   "lo": 20,   "hi": 90,  "step": 1 },
+    "trend_floor":               { "kind": "float", "lo": -0.18, "hi": -0.01 },
+    "stop":                      { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":                        { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop":                 { "kind": "int",   "lo": 5,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": null
+}
