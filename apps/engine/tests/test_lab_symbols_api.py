@@ -237,3 +237,74 @@ def test_pooled_return_is_advisory_not_an_average_of_cells(tmp_path, monkeypatch
     row = _client(monkeypatch, store).get("/lab/symbols").json()["rows"][0]
     assert row["return_pct"] == 0.42       # the granular truth on THIS cell
     assert row["pooled_return_pct"] == 0.07  # the parent backtest's pooled number, NOT 0.42
+
+
+# --------------------------------------------------------------------------- Fix 1: confidence lower-bound (SE/CI)
+
+
+def test_annualized_return_lo_is_a_lower_bound_not_the_point_estimate(tmp_path, monkeypatch):
+    """A positive cell exposes return_pct_annualized_lo — a CONSERVATIVE floor STRICTLY BELOW the point CAGR — so
+    the screener shows '≥ x%/yr' confidence, never a noisy point estimate as fact. NULL only when too thin/no window."""
+    store = _store(tmp_path)
+    # A healthy, many-trade cell with a real window so both CAGR and its lower-bound are computable.
+    sid = store.insert("strategies", {"name": "LoBound", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+    vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "LoBound"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
+    bt = store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0", "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 120, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "oos_start": "2024-01", "oos_end": "2025-12", "created_at": "2026-06-17T00:00:00Z"})
+    store.insert("backtest_symbols", {"backtest_id": bt, "strategy_version_id": vid, "symbol": "BTCUSDT", "venue_id": "binance", "return_pct": "0.40", "sharpe": "1.5", "max_drawdown": "0.08", "trades": 120, "verdict": "robust", "oos_window_days": 730.0, "created_at": "2026-06-17T00:00:00Z"})
+    row = _client(monkeypatch, store).get("/lab/symbols").json()["rows"][0]
+    assert row["return_pct_annualized"] is not None
+    assert row["return_pct_annualized_lo"] is not None
+    assert row["return_pct_annualized_lo"] < row["return_pct_annualized"]  # the floor sits BELOW the point CAGR
+    assert row["return_pct_annualized_lo"] >= 0  # a positive edge's floor never goes negative under the shrinkage
+
+
+def test_annualized_return_lo_collapses_more_for_a_thin_noisy_cell(tmp_path, monkeypatch):
+    """The whole point: a FEW-trade cell shrinks HARD toward 0 (poorly estimated) while a many-trade cell barely
+    moves — so two cells with the SAME headline CAGR get DIFFERENT confidence floors (3-trade ≠ 300-trade)."""
+    store = _store(tmp_path)
+
+    def _cell(name, trades):
+        sid = store.insert("strategies", {"name": name, "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+        vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": name}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
+        bt = store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0", "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": trades, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "oos_start": "2024-01", "oos_end": "2025-12", "created_at": "2026-06-17T00:00:00Z"})
+        store.insert("backtest_symbols", {"backtest_id": bt, "strategy_version_id": vid, "symbol": "BTCUSDT", "venue_id": "binance", "return_pct": "0.40", "sharpe": "1.5", "max_drawdown": "0.08", "trades": trades, "verdict": "robust", "oos_window_days": 730.0, "created_at": "2026-06-17T00:00:00Z"})
+        return vid
+
+    thin_vid = _cell("Thin", trades=3)
+    fat_vid = _cell("Fat", trades=300)
+    rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
+    thin = next(r for r in rows if r["strategy_version_id"] == thin_vid)
+    fat = next(r for r in rows if r["strategy_version_id"] == fat_vid)
+    # Same point CAGR (same return + window), but the thin cell's confidence floor is FAR lower than the fat one's.
+    assert thin["return_pct_annualized"] == fat["return_pct_annualized"]
+    assert thin["return_pct_annualized_lo"] < fat["return_pct_annualized_lo"]
+
+
+def test_annualized_return_lo_is_null_without_a_window(tmp_path, monkeypatch):
+    """No OOS window (legacy cell) → can't annualize at all → both the point CAGR and its lower-bound are null
+    (honest "—"), never a fabricated floor."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="NoWindow", symbol="BTCUSDT", venue="binance", return_pct=0.40, verdict="robust")
+    row = _client(monkeypatch, store).get("/lab/symbols").json()["rows"][0]
+    assert row["return_pct_annualized"] is None
+    assert row["return_pct_annualized_lo"] is None
+
+
+# --------------------------------------------------------------------------- Fix 2: thin-sample flag
+
+
+def test_thin_flag_tracks_the_real_gate_floor(tmp_path, monkeypatch):
+    """A cell with FEWER trades than the gate's real min_trades is flagged `thin`; one at/above the floor is not.
+    The threshold is the LIVE constant (settings.gates.min_trades), surfaced on the response — never hardcoded 30."""
+    from cosmu.config.settings import GateSettings
+
+    floor = GateSettings().min_trades  # the real gate floor (30 today) — the test reads it, never hardcodes it
+    store = _store(tmp_path)
+    _, thin_vid = _seed_cell(store, name="ThinCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust", trades=floor - 1)
+    _, fat_vid = _seed_cell(store, name="FatCell", symbol="ETHUSDT", venue="binance", return_pct=0.10, verdict="robust", trades=floor)
+    body = _client(monkeypatch, store).get("/lab/symbols").json()
+    assert body["min_trades"] == floor  # the live floor is surfaced so the web flags against it (no hardcode)
+    rows = {r["strategy_version_id"]: r for r in body["rows"]}
+    assert rows[thin_vid]["thin"] is True   # below the floor → flagged
+    assert rows[fat_vid]["thin"] is False   # at the floor → not flagged
+    assert rows[thin_vid]["trades"] == floor - 1 and rows[fat_vid]["trades"] == floor

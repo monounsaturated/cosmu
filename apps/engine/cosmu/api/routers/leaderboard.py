@@ -6,8 +6,9 @@ import math
 
 from fastapi import APIRouter
 
-from cosmu.api._shared import _json, _metric, oos_window_days as _oos_window_days, store
+from cosmu.api._shared import _json, _metric, annualized_return as _annualized_return, oos_window_days as _oos_window_days, store
 from cosmu.api.models import LeaderboardResponse, LeaderboardRow
+from cosmu.knowledge.store import backtest_symbols_has_oos_window, tracks_has_cell_columns
 from cosmu.master.divergence import divergence as forward_divergence
 from cosmu.master.paper_maturity import maturity as paper_maturity
 from cosmu.strategy.taxonomy import derive_facets
@@ -16,6 +17,29 @@ router = APIRouter()
 
 # _oos_window_days now lives in cosmu.api._shared (shared with the strategy-detail router's Backtest column),
 # imported above as the same name so this router's call sites are unchanged.
+
+
+def _backtest_cell_cols() -> str:
+    """Two schema-adaptive correlated subquery columns — THIS track's OWN (symbol, venue) backtest cell return +
+    its own OOS window — so the leaderboard's BACKTEST headline can be re-keyed off the pooled version-level number
+    to the cell each track actually forward-tests. Emitted ONLY when BOTH the per-cell `tracks` columns
+    (`tracks.symbol` / `tracks.venue_id`, the 2026-06-18 brut migration) AND `backtest_symbols.oos_window_days` are
+    live; on a pre-migration prod table they are OMITTED (the router substitutes NULLs), so
+    `backtest_return_pct_annualized` is honestly NULL rather than risking an UndefinedColumn. Plain CORRELATED
+    scalar subqueries (portable across SQLite + Postgres — no LATERAL), matched on the exact (version, symbol,
+    venue) triplet, taking the LATEST cell (created_at DESC). venue match uses an OR-NULL pair so a NULL-venue track
+    pairs with its NULL-venue cell (SQLite/Postgres both treat `= NULL` as unknown, never true)."""
+    if not (tracks_has_cell_columns(store) and backtest_symbols_has_oos_window(store)):
+        return ""
+    sub = (
+        "FROM backtest_symbols bsc WHERE bsc.strategy_version_id = sv.id AND bsc.symbol = tr.symbol "
+        "AND (bsc.venue_id = tr.venue_id OR (bsc.venue_id IS NULL AND tr.venue_id IS NULL)) "
+        "ORDER BY bsc.created_at DESC LIMIT 1"
+    )
+    return (
+        f", (SELECT bsc.return_pct {sub}) AS cell_return"
+        f", (SELECT bsc.oos_window_days {sub}) AS cell_window"
+    )
 
 
 def _money_or_none(value: object) -> float | None:
@@ -60,14 +84,14 @@ def leaderboard() -> LeaderboardResponse:
     # funding time): a track with no marked snapshot yet has `tr_equity` NULL → paper_return_pct stays null
     # (day-0 truth), so a fresh track can NEVER surface its rosy backtest as forward performance.
     rows = store.rows(
-        """
+        f"""
         SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, sv.kind, b.deflated_sharpe, b.oos_return, b.pbo,
                b.oos_start, b.oos_end, b.num_trades AS bt_trades, b.max_dd AS bt_max_dd, ev.funded_at,
                tr.starting_capital, ps.equity AS tr_equity,
                EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id
                       AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills,
                (SELECT COUNT(*) FROM executions e2 WHERE e2.strategy_version_id = sv.id
-                      AND CAST(e2.is_paper AS INTEGER) = 1) AS paper_trades
+                      AND CAST(e2.is_paper AS INTEGER) = 1) AS paper_trades{_backtest_cell_cols()}
         FROM strategy_versions sv
         JOIN strategies s ON s.id = sv.strategy_id
         LEFT JOIN backtests b ON b.strategy_version_id = sv.id
@@ -132,6 +156,18 @@ def leaderboard() -> LeaderboardResponse:
         # Hoisted once: the backtest OOS window length feeds BOTH the divergence pro-rating and the v18
         # `oos_window_days` display column (so the OOS % is shown with its window). None when bounds are bad.
         oos_window_days = _oos_window_days(row["oos_start"], row["oos_end"])
+        # RE-KEY the BACKTEST headline to THIS track's OWN (symbol, venue) cell: annualize that cell's standalone
+        # return over ITS OWN OOS window — the honest backtest number for the exact triplet the track forward-tests,
+        # NOT the pooled version-level oos_return. None (honest "—") when no cell was matched (documented arm /
+        # pre-migration / legacy version-wide track): we never fall back to the pooled number here. The cell columns
+        # are present only on the post-migration schema (else .get() → None, so the field stays NULL).
+        cell_return = row.get("cell_return")
+        cell_window = row.get("cell_window")
+        backtest_ann = (
+            _annualized_return(cell_return, float(cell_window))
+            if cell_return is not None and cell_window is not None
+            else None
+        )
         div = forward_divergence(
             paper_return_pct,
             mat.paper_age_days,
@@ -181,6 +217,7 @@ def leaderboard() -> LeaderboardResponse:
                 pnl_usd=pnl_usd,
                 pnl_pct=paper_return_pct,
                 oos_window_days=oos_window_days,
+                backtest_return_pct_annualized=backtest_ann,
                 # Max drawdown from the strongest backtest (already selected via bt_max_dd). Surfaced so the
                 # Strategies table can show the worst-case drop alongside the OOS return. None when no backtest.
                 max_dd=_money_or_none(row["bt_max_dd"]),

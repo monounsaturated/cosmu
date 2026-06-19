@@ -57,6 +57,34 @@ def annualized_return(total_return: object, window_days: float | None) -> float 
     return (1.0 + total) ** (1.0 / years) - 1.0
 
 
+def annualized_return_lo(total_return: object, window_days: float | None, sharpe: object, n_trades: object) -> float | None:
+    """A CONSERVATIVE lower-bound on the annualized return — the honest "≥ x%/yr" that turns a point estimate into a
+    confidence read so the screener can't present a noisy +400%/yr as fact (and over-allocate to it).
+
+    The cell carries no return-series, only summary stats, so we lean on the textbook Sharpe-ratio standard error
+    SE(SR) ≈ sqrt((1 + 0.5·SR²)/n) (Lo 2002, n = the cell's OWN trade count). A LARGE relative noise SE(SR)/|SR|
+    means the edge is poorly estimated, so we SHRINK the total return toward 0 by exactly that relative noise
+    (clamped to [0,1]) BEFORE annualizing over the SAME window — i.e. lo = annualize(total · max(0, 1 − SE/|SR|)).
+    A high-Sharpe / many-trade cell barely shrinks; a 3-trade fluke collapses toward 0%/yr. This is a deliberately
+    simple, MONOTONE lower-bound (always ≤ the point CAGR for a positive return), NOT a calibrated CI — display-only,
+    never a gate. Returns None (honest "—") when the inputs can't support it: n < 2, |SR| ~ 0 (noise undefined), the
+    window is unknown, or the total wiped out. NEVER fabricates a number where the estimate is meaningless."""
+    if window_days is None or window_days <= 0:
+        return None
+    try:
+        total = float(total_return)
+        sr = float(sharpe)
+        n = int(n_trades)
+    except (TypeError, ValueError):
+        return None
+    if total <= -1.0 or n < 2 or abs(sr) < 1e-9:
+        return None
+    se = math.sqrt((1.0 + 0.5 * sr * sr) / n)
+    rel_noise = se / abs(sr)
+    shrink = max(0.0, 1.0 - rel_noise)  # 1 = tight estimate (no haircut); 0 = pure noise (collapse to 0%)
+    return annualized_return(total * shrink, window_days)
+
+
 settings = get_settings()
 try:
     store = Store(settings)

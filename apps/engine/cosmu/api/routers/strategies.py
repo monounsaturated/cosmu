@@ -11,7 +11,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _json, _metric, annualized_return, oos_window_days, store
+from cosmu.api._shared import _json, _metric, annualized_return, oos_window_days, settings, store
 from cosmu.api.models import (
     Backtest,
     CellCurvePoint,
@@ -489,4 +489,4 @@ def strategy_comparison(version_id: str, limit: int = 500) -> LabSymbolsResponse
     # offers triplets that actually exist for this strategy.
     symbols = sorted({r["symbol"] for r in deduped})
     venues = sorted({r["venue_id"] for r in deduped if r.get("venue_id")})
-    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
+    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, min_trades=int(settings.gates.min_trades))

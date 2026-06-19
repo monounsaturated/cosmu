@@ -78,6 +78,15 @@ function lifeStatusOf(status: string | null | undefined): LifeStatus {
   return "lab";
 }
 
+// Is this cell statistically too THIN to judge — fewer trades than the gate's real min_trades floor? Prefer the
+// engine-stamped `thin` flag (computed against the live constant); fall back to the row's own trades vs the
+// `minTrades` the response carried. An uncomputed (cell-less) row is never "thin" — it has no trades to judge.
+function isThin(r: LabSymbolRow, minTrades: number): boolean {
+  if (r.symbol === "") return false;
+  if (typeof r.thin === "boolean") return r.thin;
+  return minTrades > 0 && r.trades < minTrades;
+}
+
 // A row with NO computed cell — the engine's synthetic "New" row for an authored-but-uncomputed version. It has
 // no symbol (no backtest_symbols cell exists), so an empty symbol IS the signal. Such a version is "New" on THIS
 // screener (nothing computed per-symbol) regardless of the parent version's raw pipeline status — so it lands in
@@ -124,7 +133,7 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
 // Sharpe is HIDDEN by default; everything else is visible.
 const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
   { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
-  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. Short windows amplify — read with Trades/Sharpe and the strat sheet's OOS duration. — = window not yet recorded (re-screened cells fill in)." },
+  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. The muted '≥ x%/yr' below is a CONFIDENCE FLOOR (Sharpe standard-error shrinkage) — the estimate net of noise, so a short/thin window isn't read as fact. Short windows amplify — read with Trades/Sharpe and the strat sheet's OOS duration. — = window not yet recorded (re-screened cells fill in)." },
   { key: "venue", label: "Venue" },
   { key: "symbol", label: "Symbol" },
   { key: "trades", label: "Trades", align: "right" },
@@ -172,6 +181,7 @@ export function SymbolsTable({
   rows,
   symbols,
   venues,
+  minTrades = 0,
   title = "Strategies",
   caption = true,
   ribbon,
@@ -181,6 +191,7 @@ export function SymbolsTable({
   rows: LabSymbolRow[];
   symbols: string[];
   venues: string[];
+  minTrades?: number; // the engine's REAL gate trade floor — a cell below it is "thin" (too few trades to judge)
   title?: string;
   caption?: boolean;
   ribbon?: React.ReactNode;
@@ -403,22 +414,52 @@ export function SymbolsTable({
     // An uncomputed (cell-less "New") row has no symbol/venue and its metrics are zeroed placeholders, NOT real
     // results — render an explicit "—" so a not-yet-backtested version never reads as a flat 0% / 0-trade result.
     const uncomputed = isUncomputed(r);
+    const thin = isThin(r, minTrades);
     switch (key) {
       case "symbol":
         return <td key={key} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.symbol}</td>;
       case "venue":
         return <td key={key} className={r.venue_id ? undefined : "quiet"}>{uncomputed ? "—" : formatVenue(r.venue_id)}</td>;
-      case "return":
+      case "return": {
         // The ONE return column = ANNUALIZED (CAGR). "—" when no OOS window is recorded for the cell (can't annualize).
-        return uncomputed || typeof r.return_pct_annualized !== "number"
-          ? <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>
-          : <td key={key} style={{ textAlign: "right", color: r.return_pct_annualized >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct_annualized * 100)}<span className="quiet" style={{ fontSize: "0.85em" }}>/yr</span></td>;
+        if (uncomputed || typeof r.return_pct_annualized !== "number") {
+          return <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>;
+        }
+        const ann = r.return_pct_annualized;
+        // Confidence lower-bound (Fix 1): the engine's Sharpe-SE shrinkage floor — shown as a muted "≥ x%/yr"
+        // secondary line so the point CAGR is never read as fact. Omitted when too thin to estimate (null). A THIN
+        // cell (below the gate floor) mutes the whole figure so a 3-trade cell never visually outranks a 300-trade one.
+        const lo = typeof r.return_pct_annualized_lo === "number" ? r.return_pct_annualized_lo : null;
+        return (
+          <td key={key} style={{ textAlign: "right", opacity: thin ? 0.5 : undefined }}
+              title={thin ? `Thin sample — only ${r.trades} trades (below the ${minTrades}-trade floor): too few to judge this CAGR honestly.` : undefined}>
+            <span style={{ color: ann >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(ann * 100)}<span className="quiet" style={{ fontSize: "0.85em" }}>/yr</span></span>
+            {lo !== null ? (
+              <span className="quiet" style={{ display: "block", fontSize: "0.8em", lineHeight: 1.1 }}
+                    title="Conservative confidence floor (Sharpe standard-error shrinkage) — the return is at LEAST this, net of estimation noise.">
+                ≥ {formatPct(lo * 100)}/yr
+              </span>
+            ) : null}
+          </td>
+        );
+      }
       case "sharpe":
         return <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : Number.isFinite(r.sharpe) ? r.sharpe.toFixed(2) : "—"}</td>;
       case "dd":
         return <td key={key} style={{ textAlign: "right" }} className="quiet">{uncomputed ? "—" : `${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
       case "trades":
-        return <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.trades}</td>;
+        // Thin-sample flag (Fix 2): a cell below the gate's real min_trades floor carries a small muted "thin" chip
+        // next to its count, so a 3-trade cell is visually distinct from a 300-trade one.
+        return (
+          <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>
+            {uncomputed ? "—" : (
+              <>
+                {thin ? <span className="badge" style={{ marginRight: 4, fontSize: "0.7em", background: "transparent", color: "var(--ink-2, #8a8a8a)", borderColor: "var(--ink-2, #8a8a8a)" }} title={`Thin sample — below the ${minTrades}-trade floor the gate needs to judge a cell honestly.`}>thin</span> : null}
+                {r.trades}
+              </>
+            )}
+          </td>
+        );
       case "status":
         return <td key={key}><LifeBadge row={r} /></td>;
     }

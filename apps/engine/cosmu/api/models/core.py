@@ -103,6 +103,14 @@ class LeaderboardRow(BaseModel):
     pnl_usd: float | None = None
     pnl_pct: float | None = None
     oos_window_days: float | None = None
+    # The BACKTEST headline re-keyed to THIS track's OWN (symbol, venue) cell — the per-cell ANNUALIZED (CAGR) return
+    # from `backtest_symbols` for the exact triplet the track forward-tests, compounded over that cell's OWN OOS
+    # window. Fixes the old leaderboard which ranked/displayed the POOLED, non-annualized version-level `oos_return`
+    # (track_return_pct / net_pct) — a number that does not match the cell each track actually trades. `null` when no
+    # matching cell exists (a documented arm / pre-migration track / legacy version-wide track) — honest "—", never a
+    # fabricated number, never the pooled fallback. The FORWARD `paper_return_pct` (the real marked money) is the truth;
+    # this is the BACKTEST column shown alongside it. Fraction (0.034 = +3.4%/yr). Display-only; never a gate.
+    backtest_return_pct_annualized: float | None = None
     # Max drawdown from the STRONGEST backtest (peak-to-trough fraction, 0..1). Surfaced so the Strategies
     # table can show the real worst-case drop alongside the OOS return and DSR — honest "—" when no backtest.
     max_dd: float | None = None

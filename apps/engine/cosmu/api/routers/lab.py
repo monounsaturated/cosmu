@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _metric, _summary_to_response, annualized_return, oos_window_days, settings, store
+from cosmu.api._shared import (
+    _metric,
+    _summary_to_response,
+    annualized_return,
+    annualized_return_lo,
+    oos_window_days,
+    settings,
+    store,
+)
 from cosmu.knowledge.store import backtest_symbols_has_oos_window
 from cosmu.api.models import (
     AuthorRequest,
@@ -98,6 +106,15 @@ def _cell_row(r: dict) -> LabSymbolRow:
     cell_window = r.get("cell_window_days")
     window_days = float(cell_window) if cell_window is not None else oos_window_days(r.get("oos_start"), r.get("oos_end"))
     ann = annualized_return(r["return_pct"], window_days)
+    trades = int(_metric(r["trades"]))
+    # The honest "≥ x%/yr" confidence floor — a Sharpe-SE shrinkage of THIS cell's own return over its own window
+    # and trade count (None when too thin / window unknown). Turns the point CAGR into a lower-bound the screener
+    # can show subtly so a noisy short-window outlier isn't read as fact. Display-only; never a gate.
+    ann_lo = annualized_return_lo(r["return_pct"], window_days, r.get("sharpe"), trades)
+    # Thin-sample flag: fewer trades on this cell's OWN data than the gate's real floor → too thin to judge honestly.
+    # Compared against settings.gates.min_trades (the live constant, NOT a hardcoded 30) so the UI mute/flag tracks
+    # the gate. Never a gate itself; the brut min-trades floor still runs in the scorer/promote path.
+    thin = trades < settings.gates.min_trades
     return LabSymbolRow(
         strategy_version_id=r["strategy_version_id"],
         strategy_name=r["strategy_name"],
@@ -108,10 +125,12 @@ def _cell_row(r: dict) -> LabSymbolRow:
         venue_id=r.get("venue_id"),
         return_pct=_metric(r["return_pct"]),
         return_pct_annualized=ann,
+        return_pct_annualized_lo=ann_lo,
         oos_window_days=window_days,
+        thin=thin,
         sharpe=_metric(r["sharpe"]),
         max_drawdown=_metric(r["max_drawdown"]),
-        trades=int(_metric(r["trades"])),
+        trades=trades,
         verdict=r.get("verdict"),
         pooled_return_pct=_metric(pooled) if pooled is not None else None,
         created_at=r["created_at"],
@@ -241,7 +260,7 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
         seen_strategies = {r["strategy_id"] for r in deduped}
         fresh = [r for r in track_only if r["strategy_id"] not in seen_strategies]
         out += [_track_only_row(r) for r in fresh[: max(1, limit) - len(out)]]
-    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
+    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, min_trades=int(settings.gates.min_trades))
 
 
 @router.post("/lab/author/run", response_model=CohortSummaryResponse)
