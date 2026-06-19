@@ -83,13 +83,14 @@ export function bestOosAnnualizedPct(backtests: Backtest[]): number | null {
   return Number.isFinite(v) ? v : null;
 }
 
-// The OOS window as a human span ("~2.4yr" / "~8mo" / "~120d") — the actual length behind the OOS %, so the
-// Duration row reads "~2.4yr" instead of the bare literal "OOS". null when the engine has no window length.
+// The OOS window in DAYS (the operator wants the day count, not just "OOS") with a human span appended for long
+// windows: "870d (~2.4yr)" / "240d (~8mo)" / "45d". null when the engine has no recorded window length.
 function formatOosWindow(days: number | null | undefined): string | null {
   if (!days || days <= 0) return null;
-  if (days >= 360) return `~${(days / 365).toFixed(1)}yr`;
-  if (days >= 60) return `~${Math.round(days / 30)}mo`;
-  return `~${Math.round(days)}d`;
+  const d = Math.round(days);
+  if (d >= 360) return `${d}d (~${(d / 365).toFixed(1)}yr)`;
+  if (d >= 60) return `${d}d (~${Math.round(d / 30)}mo)`;
+  return `${d}d`;
 }
 
 // Gate reference (mirrors gate-chips): PBO must be under 0.50 to pass.
@@ -268,9 +269,9 @@ function PhaseComparison({
       live: "—"
     },
     {
-      metric: "Duration",
-      tip: "Length of the out-of-sample (OOS) window — the unseen period the strategy was tested on, AFTER the data it was built on. Longer = more trustworthy.",
-      bt: formatOosWindow(headlineBt?.oos_window_days) ?? (headlineBt ? "OOS" : "—"),
+      metric: "OOS duration",
+      tip: "How many DAYS of out-of-sample data the backtest ran on — the unseen period tested AFTER the data the strategy was built on. Longer = more trustworthy, and it's the denominator behind the annualized return. — = window not yet recorded.",
+      bt: formatOosWindow(headlineBt?.oos_window_days) ?? "—",
       paper: ageDays !== null ? `${ageDays}d` : "—",
       live: "—"
     }

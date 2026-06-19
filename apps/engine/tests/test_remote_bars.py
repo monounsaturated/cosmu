@@ -11,6 +11,8 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+
 import cosmu.data.market as market
 from cosmu.data.market import (
     Bar,
@@ -19,6 +21,16 @@ from cosmu.data.market import (
     _bars_to_rows,
     default_crypto_reference,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_remote_memo():
+    """RemoteBarsProvider memoizes per (base_url, symbol, tf, limit) PROCESS-WIDE (the cohort efficiency win). Clear
+    it around each test so a prior test's memoized fetch can't satisfy the next (e.g. the offline test must see a
+    real fetch attempt, not a cached hit) — production memoization is exactly the intended behaviour."""
+    market._REMOTE_BARS_MEMO.clear()
+    yield
+    market._REMOTE_BARS_MEMO.clear()
 
 
 def _bars(n: int) -> list[Bar]:
