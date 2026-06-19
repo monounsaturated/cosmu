@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter, HTTPException
 
@@ -33,6 +34,8 @@ from cosmu.master.scorer import BacktestMetrics, TrialStats, deflated_sharpe_pro
 from cosmu.research.summary_facts import facts_hash, summary_facts
 
 router = APIRouter()
+
+_log = logging.getLogger("cosmu.api.strategies")
 
 
 def _deflated_sharpe_prob(bt: dict) -> float | None:
@@ -254,19 +257,23 @@ def strategy_triplet(version_id: str, symbol: str | None = None, venue: str | No
 
 @router.get("/strategies/{version_id}/cell-curve", response_model=CellCurveResponse)
 def strategy_cell_curve(version_id: str, symbol: str, venue: str | None = None) -> CellCurveResponse:
-    """The persisted PER-CELL net-of-fee backtest equity curve for ONE focused (symbol, venue) cell — the
-    cumulated per-bar net equity the cell's metrics score on, stored at screen time on
-    backtest_symbols.equity_curve_json (never re-run, never the pooled basket). The strat sheet's Backtest tab
-    requests this for the focused cell, which has no fills to draw a curve from. Honest empty
-    (available=False, points=[]) when the cell has no stored curve yet — a cell that never traded, or a
-    pre-migration prod row whose column doesn't exist. Pure read.
+    """The PER-CELL net-of-fee backtest equity curve for ONE focused (symbol, venue) cell — the cumulated per-bar
+    net equity the cell's metrics score on (never the pooled basket). The strat sheet's Backtest tab requests this
+    for the focused cell, which has no fills to draw a curve from.
+
+    Served from the curve persisted at screen time (backtest_symbols.equity_curve_json). When that is NULL/empty —
+    the vast majority of EXISTING cells, screened before the column shipped (only NEW screens persist it) — the
+    curve is RECOMPUTED ON THE FLY from the version's spec/params over the cell's real bars (one symbol ≈ 1-2s,
+    fine on-open) and written back to the row so the next request is cached. Honest empty (available=False,
+    points=[]) only when the cell truly has no curve: bars unavailable (offline), an unparseable spec, or a
+    degenerate cell that never traded — never a fabricated curve.
 
     `venue` mirrors the /triplet selector: None → the latest cell for the symbol (don't constrain venue);
     "" → the NULL-venue cell explicitly; a real id → that venue."""
     # Pre-migration prod has no equity_curve_json column — SELECTing it would raise UndefinedColumn, so probe
-    # first and return the honest empty curve. The probe is memoized per DSN (see store.py).
-    if not backtest_symbols_has_equity_curve(store):
-        return CellCurveResponse(version_id=version_id, symbol=symbol, venue=venue, available=False, points=[])
+    # first. We CANNOT cache a recompute back there (no column), so just serve the on-the-fly recompute over the
+    # cell's bars (still honest — never a stored constant). The probe is memoized per DSN (see store.py).
+    has_curve_col = backtest_symbols_has_equity_curve(store)
     conds = ["bs.strategy_version_id = ?", "bs.symbol = ?"]
     params: list[object] = [version_id, symbol]
     if venue is not None:
@@ -276,28 +283,187 @@ def strategy_cell_curve(version_id: str, symbol: str, venue: str | None = None) 
             conds.append("bs.venue_id = ?")
             params.append(venue)
     where = " WHERE " + " AND ".join(conds)
+    _curve_select = "bs.equity_curve_json, " if has_curve_col else ""
     with store.reading():
         row = store.row(
-            f"SELECT bs.equity_curve_json FROM backtest_symbols bs{where} ORDER BY bs.created_at DESC LIMIT 1",
+            f"SELECT bs.id, {_curve_select}bs.backtest_id FROM backtest_symbols bs{where} "
+            "ORDER BY bs.created_at DESC LIMIT 1",
             tuple(params),
         )
-    raw = row.get("equity_curve_json") if row else None
-    points: list[CellCurvePoint] = []
-    if raw:
-        try:
-            data = json.loads(raw) if isinstance(raw, str) else raw
-            for p in data or []:
-                ts, net = p.get("ts"), p.get("net")
-                if ts is None or net is None:
-                    continue
-                points.append(CellCurvePoint(ts=str(ts), net=float(net)))
-        except (ValueError, TypeError, AttributeError):
-            points = []
+    raw = (row.get("equity_curve_json") if (row and has_curve_col) else None)
+    points = _parse_curve_points(raw)
+    if len(points) < 2 and row is not None:
+        # NULL/empty stored curve (an existing cell, or a never-cached one) → recompute from the spec over the
+        # cell's bars, then cache it back to the row when the column exists so subsequent opens are instant.
+        recomputed = _recompute_cell_curve(version_id, symbol, venue, row.get("backtest_id"))
+        if len(recomputed) >= 2:
+            points = recomputed
+            if has_curve_col and row.get("id"):
+                _persist_cell_curve(str(row["id"]), points)
     # A chart needs ≥ 2 points to draw a line; below that it's honestly "not available" (the UI renders its
     # per-cell empty state rather than a degenerate single dot).
     return CellCurveResponse(
         version_id=version_id, symbol=symbol, venue=venue, available=len(points) >= 2, points=points,
     )
+
+
+def _parse_curve_points(raw: object) -> list[CellCurvePoint]:
+    """Deserialize a stored/recomputed [{ts, net}] curve into typed points, dropping any malformed entry. Honest
+    empty ([]) on any parse failure — never a fabricated point."""
+    points: list[CellCurvePoint] = []
+    if not raw:
+        return points
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+        for p in data or []:
+            ts, net = p.get("ts"), p.get("net")
+            if ts is None or net is None:
+                continue
+            points.append(CellCurvePoint(ts=str(ts), net=float(net)))
+    except (ValueError, TypeError, AttributeError):
+        return []
+    return points
+
+
+def _persist_cell_curve(cell_id: str, points: list[CellCurvePoint]) -> None:
+    """Opportunistically cache a recomputed curve back onto the backtest_symbols row so the next request reads it
+    instead of re-running the backtest. Best-effort: a write hiccup (read-replica, race) must never fail the read
+    path — the curve is already in the response. Display-only; no gate column is touched."""
+    try:
+        payload = json.dumps([{"ts": p.ts, "net": p.net} for p in points])
+        with store.batch() as writer:
+            writer.execute("UPDATE backtest_symbols SET equity_curve_json = ? WHERE id = ?", (payload, cell_id))
+    except Exception:  # noqa: BLE001 — caching is best-effort; the curve is already served
+        _log.info("cell-curve cache-back failed for backtest_symbols.id=%s (served live)", cell_id)
+
+
+def _recompute_cell_curve(
+    version_id: str, symbol: str, venue: str | None, backtest_id: object
+) -> list[CellCurvePoint]:
+    """Recompute ONE cell's net-of-fee backtest equity curve on the fly — for a cell screened before the curve
+    column shipped (its equity_curve_json is NULL). Mirrors the finder's screen path EXACTLY so the curve is the
+    SAME net-of-fee stream the cell's metrics scored on, never a re-fitted or differently-costed one:
+
+      1. Load the version's typed spec + fitted params (strategy_versions.spec/params).
+      2. Fetch the cell's bars the SAME way the screen does — build_crypto_cells over the venue-tagged universe
+         (UniversalOHLCVProvider; Binance reference, Kraken FALLBACK), bounded to JUST this symbol, then pick the
+         cell whose venue matches the requested venue. Binance is reachable from this EU host directly.
+      3. Charge the SAME costs the cell was scored under (the backtests row's fee_bps/slippage_bps/impact_bps),
+         falling back to the venue catalog default when a column is unset (pre-migration / arm rows).
+      4. Run a single-symbol run_strategy_backtest_detailed and cumulate per_symbol_runs[key].bar_returns via
+         equity_curve_points — the locked gate math (scorer/fdr/trials/cohort) is byte-unchanged (display helper).
+
+    Honest empty ([]) when bars are unavailable, the spec is unparseable, or the cell never traded. Crypto only:
+    a non-crypto cell (equity/HL/prediction) has no keyless on-host bar route here, so it returns empty (its curve
+    populates as the cron re-screens and persists it) rather than a fabricated series."""
+    # Deferred imports: these pull the data/backtest stack (numpy-ish heavy modules) and must not load at API
+    # import time — the cell-curve endpoint is the only consumer and it's an on-open, not hot, path.
+    from decimal import Decimal
+
+    from cosmu.data.backtest import (
+        DEFAULT_IMPACT_BPS,
+        DEFAULT_SLIPPAGE_BPS,
+        equity_curve_points,
+        run_strategy_backtest_detailed,
+    )
+    from cosmu.data.price_cells import build_crypto_cells
+    from cosmu.data.reference import pair_for
+    from cosmu.evolution.loop import fit_params
+    from cosmu.spine.universe import enabled_universe
+    from cosmu.spine.venue import default_catalog
+    from cosmu.strategy.spec import StrategySpec
+
+    with store.reading():
+        ver = store.row("SELECT spec, params FROM strategy_versions WHERE id = ?", (version_id,))
+        bt = (
+            store.row(
+                "SELECT venue_id, fee_bps, slippage_bps, impact_bps FROM backtests WHERE id = ?",
+                (str(backtest_id),),
+            )
+            if backtest_id is not None
+            else None
+        )
+    if ver is None:
+        return []
+    try:
+        spec = StrategySpec.model_validate(_json(ver["spec"]))
+    except Exception:  # noqa: BLE001 — a malformed/legacy spec can't be re-run → honest empty, never fabricated
+        _log.info("cell-curve recompute: unparseable spec for version=%s", version_id)
+        return []
+    params = _json(ver["params"]) or {}
+    if not isinstance(params, dict) or not params:
+        params = fit_params(spec)  # the finder's deterministic midpoint params (matches a screen with no stored fit)
+
+    # The venue this cell trades — the requested venue, else the cell's recorded backtest venue, else binance.
+    venue_id = (venue or (bt["venue_id"] if bt and bt.get("venue_id") else None) or "binance")
+
+    bar_size = spec.horizon.bar_size
+    limit = 1500 if bar_size == "1h" else 1000
+    canonical = pair_for(symbol, venue_id).id  # both 'BTC/USDT' and bare 'BTCUSDT' normalize to the same pair id
+    try:
+        enabled_venues, _classes = enabled_universe(store)
+    except Exception:  # noqa: BLE001 — offline / no universe table → let build_crypto_cells take its legacy path
+        enabled_venues = None
+    try:
+        cells = build_crypto_cells(
+            store, timeframe=bar_size, limit=limit,
+            enabled_venues=enabled_venues, fallback_symbols=(canonical,),
+        )
+    except Exception:  # noqa: BLE001 — provider refused / offline: the cell can't be priced → honest empty
+        _log.info("cell-curve recompute: bar fetch failed for %s@%s (version=%s)", symbol, venue_id, version_id)
+        return []
+    # Pick the cell whose venue matches the request. venue ""/None → the reference (binance) cell. A namespaced
+    # 'PAIR@venue' cell carries venue_id; the reference cell carries 'binance'.
+    target = next((c for c in cells if c.venue_id == venue_id), None)
+    if target is None and venue_id == "binance":
+        target = next((c for c in cells if c.reuses_reference), None)  # the reference cell, however keyed
+    if target is None or not target.bars:
+        return []
+
+    # The costs the cell was SCORED under (the backtests row), else the venue catalog default — never a re-typed
+    # literal that could drift from what the screen charged.
+    catalog_venue = None
+    try:
+        catalog_venue = default_catalog().venue(venue_id)
+    except KeyError:
+        pass
+    fee_bps = _bps(bt.get("fee_bps") if bt else None) or (catalog_venue.taker_fee_bps if catalog_venue else Decimal("10"))
+    slip_bps = _bps(bt.get("slippage_bps") if bt else None) or (
+        catalog_venue.slippage_bps if catalog_venue else DEFAULT_SLIPPAGE_BPS
+    )
+    impact_bps = _bps(bt.get("impact_bps") if bt else None) or (
+        catalog_venue.impact_bps if catalog_venue else DEFAULT_IMPACT_BPS
+    )
+
+    market = {target.key: target.bars}
+    try:
+        # include_holdout=False — the curve is the VALIDATION-window stream the screen scored on (the screen path
+        # itself runs the grid with include_holdout=False), so the recompute matches what was persisted.
+        detailed = run_strategy_backtest_detailed(
+            spec, params, market, fee_bps=fee_bps, slippage_bps=slip_bps, impact_bps=impact_bps,
+            include_holdout=False,
+        )
+    except Exception:  # noqa: BLE001 — a degenerate spec/param combo can't be scored → honest empty
+        _log.info("cell-curve recompute: backtest failed for %s@%s (version=%s)", symbol, venue_id, version_id)
+        return []
+    run = detailed.per_symbol_runs.get(target.key)
+    if run is None:
+        return []
+    return _parse_curve_points(equity_curve_points(run))
+
+
+def _bps(value: object):  # noqa: ANN201 — Decimal | None
+    """Coerce a persisted bps NUMERIC into a positive Decimal, or None when unset/zero/malformed (the caller then
+    falls back to the venue catalog default). 0/negative is treated as 'unset' — a real fill always pays a fee."""
+    from decimal import Decimal, InvalidOperation
+
+    if value is None:
+        return None
+    try:
+        d = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return d if d > 0 else None
 
 
 @router.get("/strategies/{version_id}/comparison", response_model=LabSymbolsResponse)

@@ -96,12 +96,14 @@ class CellCurvePoint(BaseModel):
 
 
 class CellCurveResponse(BaseModel):
-    """The persisted PER-CELL (algo × symbol × venue) net-of-fee backtest equity curve — the cumulated per-bar
-    net equity the cell's metrics score on, stored at screen time (backtest_symbols.equity_curve_json), NEVER
-    re-run and NEVER the pooled basket. The strat sheet's Backtest tab requests this for the focused cell when
-    there are no fills to draw a curve from. `available` is False (points empty) when the cell has no stored
-    curve yet — a cell that never traded, or a pre-migration prod row whose column doesn't exist — an honest
-    empty state, never a fabricated curve."""
+    """The PER-CELL (algo × symbol × venue) net-of-fee backtest equity curve — the cumulated per-bar net equity
+    the cell's metrics score on, NEVER the pooled basket. Served from the curve persisted at screen time
+    (backtest_symbols.equity_curve_json); when that is absent (a cell screened before the column shipped — the
+    bulk of existing rows), it is RECOMPUTED on the fly from the version's spec/params over the cell's real bars
+    and written back so the next request is cached. The strat sheet's Backtest tab requests this for the focused
+    cell when there are no fills to draw a curve from. `available` is False (points empty) only when the cell
+    truly has no curve — bars unavailable (offline), an unparseable spec, or a degenerate cell that never traded —
+    an honest empty state, never a fabricated curve."""
 
     version_id: str
     symbol: str
