@@ -218,9 +218,10 @@ def strategy_triplet(version_id: str, symbol: str | None = None, venue: str | No
 @router.get("/strategies/{version_id}/comparison", response_model=LabSymbolsResponse)
 def strategy_comparison(version_id: str, limit: int = 500) -> LabSymbolsResponse:
     """The 'table de comparaison' — EVERY backtest_symbols cell of the SAME algo (strategy_id) across its assets
-    and venues, one row per (version × symbol × venue), outlier-sorted. This is how the fiche shows the clicked
-    cell's siblings side by side WITHOUT averaging — each cell keeps its own P&L/verdict. The distinct symbols +
-    venues drive the asset/venue selector. Resolves the algo from any one of its versions. Pure read."""
+    and venues, one row per (symbol × venue) TRIPLET (a strategy's many versions on the same triplet collapse to the
+    LATEST via `_dedup_cells`), outlier-sorted. This is how the fiche shows the clicked cell's siblings side by side
+    WITHOUT averaging — each cell keeps its own P&L/verdict. The distinct symbols + venues drive the asset/venue
+    selector. Resolves the algo from any one of its versions. Pure read."""
     with store.reading():
         sv = store.row("SELECT strategy_id FROM strategy_versions WHERE id = ?", (version_id,))
         if sv is None:
