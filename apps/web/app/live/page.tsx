@@ -12,7 +12,7 @@
 
 import { Suspense } from "react";
 import { getLivePositions, getPortfolioSummary, getRules } from "../data";
-import { getLiveVenues } from "../data/live";
+import { getLiveOrders, getLiveVenues } from "../data/live";
 import { LiveSurface } from "@/components/live/live-surface";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 
@@ -32,11 +32,12 @@ export default function LivePage() {
 }
 
 async function LiveData() {
-  const [initial, summary, rules, venuesRes] = await Promise.all([
+  const [initial, summary, rules, venuesRes, ordersRes] = await Promise.all([
     getLivePositions(),
     getPortfolioSummary(),
     getRules(),
-    getLiveVenues()
+    getLiveVenues(),
+    getLiveOrders()
   ]);
   return (
     <LiveSurface
@@ -44,6 +45,7 @@ async function LiveData() {
       initialSummary={{ ...summary.summary, connected: summary.connected }}
       initialRules={{ ...rules.rules, connected: rules.connected }}
       venues={(venuesRes.venues ?? []).map((v) => ({ name: v.name, amount: v.deployed_usd }))}
+      initialOrders={ordersRes}
     />
   );
 }

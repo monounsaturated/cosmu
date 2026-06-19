@@ -163,6 +163,13 @@ export interface BrainSurvivor {
   version_id: string;
 }
 
+export interface CancelOrderResponse {
+  canceled: boolean;
+  order_id: string;
+  reason?: string | null;
+  venue?: string | null;
+}
+
 export interface CellCurvePoint {
   net: number;
   ts: string;
@@ -847,6 +854,23 @@ export interface LiveEligibilityView {
   proven_regimes: string[];
   reason: string;
   regime_eligible: boolean;
+}
+
+export interface LiveOrder {
+  order_id: string;
+  price: number;
+  qty: number;
+  side: "buy" | "sell";
+  status: "working" | "canceled";
+  symbol: string;
+  ts: string;
+  venue: string;
+}
+
+export interface LiveOrdersResponse {
+  armed: boolean;
+  mode: "testnet" | "live" | "sim";
+  orders: LiveOrder[];
 }
 
 export interface LivePosition {

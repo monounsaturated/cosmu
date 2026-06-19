@@ -349,6 +349,45 @@ class LivePositionsResponse(BaseModel):
     positions: list[LivePosition]
 
 
+class LiveOrder(BaseModel):
+    """One LIVE (real-money / testnet) order on the control panel — derived from the live execution ledger
+    (`executions.is_paper = 0`), never the sim/paper lane. `order_id` is the client_order_id, which is the
+    cancel anchor (the engine resolves it to the venue order id when cancelling). `status` is "working" until a
+    cancel for that id is on the ledger ("canceled"). Spot venues book a market fill immediately, so a row is
+    the recorded live fill; a resting limit order (Polymarket CLOB) is genuinely working until canceled."""
+
+    order_id: str        # client_order_id — the cancel anchor
+    venue: str
+    symbol: str
+    side: Literal["buy", "sell"]
+    qty: float
+    price: float
+    status: Literal["working", "canceled"]
+    ts: str
+
+
+class LiveOrdersResponse(BaseModel):
+    """The live-orders control panel feed. HONESTY CONTRACT: only LIVE-book orders (testnet/live, is_paper=0)
+    ever appear — a sim/paper fill is NEVER listed here. `armed` mirrors /live/positions so the UI shows the
+    same honest "nothing armed" empty state. When nothing has routed live, `orders` is an empty list."""
+
+    armed: bool
+    mode: Literal["testnet", "live", "sim"]
+    orders: list[LiveOrder]
+
+
+class CancelOrderResponse(BaseModel):
+    """The result of POST /live/orders/{order_id}/cancel. `canceled` is True only when the resolved venue
+    adapter accepted the cancel. `reason` carries the honest failure (order not on the live ledger, venue has
+    no execution adapter, or the adapter rejected the cancel). Never cancels a sim/paper order — those are not
+    real and have nothing to cancel at a venue."""
+
+    canceled: bool
+    order_id: str
+    venue: str | None = None
+    reason: str | None = None
+
+
 class LiveVenue(BaseModel):
     """One venue on the LIVE surface: is it legal to trade here from our jurisdiction, are execution keys
     wired (connected), is it ticked into the universe, and how much real capital is deployed there now."""
