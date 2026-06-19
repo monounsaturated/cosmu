@@ -62,6 +62,53 @@ class _Inserter(Protocol):
     def insert_or_get(self, table: str, row: dict[str, Any], *, conflict_cols: list[str]) -> str: ...
 
 
+# Lifecycle statuses that count as a LIVE forward-test of a cell. A track whose version is `killed` (failed the
+# gate, defunded, or deduped) no longer occupies the (strategy × symbol × venue) slot — a fresh paper track for
+# that cell is then legitimate. Mirrors knowledge/lifecycle_status.ALIVE_STATUSES without importing it here (this
+# module is imported very early by the create lanes; the set is a tiny stable whitelist, not user input).
+_ALIVE_TRACK_STATUSES = ("screened", "paper", "forward_test", "live")
+
+
+def alive_cell_track_exists(
+    store: Store,
+    *,
+    strategy_name: str,
+    symbol: str | None,
+    venue_id: str | None,
+) -> bool:
+    """True when some NON-killed version of the strategy ``strategy_name`` already owns a paper track for the
+    cell ``(symbol, venue_id)``.
+
+    This is the CROSS-VERSION idempotency guard the per-cell ``UNIQUE(strategy_version_id, symbol, venue_id)``
+    cannot give: the evolution loop mints a BRAND-NEW ``strategies`` + ``strategy_versions`` row on every cron
+    pass, so the unique (which is scoped to the synthetic version id) never collides across runs — and a strategy
+    that keeps clearing the generous-paper watch lane accumulates one duplicate zero-/seed-capital track per pass
+    on the SAME (strategy × symbol × venue) cell. The stable cross-run identity is the strategy NAME (the loop's
+    fresh ids are not), so the slot is keyed on ``strategies.name`` joined through the version to its alive tracks.
+
+    Best-effort + crash-proof: any read error (or a pre-migration tracks table lacking the cell columns) returns
+    False so the guard NEVER blocks a legitimate first open — it only suppresses a provable duplicate. Returns
+    False when ``symbol``/``venue_id`` are not both given (a version-wide legacy track carries no cell identity to
+    dedupe on, so the caller's existing one-track-per-version guard remains the authority there)."""
+    if not symbol or not venue_id:
+        return False
+    try:
+        if not tracks_has_cell_columns(store):
+            return False  # pre-migration: no cell identity on the row to match — defer to the per-version guard
+        placeholders = ", ".join(["?"] * len(_ALIVE_TRACK_STATUSES))
+        row = store.row(
+            "SELECT 1 FROM tracks tr "
+            "JOIN strategy_versions sv ON sv.id = tr.strategy_version_id "
+            "JOIN strategies s ON s.id = sv.strategy_id "
+            f"WHERE s.name = ? AND tr.symbol = ? AND tr.venue_id = ? AND sv.status IN ({placeholders}) "
+            "LIMIT 1",
+            (strategy_name, symbol, venue_id, *_ALIVE_TRACK_STATUSES),
+        )
+        return row is not None
+    except Exception:  # noqa: BLE001 — an idempotency probe must never break the create/research path.
+        return False
+
+
 def open_paper_track(
     writer: _Inserter,
     *,

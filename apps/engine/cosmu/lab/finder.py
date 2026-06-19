@@ -53,7 +53,7 @@ from cosmu.master.screen_universe import (
     hyperliquid_symbols,
     prediction_markets,
 )
-from cosmu.master.tracks import WATCH_VERDICT, is_near_miss_cell, open_paper_track
+from cosmu.master.tracks import WATCH_VERDICT, alive_cell_track_exists, is_near_miss_cell, open_paper_track
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
@@ -838,6 +838,11 @@ class StrategyFinder:
                     if not (_is_pass or _is_watch):
                         continue
                     if not _cell_cols and _opened_version_wide:
+                        continue
+                    # CROSS-VERSION idempotency (same as the evolution loop): a re-run that re-promotes the same
+                    # (strategy × symbol × venue) cell onto a fresh version must NOT open a duplicate track. Keyed
+                    # on the stable strategy NAME (the per-run version id is not stable). Never blocks a first open.
+                    if alive_cell_track_exists(self.store, strategy_name=spec.name, symbol=cell.symbol, venue_id=cell.venue_id):
                         continue
                     open_paper_track(b, version_id=version_id, starting_capital=_capital, target_vol=cell.target_vol,
                                      symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)

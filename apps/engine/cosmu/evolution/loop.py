@@ -36,7 +36,7 @@ from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.master.screen_universe import build_cost_context
-from cosmu.master.tracks import WATCH_VERDICT, is_near_miss_cell, open_paper_track
+from cosmu.master.tracks import WATCH_VERDICT, alive_cell_track_exists, is_near_miss_cell, open_paper_track
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
@@ -727,6 +727,13 @@ class FarmLoop:
             if not (_is_pass or _is_watch):
                 continue
             if not _cell_cols and _opened_version_wide:
+                continue
+            # CROSS-VERSION idempotency: the loop mints a fresh version every cron pass, so the per-cell UNIQUE
+            # (scoped to this run's synthetic version id) never collides across runs — a strategy that keeps
+            # clearing the generous-paper watch lane would otherwise accumulate one duplicate track per pass on
+            # the SAME (strategy × symbol × venue) cell. Skip the open when a non-killed version already forward-
+            # tests this cell (keyed on the stable strategy NAME, not the per-run id). Never blocks a first open.
+            if alive_cell_track_exists(self.store, strategy_name=cand.spec.name, symbol=cell.symbol, venue_id=cell.venue_id):
                 continue
             open_paper_track(b, version_id=version_id, starting_capital=track_capital,
                              symbol=cell.symbol, venue_id=cell.venue_id, store=self.store)
