@@ -517,3 +517,48 @@ def reset_backtest_symbols_oos_window_cache() -> None:
     in-process); never needed in prod (the schema is fixed per process)."""
     with _BACKTEST_SYMBOLS_OOS_WINDOW_LOCK:
         _BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN.clear()
+
+
+# --- schema probe: is the CROWDING exposure-cap column live on `tracks`? -----------------------------
+# Same out-of-band-migration reality as the columns above: `tracks.exposure_factor` (the 2026-06-19 migration)
+# carries the crowding overlay's per-cell capital cap. Until prod is migrated the column is absent; the funder's
+# WRITE must PROBE and only UPDATE it when present (referencing `exposure_factor` against a pre-migration prod
+# table raises `UndefinedColumn` and would crash the funder tick), and the executor's READ falls back to the
+# no-cap default 1.0. Memoized per DSN (a migration is an out-of-band, restart-bounded event).
+_TRACKS_EXPOSURE_COLUMN: dict[str, bool] = {}
+_TRACKS_EXPOSURE_LOCK = threading.Lock()
+
+
+def tracks_has_exposure_factor(store: Store) -> bool:
+    """True when the live `tracks` table carries `exposure_factor` (the crowding capital cap).
+
+    Present → the funder persists the crowding overlay's per-cell factor AND the executor reads it; absent
+    (pre-migration prod) → the funder SKIPS the UPDATE byte-for-byte (no crash) and the executor uses 1.0 (no
+    cap), so behaviour is identical to before this change. Result is memoized per database_url; tests that ALTER
+    a store's schema in-process call `reset_tracks_exposure_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _TRACKS_EXPOSURE_COLUMN.get(key)
+    if cached is not None:
+        return cached
+    with _TRACKS_EXPOSURE_LOCK:
+        cached = _TRACKS_EXPOSURE_COLUMN.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'tracks'"
+            )
+            names = {r["column_name"] for r in rows}
+        else:
+            rows = store.rows("PRAGMA table_info(tracks)")
+            names = {r["name"] for r in rows}
+        present = "exposure_factor" in names
+        _TRACKS_EXPOSURE_COLUMN[key] = present
+        return present
+
+
+def reset_tracks_exposure_cache() -> None:
+    """Clear the per-DSN `tracks.exposure_factor` column memo (for tests that ALTER a store's schema in-process);
+    never needed in prod (the schema is fixed per process)."""
+    with _TRACKS_EXPOSURE_LOCK:
+        _TRACKS_EXPOSURE_COLUMN.clear()

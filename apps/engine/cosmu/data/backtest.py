@@ -134,6 +134,7 @@ def run_strategy_backtest(
     size_series: dict[str, float] | None = None,
     include_holdout: bool = True,
     asset_class_by_symbol: dict[str, str] | None = None,
+    vol_target_sizing: bool = True,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
     wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
@@ -151,6 +152,7 @@ def run_strategy_backtest(
         size_series=size_series,
         include_holdout=include_holdout,
         asset_class_by_symbol=asset_class_by_symbol,
+        vol_target_sizing=vol_target_sizing,
     ).metrics
 
 
@@ -169,8 +171,16 @@ def run_strategy_backtest_detailed(
     size_series: dict[str, float] | None = None,
     include_holdout: bool = True,
     asset_class_by_symbol: dict[str, str] | None = None,
+    vol_target_sizing: bool = True,
 ) -> BacktestResult:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
+
+    `vol_target_sizing` (default True) sizes each symbol's equity curve with the SAME T1 vol-target envelope the
+    paper/live executor runs (master/sizing.size_fraction), so the brut per-combo gate scores the physics the
+    track will actually trade instead of a static T0 fraction (backtest≠live realism fix). It is strictly
+    PER-COMBO: each symbol is sized on ITS OWN validation-window vol anchor (compute_target_vol on that symbol's
+    own price returns) — NO sibling/pooled vol enters any one cell's curve. Set False to score the legacy
+    static-fraction physics (used for the before/after pass-rate comparison, and for any track that trades T0).
 
     `include_holdout=False` SKIPS the holdout simulation entirely — holdout metrics read the same no-evidence
     sentinel an empty holdout stream produces (holdout_deflated_sharpe = PSR(∅) − 0.5 = −0.5). The
@@ -239,12 +249,17 @@ def run_strategy_backtest_detailed(
         ppy = _periods_per_year(spec.horizon.bar_size, (asset_class_by_symbol or {}).get(symbol))
         val_bars, holdout_bars = _purged_embargoed_split(spec, params, bars)
         # T1: collect price returns PIT to the validation window (NOT holdout — the gate never touches holdout).
-        val_price_returns.extend(
+        sym_val_returns = [
             float(val_bars[i].close) / float(val_bars[i - 1].close) - 1.0
             for i in range(1, len(val_bars))
             if float(val_bars[i - 1].close) > 0
-        )
-        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy)
+        ]
+        val_price_returns.extend(sym_val_returns)
+        # PER-COMBO T1 anchor: THIS symbol's own vol fingerprint, from ITS OWN validation window only — never a
+        # pooled/sibling value. None disables T1 for this symbol (too few bars) → it sizes T0, as before. With
+        # vol_target_sizing off, sym_tv stays None and every cell's curve is the legacy static-fraction physics.
+        sym_tv = compute_target_vol(sym_val_returns) if vol_target_sizing else None
+        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
@@ -259,7 +274,9 @@ def run_strategy_backtest_detailed(
         # beats THIS symbol's benchmark, not the pooled basket average. Uses the cell's own per-venue fee.
         per_symbol_buy_and_hold[symbol] = _symbol_buy_and_hold(val_bars, sym_fee)
         if holdout_bars and include_holdout:
-            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy)
+            # The holdout's T1 anchor is the SAME validation-window vol (frozen at funding, never re-fit on the
+            # exam) — mirroring the live track, whose target_vol is fixed from validation and never recomputed.
+            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv)
             holdout_runs.append(h_run)
             per_symbol_holdout_runs[symbol] = h_run  # this cell's OWN holdout (brut champion confirmation)
 
@@ -563,6 +580,7 @@ def _run_symbol(
     size_series: dict[str, float] | None = None,
     *,
     periods_per_year: float | None = None,
+    target_vol: float | None = None,
 ) -> SymbolRun:
     # `periods_per_year` annualizes this symbol's Sharpe/Sortino on its OWN calendar (set by the caller from the
     # symbol's asset class). None → the 365-session crypto default for `bar_size`, so a direct caller (or any
@@ -619,6 +637,17 @@ def _run_symbol(
             return size_multiplier
         return size_series.get(bars[idx_now].ts.isoformat(), size_multiplier)
 
+    def _notional_at(idx_now: int) -> float:
+        """The entry notional this combo would deploy at bar `idx_now`, sized through the SHARED size_fraction.
+        T1 (target_vol set) passes the trailing POINT-IN-TIME closes `closes[:idx_now + 1]` (the decision bar's
+        close is known when the entry is taken — the SAME window the live executor reads) so the backtest's
+        realized-vol scaling matches the paper/live path. target_vol is THIS combo's own anchor (no sibling
+        mixing). The size_series/size_multiplier tilt is applied as before — vol is NOT routed through it (that
+        seam multiplies → the double-count trap the sizing roadmap warns against). T0 (target_vol None) passes
+        no closes → byte-identical to the prior path."""
+        trailing = closes[: idx_now + 1] if target_vol is not None else None
+        return _entry_notional(cash, spec, _size_at(idx_now), closes=trailing, target_vol=target_vol)
+
     def _book(exit_qty: float, exit_px: float, idx_now: int) -> None:
         nonlocal cash, position
         # `cash` settles the exit leg: a long SELLS (cash += proceeds net of fee); a short BUYS BACK
@@ -658,7 +687,7 @@ def _run_symbol(
     meta_proportional = bool(meta is not None and meta.sizing == "proportional")
     for idx in range(start, len(bars)):
         bar = bars[idx]
-        slip = _slippage(base_slip, impact, _entry_notional(cash, spec, _size_at(idx)), bar)
+        slip = _slippage(base_slip, impact, _notional_at(idx), bar)
         if position > 0:
             _accrue_funding(idx)
             # Side-aware adverse/favourable extremes: a long's worst case is the bar low and best the high;
@@ -714,7 +743,7 @@ def _run_symbol(
                 take, meta_mult = meta_gate.decide(
                     idx, _meta_featvec(meta_refs, features, idx - 1), meta_threshold, meta_proportional
                 )
-            notional = _entry_notional(cash, spec, _size_at(idx)) * meta_mult if take else 0.0
+            notional = _notional_at(idx) * meta_mult if take else 0.0
             if take and notional > 0:
                 # Entry crosses the spread the adverse way: long buys up (1+slip), short sells down (1-slip).
                 fill = float(bar.open) * (1 + d * slip)
@@ -934,11 +963,27 @@ def _fvg_retest_signal(
     return out
 
 
-def _entry_notional(cash: float, spec: StrategySpec, size_multiplier: float) -> float:
+def _entry_notional(
+    cash: float,
+    spec: StrategySpec,
+    size_multiplier: float,
+    *,
+    closes: list[float] | None = None,
+    target_vol: float | None = None,
+) -> float:
     # size_fraction(spec) is the SHARED fraction — identical to what paper_step/live deploy (audit #7 parity).
     # size_multiplier is a backtest-only capacity/meta tilt (1.0 in the production gate path).
+    #
+    # T1 PARITY (realism, per-combo): when this combo is sized with the vol-target envelope (closes AND
+    # target_vol supplied), the backtest deploys the SAME notional the paper/live executor will — the brut
+    # per-combo gate then scores the physics the track actually trades, not a static T0 fraction. `closes` is
+    # the trailing POINT-IN-TIME price level series up to the decision bar (NOT the future), and `target_vol`
+    # is THIS combo's OWN frozen vol anchor (from its OWN validation window — no sibling mixing). When either is
+    # absent, size_fraction falls back to T0 and the result is byte-identical to before (the audit #7 parity
+    # invariant in test_backtest_paper_live_parity).
     from cosmu.master.sizing import size_fraction
-    return max(0.0, min(cash, cash * size_fraction(spec) * max(0.0, size_multiplier)))
+    frac = size_fraction(spec, closes=closes, target_vol=target_vol)
+    return max(0.0, min(cash, cash * frac * max(0.0, size_multiplier)))
 
 
 def _slippage(base_slip: float, impact: float, notional: float, bar: Bar) -> float:
