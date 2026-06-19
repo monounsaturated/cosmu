@@ -424,3 +424,49 @@ def reset_tracks_cell_columns_cache() -> None:
     process, a migration being an out-of-band restart-bounded event)."""
     with _TRACKS_CELL_LOCK:
         _TRACKS_CELL_COLUMNS.clear()
+
+
+# --- schema probe: is the per-cell backtest equity-curve column live on `backtest_symbols`? ---------
+# Same out-of-band-migration reality as the `tracks` per-cell columns above: Postgres applies schema changes in
+# the Supabase SQL editor (Store.migrate), so `backtest_symbols.equity_curve_json` (the 2026-06-18 migration)
+# may not exist on prod yet while a fresh schema (test SQLite, any new DB) already declares it. The finder/loop
+# persist must therefore PROBE the live table and only write the column when present — INSERTing
+# `equity_curve_json` against a pre-migration prod table raises `UndefinedColumn` and would crash the WHOLE
+# cohort/finder persist transaction. Memoized per DSN (a migration is an out-of-band, restart-bounded event).
+_BACKTEST_SYMBOLS_CURVE_COLUMN: dict[str, bool] = {}
+_BACKTEST_SYMBOLS_CURVE_LOCK = threading.Lock()
+
+
+def backtest_symbols_has_equity_curve(store: Store) -> bool:
+    """True when the live `backtest_symbols` table carries `equity_curve_json` (the per-cell net-equity curve).
+
+    Present → the finder/loop persist serializes each cell's equity curve into it AND the cell-curve endpoint
+    serves it; absent (pre-migration prod) → the write SKIPS the column byte-for-byte (no crash) and the endpoint
+    returns an honest empty curve. Result is memoized per database_url; tests that ALTER a store's schema
+    in-process call `reset_backtest_symbols_curve_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _BACKTEST_SYMBOLS_CURVE_COLUMN.get(key)
+    if cached is not None:
+        return cached
+    with _BACKTEST_SYMBOLS_CURVE_LOCK:
+        cached = _BACKTEST_SYMBOLS_CURVE_COLUMN.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'backtest_symbols'"
+            )
+            names = {r["column_name"] for r in rows}
+        else:
+            rows = store.rows("PRAGMA table_info(backtest_symbols)")
+            names = {r["name"] for r in rows}
+        present = "equity_curve_json" in names
+        _BACKTEST_SYMBOLS_CURVE_COLUMN[key] = present
+        return present
+
+
+def reset_backtest_symbols_curve_cache() -> None:
+    """Clear the per-DSN `backtest_symbols.equity_curve_json` column memo (for tests that ALTER a store's schema
+    in-process); never needed in prod (the schema is fixed per process)."""
+    with _BACKTEST_SYMBOLS_CURVE_LOCK:
+        _BACKTEST_SYMBOLS_CURVE_COLUMN.clear()

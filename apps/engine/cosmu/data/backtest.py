@@ -375,6 +375,24 @@ def metrics_for_run(
     )
 
 
+def equity_curve_points(run: SymbolRun, *, base: float = 100_000.0) -> list[dict[str, object]]:
+    """Reconstruct ONE cell's NET-of-fee equity curve from its SymbolRun — the SAME per-bar stream the cell's
+    metrics score on. Cumulates (1 + bar_returns[i]) from `base` (the sim capital) and pairs each point with its
+    bar timestamp (bar_ts[i]), so point i is the marked, net-of-fee equity AT that bar. This is exactly the
+    mark-to-market equity the backtest derived `bar_returns` from — fees + slippage + funding already charged on
+    every fill — never a gross/pre-cost reconstruction. Returns a list of {"ts", "net"} points (the shape the
+    strat sheet's per-cell Backtest curve renders), empty when the run carries no timestamped returns (a degenerate
+    cell that never traded). Pure display/serialization helper: it READS a SymbolRun and is no gate input, so the
+    locked scorer/FDR/cohort math is byte-unchanged."""
+    n = min(len(run.bar_returns), len(run.bar_ts))
+    points: list[dict[str, object]] = []
+    equity = base
+    for i in range(n):
+        equity *= 1.0 + run.bar_returns[i]
+        points.append({"ts": run.bar_ts[i], "net": round(equity, 4)})
+    return points
+
+
 def _purged_embargoed_split(
     spec: StrategySpec, params: dict[str, float], bars: list[Bar]
 ) -> tuple[list[Bar], list[Bar]]:

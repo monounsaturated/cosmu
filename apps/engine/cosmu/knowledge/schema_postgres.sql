@@ -158,6 +158,7 @@ create table if not exists backtest_symbols (
   max_drawdown numeric,
   trades integer,
   verdict text,
+  equity_curve_json text,
   created_at text not null
 );
 create index if not exists idx_backtest_symbols_version on backtest_symbols(strategy_version_id);

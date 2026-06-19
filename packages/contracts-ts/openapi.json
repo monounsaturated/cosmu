@@ -804,6 +804,69 @@
         "title": "BrainSurvivor",
         "type": "object"
       },
+      "CellCurvePoint": {
+        "description": "A single (ts, net_value) point of a PER-CELL net-of-fee backtest equity curve.",
+        "properties": {
+          "net": {
+            "title": "Net",
+            "type": "number"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts",
+          "net"
+        ],
+        "title": "CellCurvePoint",
+        "type": "object"
+      },
+      "CellCurveResponse": {
+        "description": "The persisted PER-CELL (algo \u00d7 symbol \u00d7 venue) net-of-fee backtest equity curve \u2014 the cumulated per-bar\nnet equity the cell's metrics score on, stored at screen time (backtest_symbols.equity_curve_json), NEVER\nre-run and NEVER the pooled basket. The strat sheet's Backtest tab requests this for the focused cell when\nthere are no fills to draw a curve from. `available` is False (points empty) when the cell has no stored\ncurve yet \u2014 a cell that never traded, or a pre-migration prod row whose column doesn't exist \u2014 an honest\nempty state, never a fabricated curve.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/CellCurvePoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "symbol",
+          "venue",
+          "available",
+          "points"
+        ],
+        "title": "CellCurveResponse",
+        "type": "object"
+      },
       "ClassToggleRequest": {
         "properties": {
           "active": {
@@ -9335,6 +9398,71 @@
           }
         },
         "summary": "Strategy Detail"
+      }
+    },
+    "/strategies/{version_id}/cell-curve": {
+      "get": {
+        "description": "The persisted PER-CELL net-of-fee backtest equity curve for ONE focused (symbol, venue) cell \u2014 the\ncumulated per-bar net equity the cell's metrics score on, stored at screen time on\nbacktest_symbols.equity_curve_json (never re-run, never the pooled basket). The strat sheet's Backtest tab\nrequests this for the focused cell, which has no fills to draw a curve from. Honest empty\n(available=False, points=[]) when the cell has no stored curve yet \u2014 a cell that never traded, or a\npre-migration prod row whose column doesn't exist. Pure read.\n\n`venue` mirrors the /triplet selector: None \u2192 the latest cell for the symbol (don't constrain venue);\n\"\" \u2192 the NULL-venue cell explicitly; a real id \u2192 that venue.",
+        "operationId": "strategy_cell_curve_strategies__version_id__cell_curve_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CellCurveResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Cell Curve"
       }
     },
     "/strategies/{version_id}/comparison": {

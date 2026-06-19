@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import json
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -19,7 +20,7 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.backtest import metrics_for_run, run_strategy_backtest_detailed
+from cosmu.data.backtest import equity_curve_points, metrics_for_run, run_strategy_backtest_detailed
 from cosmu.data.market import (
     Bar,
     EquityOHLCVProvider,
@@ -32,7 +33,13 @@ from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.experiments import KIND_FINDER, ExperimentRecord, data_version, log_experiments
-from cosmu.knowledge.store import Store, Writer, tracks_has_cell_columns, utcnow
+from cosmu.knowledge.store import (
+    Store,
+    Writer,
+    backtest_symbols_has_equity_curve,
+    tracks_has_cell_columns,
+    utcnow,
+)
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.holdout import HoldoutLedger
@@ -102,6 +109,10 @@ class CellResult:
     reasons: list[str] = field(default_factory=list)
     holdout_passed: bool = False
     target_vol: float | None = None
+    # This cell's OWN net-of-fee backtest equity curve as a list of {ts, net} points (cumulated bar_returns,
+    # the SAME stream `metrics` scores on). Serialized to backtest_symbols.equity_curve_json at persist time so
+    # the strat sheet draws THIS (symbol, venue) cell's real curve. Default-empty (a cell that never traded).
+    equity_curve: list = field(default_factory=list)
 
 
 @dataclass
@@ -661,12 +672,14 @@ class StrategyFinder:
         vmap = venue_id_by_symbol or {}
         meta = cell_meta or {}
         cell_metrics: dict[str, BacktestMetrics] = {}
+        cell_curves: dict[str, list] = {}  # each cell's OWN net-of-fee equity curve (cumulated bar_returns)
         for key, run in detailed.per_symbol_runs.items():
             cell_metrics[key] = metrics_for_run(
                 run,
                 trials=grid_size,
                 buy_and_hold=detailed.per_symbol_buy_and_hold.get(key, 0.0),
             )
+            cell_curves[key] = equity_curve_points(run)
         candidates = [CohortCandidate(id=key, metrics=m, net_profit=0.0, source="finder") for key, m in cell_metrics.items()]
         promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
         out: dict[str, CellResult] = {}
@@ -686,6 +699,7 @@ class StrategyFinder:
                 trades=trades,
                 passed=p.promoted and floor_ok,
                 reasons=reasons,
+                equity_curve=cell_curves.get(key, []),
             )
         return out
 
@@ -759,6 +773,10 @@ class StrategyFinder:
                 # funder fans out a paper track per 'pass' cell), else the cell's own kill reason. NEVER a pooled or
                 # sibling-compared label — each cell is judged alone.
                 _vmap = venue_id_by_symbol or {}
+                # Persist each cell's net-of-fee equity curve ONLY when the live schema carries the column
+                # (pre-migration prod lacks it — see backtest_symbols_has_equity_curve; writing it there would
+                # crash the whole persist). Forward-only: existing rows stay curve-less until the sweep re-runs.
+                _curve_col = backtest_symbols_has_equity_curve(self.store)
                 # `_key` is the market/cell key (bare symbol for the Binance reference, 'PAIR@venue' otherwise). The
                 # PERSISTED `symbol` is the cell's CANONICAL pair (cell.symbol) — never the namespaced cell key — and
                 # `venue_id` is the cell's REAL venue, so backtest_symbols carries the honest S×A×V triple and CAN now
@@ -775,12 +793,15 @@ class StrategyFinder:
                         cell_verdict = WATCH_VERDICT
                     else:
                         cell_verdict = (",".join(cell.reasons) or "fail") if cell else None
-                    b.insert("backtest_symbols", {
+                    _bs_row = {
                         "backtest_id": bt_id, "strategy_version_id": version_id, "symbol": cell_symbol, "venue_id": cell_venue,
                         "return_pct": str(_pm.get("return", 0.0)), "sharpe": str(_pm.get("sharpe", 0.0)),
                         "max_drawdown": str(_pm.get("max_drawdown", 0.0)), "trades": int(_pm.get("trades", 0)),
                         "verdict": cell_verdict, "created_at": utcnow(),
-                    })
+                    }
+                    if _curve_col and cell is not None and cell.equity_curve:
+                        _bs_row["equity_curve_json"] = json.dumps(cell.equity_curve)
+                    b.insert("backtest_symbols", _bs_row)
                 # PER-CELL TRACKS, TWO generous-paper lanes:
                 #   • GATE lane (lane='finder'): a cell that passed the gate AND confirmed on its OWN holdout.
                 #   • WATCH lane (lane='watch'): a gate-FAILED near-miss cell (verdict='watch' above) — routed to the

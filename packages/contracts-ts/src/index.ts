@@ -163,6 +163,19 @@ export interface BrainSurvivor {
   version_id: string;
 }
 
+export interface CellCurvePoint {
+  net: number;
+  ts: string;
+}
+
+export interface CellCurveResponse {
+  available: boolean;
+  points: CellCurvePoint[];
+  symbol: string;
+  venue: string | null;
+  version_id: string;
+}
+
 export interface ClassToggleRequest {
   active: boolean;
   kind: string;
