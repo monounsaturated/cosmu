@@ -27,7 +27,7 @@ from cosmu.api.models import (
 )
 # The granular triplet cell is built ONE way, in the lab router — reuse its SELECT + row/dedup helpers so the
 # strategy-triplet routes here can never drift from /lab/symbols (same columns, same pooled-advisory join).
-from cosmu.api.routers.lab import _CELL_SELECT, _cell_row, _dedup_cells
+from cosmu.api.routers.lab import _cell_row, _cell_select, _dedup_cells
 from cosmu.api.routers.leaderboard import _money_or_none  # the shared finite-or-None money coercion (never null→0)
 from cosmu.knowledge.store import backtest_symbols_has_equity_curve, utcnow
 from cosmu.master.scorer import BacktestMetrics, TrialStats, deflated_sharpe_prob
@@ -245,7 +245,7 @@ def strategy_triplet(version_id: str, symbol: str | None = None, venue: str | No
                 conds.append("bs.venue_id = ?")
                 params.append(venue)
         where = " WHERE " + " AND ".join(conds)
-        rows = store.rows(f"{_CELL_SELECT}{where} ORDER BY bs.created_at DESC LIMIT 1", tuple(params))
+        rows = store.rows(f"{_cell_select()}{where} ORDER BY bs.created_at DESC LIMIT 1", tuple(params))
     cell = _cell_row(rows[0]) if rows else None
     return TripletCardResponse(
         strategy_id=sv["strategy_id"],
@@ -479,7 +479,7 @@ def strategy_comparison(version_id: str, limit: int = 500) -> LabSymbolsResponse
             raise HTTPException(status_code=404, detail="strategy version not found")
         strategy_id = sv["strategy_id"]
         rows = store.rows(
-            f"{_CELL_SELECT} WHERE sv.strategy_id = ? ORDER BY bs.created_at DESC LIMIT 5000",
+            f"{_cell_select()} WHERE sv.strategy_id = ? ORDER BY bs.created_at DESC LIMIT 5000",
             (strategy_id,),
         )
     deduped = _dedup_cells(rows)

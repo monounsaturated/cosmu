@@ -22,7 +22,6 @@ from cosmu.research.fixtures import edge_bearing_screen_market
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 
-
 class _FixtureBars:
     """Small, fast OFFLINE market provider for the finder sweep — 2 catalog symbols × ~280 edge-bearing bars (the
     screen's 80-bar floor + holdout split). Built on the PACKAGE-level fixture (cosmu.research.fixtures) so this

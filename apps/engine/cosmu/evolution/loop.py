@@ -13,6 +13,7 @@ from cosmu.data.alt_join import build_alt_by_symbol
 from cosmu.data.backtest import (
     DEFAULT_IMPACT_BPS,
     DEFAULT_SLIPPAGE_BPS,
+    cell_window_days,
     equity_curve_points,
     metrics_for_run,
     run_strategy_backtest_detailed,
@@ -26,6 +27,7 @@ from cosmu.knowledge.store import (
     Store,
     Writer,
     backtest_symbols_has_equity_curve,
+    backtest_symbols_has_oos_window,
     tracks_has_cell_columns,
     utcnow,
 )
@@ -170,6 +172,10 @@ class _BrutCell:
     # the SAME stream `metrics` scores on). Serialized to backtest_symbols.equity_curve_json at persist time so
     # the strat sheet draws THIS (symbol, venue) cell's real curve. Default-empty (a cell that never traded).
     equity_curve: list = field(default_factory=list)
+    # This cell's OWN validation window in CALENDAR DAYS (first→last validation bar). Persisted to
+    # backtest_symbols.oos_window_days so the screener annualizes THIS cell's return over ITS OWN window — a
+    # recently-listed coin is no longer annualized over a sibling's far longer window. None when < 2 bars.
+    oos_window_days: float | None = None
 
 
 # Minimum trades on a SCREENED symbol — the cheap per-cell thinness pre-screen (the larger min_trades=30 floor is
@@ -526,9 +532,11 @@ class FarmLoop:
         meta = sc.cell_meta or {}
         cell_metrics: dict[str, BacktestMetrics] = {}
         cell_curves: dict[str, list] = {}  # each cell's OWN net-of-fee equity curve (cumulated bar_returns)
+        cell_windows: dict[str, float | None] = {}  # each cell's OWN validation window (days) — the annualizer denom
         for key, run in (sc.per_symbol_runs or {}).items():
             cell_metrics[key] = metrics_for_run(run, trials=1, buy_and_hold=sc.per_symbol_buy_and_hold.get(key, 0.0))
             cell_curves[key] = equity_curve_points(run)
+            cell_windows[key] = cell_window_days(run)
         candidates = [CohortCandidate(id=key, metrics=m, net_profit=0.0, source="farmloop") for key, m in cell_metrics.items()]
         promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
         out: dict[str, _BrutCell] = {}
@@ -547,6 +555,7 @@ class FarmLoop:
                 deflated_sharpe=p.deflated_sharpe_prob, trades=trades,
                 passed=p.promoted and floor_ok, reasons=reasons,
                 equity_curve=cell_curves.get(key, []),
+                oos_window_days=cell_windows.get(key),
             )
         return out
 
@@ -673,6 +682,10 @@ class FarmLoop:
         # Persist each cell's net-of-fee equity curve ONLY when the live schema carries the column (pre-migration
         # prod lacks it — writing it there would crash the whole persist; see backtest_symbols_has_equity_curve).
         _curve_col = backtest_symbols_has_equity_curve(self.store)
+        # Persist each cell's OWN validation window (days) when the live schema carries the column — so the
+        # screener annualizes the per-cell return over THIS cell's window, not the parent backtest's shared
+        # (longest-cell) window. Schema-adaptive (pre-migration prod lacks it → skip, never crash).
+        _window_col = backtest_symbols_has_oos_window(self.store)
         for _key, _pm in (sc.per_symbol or {}).items():
             cell = sc.cells.get(_key)
             cell_symbol = cell.symbol if cell else _key
@@ -691,6 +704,8 @@ class FarmLoop:
             }
             if _curve_col and cell is not None and cell.equity_curve:
                 _bs_row["equity_curve_json"] = json.dumps(cell.equity_curve)
+            if _window_col and cell is not None and cell.oos_window_days is not None:
+                _bs_row["oos_window_days"] = cell.oos_window_days
             b.insert("backtest_symbols", _bs_row)
         # PER-CELL TRACKS: one standalone paper track per cell that passed the gate AND confirmed on its OWN
         # holdout. Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances forward columns
