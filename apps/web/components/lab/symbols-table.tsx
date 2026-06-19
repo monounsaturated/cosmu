@@ -528,10 +528,13 @@ export function SymbolsTable({
                     <td>
                       {comboNum !== undefined ? <span className="combo-num" title={`Combo #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
                     </td>
-                    <td>
+                    {/* STRATEGY: width-capped + ellipsis. The combo/algo "#n" prefix and the LLM badge stay
+                        flex-shrink:0 (always visible); only the long name ellipsizes inside .strat-name. The
+                        full name shows on the shared #tipbox tooltip (data-tip) after a deliberate hover rest. */}
+                    <td className="strat-cell" data-tip={r.strategy_name}>
                       {stratNum !== undefined ? <span className="strat-num-sub" title={`Algorithm #${stratNum}`}>#{stratNum}</span> : null}
-                      {r.strategy_name}
-                      {r.kind === "llm" ? <span className="badge badge-iris" style={{ marginLeft: 6 }}>LLM</span> : null}
+                      <span className="strat-name">{r.strategy_name}</span>
+                      {r.kind === "llm" ? <span className="badge badge-iris strat-llm">LLM</span> : null}
                     </td>
                     {visibleCols.map((c) => renderCell(r, c.key))}
                   </tr>
