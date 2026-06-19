@@ -85,6 +85,11 @@ class UniverseRow:
     tier: int | None
     rank: int | None
     active: bool
+    # Point-in-time listing window (ISO strings, as stored). Carried so the SCREEN can build a survivorship-honest
+    # UniverseCalendar from the SAME rows it selects over — a delisted row (active=0) is a candidate over
+    # [listed_at, delisted_at) and excluded outside it. None/None = no window known → eligible whole-history.
+    listed_at: str | None = None
+    delisted_at: str | None = None
 
     @property
     def id(self) -> str:
@@ -121,7 +126,8 @@ def load_universe(
         where.append("tier = ?")
         params.append(tier)
     sql = (
-        "SELECT venue, symbol, base, quote, asset_class, instrument_type, liquidity_usd_24h, tier, rank, active "
+        "SELECT venue, symbol, base, quote, asset_class, instrument_type, liquidity_usd_24h, tier, rank, active, "
+        "listed_at, delisted_at "
         f"FROM universe_pairs WHERE {' AND '.join(where)} "
         "ORDER BY liquidity_usd_24h DESC, venue, symbol"
     )
@@ -137,6 +143,7 @@ def load_universe(
             asset_class=r["asset_class"], instrument_type=r["instrument_type"],
             liquidity_usd_24h=float(r["liquidity_usd_24h"] or 0.0),
             tier=r["tier"], rank=r["rank"], active=bool(r["active"]),
+            listed_at=r["listed_at"], delisted_at=r["delisted_at"],
         )
         for r in rows
     ]
