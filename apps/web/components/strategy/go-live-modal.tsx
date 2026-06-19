@@ -147,7 +147,7 @@ export function GoLiveModal({
             <p className="ai-body">
               <strong style={{ color: "var(--up)" }}>Armed.</strong> <strong style={{ color: "var(--fg)" }}>{strategyName}</strong>{" "}
               is now <strong className="dn">live</strong> on <strong style={{ color: "var(--fg)" }}>{formatVenue(result.venue_id)}</strong>{" "}
-              ({result.symbol}), budget ${result.budget.toLocaleString()}. A real order still fires only with the
+              ({result.symbol}), budget ${result.budget.toLocaleString("en-US")}. A real order still fires only with the
               global live toggle ON + no kill-switch; the engine runs <strong>testnet</strong> until you switch it
               to live mode. Forward-test readiness: <strong>{result.readiness ?? "—"}</strong>
               {result.overridden ? <span className="dn"> · armed via override (unproven)</span> : null}.
