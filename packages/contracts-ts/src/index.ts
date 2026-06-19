@@ -739,18 +739,21 @@ export interface LabSymbolRow {
   pooled_return_pct: number | null;
   return_pct: number;
   return_pct_annualized?: number | null;
+  return_pct_annualized_lo?: number | null;
   sharpe: number;
   status: string;
   strategy_id: string;
   strategy_name: string;
   strategy_version_id: string;
   symbol: string;
+  thin?: boolean;
   trades: number;
   venue_id: string | null;
   verdict: string | null;
 }
 
 export interface LabSymbolsResponse {
+  min_trades: number;
   rows: LabSymbolRow[];
   symbols: string[];
   venues: string[];
@@ -788,6 +791,7 @@ export interface LeaderboardResponse {
 
 export interface LeaderboardRow {
   asset_class: string;
+  backtest_return_pct_annualized?: number | null;
   deflated_sharpe: number;
   divergence_gap_pct?: number | null;
   divergence_status?: "insufficient" | "tracking" | "diverging";

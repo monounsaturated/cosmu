@@ -865,7 +865,7 @@
         "type": "object"
       },
       "CellCurveResponse": {
-        "description": "The persisted PER-CELL (algo \u00d7 symbol \u00d7 venue) net-of-fee backtest equity curve \u2014 the cumulated per-bar\nnet equity the cell's metrics score on, stored at screen time (backtest_symbols.equity_curve_json), NEVER\nre-run and NEVER the pooled basket. The strat sheet's Backtest tab requests this for the focused cell when\nthere are no fills to draw a curve from. `available` is False (points empty) when the cell has no stored\ncurve yet \u2014 a cell that never traded, or a pre-migration prod row whose column doesn't exist \u2014 an honest\nempty state, never a fabricated curve.",
+        "description": "The PER-CELL (algo \u00d7 symbol \u00d7 venue) net-of-fee backtest equity curve \u2014 the cumulated per-bar net equity\nthe cell's metrics score on, NEVER the pooled basket. Served from the curve persisted at screen time\n(backtest_symbols.equity_curve_json); when that is absent (a cell screened before the column shipped \u2014 the\nbulk of existing rows), it is RECOMPUTED on the fly from the version's spec/params over the cell's real bars\nand written back so the next request is cached. The strat sheet's Backtest tab requests this for the focused\ncell when there are no fills to draw a curve from. `available` is False (points empty) only when the cell\ntruly has no curve \u2014 bars unavailable (offline), an unparseable spec, or a degenerate cell that never traded \u2014\nan honest empty state, never a fabricated curve.",
         "properties": {
           "available": {
             "title": "Available",
@@ -3791,6 +3791,17 @@
             ],
             "title": "Return Pct Annualized"
           },
+          "return_pct_annualized_lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Pct Annualized Lo"
+          },
           "sharpe": {
             "title": "Sharpe",
             "type": "number"
@@ -3814,6 +3825,11 @@
           "symbol": {
             "title": "Symbol",
             "type": "string"
+          },
+          "thin": {
+            "default": false,
+            "title": "Thin",
+            "type": "boolean"
           },
           "trades": {
             "title": "Trades",
@@ -3863,6 +3879,10 @@
       },
       "LabSymbolsResponse": {
         "properties": {
+          "min_trades": {
+            "title": "Min Trades",
+            "type": "integer"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/LabSymbolRow"
@@ -3888,7 +3908,8 @@
         "required": [
           "rows",
           "symbols",
-          "venues"
+          "venues",
+          "min_trades"
         ],
         "title": "LabSymbolsResponse",
         "type": "object"
@@ -4050,6 +4071,17 @@
           "asset_class": {
             "title": "Asset Class",
             "type": "string"
+          },
+          "backtest_return_pct_annualized": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backtest Return Pct Annualized"
           },
           "deflated_sharpe": {
             "title": "Deflated Sharpe",
@@ -8485,7 +8517,7 @@
     },
     "/lab/symbols": {
       "get": {
-        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue), the granular truth the pooled\nleaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with\nthe honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not\ncelebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal.\n\nAuthored-but-UNCOMPUTED versions (no backtest_symbols cell yet) are ALSO surfaced \u2014 one synthetic 'New' row each\n\u2014 so the whole authored population is visible, not just the ~8 versions that have cells. They are appended AFTER\nthe computed cells (which keep the outlier ranking) and only when no symbol/venue/verdict filter is active (a\ncell-less version has no symbol/venue/verdict to match).",
+        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue) TRIPLET, the granular truth the pooled\nleaderboard averages away. ONE row per combo (algo \u00d7 asset \u00d7 venue): a strategy's many versions on the SAME\ntriplet collapse to the LATEST (see `_dedup_cells`), never the best-return one. Outlier-sorted (highest\nstandalone return first) so the operator can SNIPE, with the honest verdict carried. Optional filters narrow by\nsymbol / venue / verdict / version_id. Pure read; never a funding signal.\n\nTRACK-ONLY strategies (a paper/live track but NO backtest_symbols cell \u2014 armed via the documented-cohort /\narm_fleet path, e.g. DAA / ADM / TSMOM / funding-carry) are ALSO surfaced \u2014 one synthetic row each, carrying the\nversion's REAL status (so the badge reads Paper/Live, not \"New\") with metrics NULL/\"\u2014\" (nothing was computed per\nsymbol). They are appended AFTER the computed cells (no return to rank by), only when no symbol/venue/verdict\nfilter is active (a cell-less row has no symbol/venue/verdict to match), and only for strategies NOT already\nrepresented by a cell-backed row (no double-counting a strategy that has both cells and a track).",
         "operationId": "lab_symbols_lab_symbols_get",
         "parameters": [
           {
@@ -9591,7 +9623,7 @@
     },
     "/strategies/{version_id}/cell-curve": {
       "get": {
-        "description": "The persisted PER-CELL net-of-fee backtest equity curve for ONE focused (symbol, venue) cell \u2014 the\ncumulated per-bar net equity the cell's metrics score on, stored at screen time on\nbacktest_symbols.equity_curve_json (never re-run, never the pooled basket). The strat sheet's Backtest tab\nrequests this for the focused cell, which has no fills to draw a curve from. Honest empty\n(available=False, points=[]) when the cell has no stored curve yet \u2014 a cell that never traded, or a\npre-migration prod row whose column doesn't exist. Pure read.\n\n`venue` mirrors the /triplet selector: None \u2192 the latest cell for the symbol (don't constrain venue);\n\"\" \u2192 the NULL-venue cell explicitly; a real id \u2192 that venue.",
+        "description": "The PER-CELL net-of-fee backtest equity curve for ONE focused (symbol, venue) cell \u2014 the cumulated per-bar\nnet equity the cell's metrics score on (never the pooled basket). The strat sheet's Backtest tab requests this\nfor the focused cell, which has no fills to draw a curve from.\n\nServed from the curve persisted at screen time (backtest_symbols.equity_curve_json). When that is NULL/empty \u2014\nthe vast majority of EXISTING cells, screened before the column shipped (only NEW screens persist it) \u2014 the\ncurve is RECOMPUTED ON THE FLY from the version's spec/params over the cell's real bars (one symbol \u2248 1-2s,\nfine on-open) and written back to the row so the next request is cached. Honest empty (available=False,\npoints=[]) only when the cell truly has no curve: bars unavailable (offline), an unparseable spec, or a\ndegenerate cell that never traded \u2014 never a fabricated curve.\n\n`venue` mirrors the /triplet selector: None \u2192 the latest cell for the symbol (don't constrain venue);\n\"\" \u2192 the NULL-venue cell explicitly; a real id \u2192 that venue.",
         "operationId": "strategy_cell_curve_strategies__version_id__cell_curve_get",
         "parameters": [
           {
@@ -9656,7 +9688,7 @@
     },
     "/strategies/{version_id}/comparison": {
       "get": {
-        "description": "The 'table de comparaison' \u2014 EVERY backtest_symbols cell of the SAME algo (strategy_id) across its assets\nand venues, one row per (version \u00d7 symbol \u00d7 venue), outlier-sorted. This is how the fiche shows the clicked\ncell's siblings side by side WITHOUT averaging \u2014 each cell keeps its own P&L/verdict. The distinct symbols +\nvenues drive the asset/venue selector. Resolves the algo from any one of its versions. Pure read.",
+        "description": "The 'table de comparaison' \u2014 EVERY backtest_symbols cell of the SAME algo (strategy_id) across its assets\nand venues, one row per (symbol \u00d7 venue) TRIPLET (a strategy's many versions on the same triplet collapse to the\nLATEST via `_dedup_cells`), outlier-sorted. This is how the fiche shows the clicked cell's siblings side by side\nWITHOUT averaging \u2014 each cell keeps its own P&L/verdict. The distinct symbols + venues drive the asset/venue\nselector. Resolves the algo from any one of its versions. Pure read.",
         "operationId": "strategy_comparison_strategies__version_id__comparison_get",
         "parameters": [
           {

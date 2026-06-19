@@ -147,6 +147,7 @@ async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: stri
               rows={comparison.rows}
               symbols={comparison.symbols}
               venues={comparison.venues}
+              minTrades={comparison.min_trades}
               title="Comparison"
               caption={false}
               navigateOnClick

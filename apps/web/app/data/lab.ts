@@ -1,8 +1,9 @@
 import type { LabSymbolsResponse, TripletCardResponse } from "@cosmu/contracts-ts";
 import { getJson } from "./client";
 
-// Structurally-empty fallback — never a fabricated row (honest not-connected / no-data state).
-const emptyLabSymbols: LabSymbolsResponse = { rows: [], symbols: [], venues: [] };
+// Structurally-empty fallback — never a fabricated row (honest not-connected / no-data state). min_trades is the
+// gate trade floor the engine stamps so the table can flag `thin` cells; 0 here = "unknown" until the engine answers.
+const emptyLabSymbols: LabSymbolsResponse = { rows: [], symbols: [], venues: [], min_trades: 0 };
 
 // Per-symbol backtest cells (strategy × symbol × venue), outlier-ranked + verdict-labelled by the engine. We
 // fetch the whole set (capped) once on the server and let the table filter/sort in-memory — snappy, no
@@ -10,7 +11,7 @@ const emptyLabSymbols: LabSymbolsResponse = { rows: [], symbols: [], venues: [] 
 export async function getLabSymbols(): Promise<{ data: LabSymbolsResponse; connected: boolean }> {
   const { data, connected } = await getJson<LabSymbolsResponse>("/lab/symbols?limit=1000", emptyLabSymbols);
   return {
-    data: { rows: data.rows ?? [], symbols: data.symbols ?? [], venues: data.venues ?? [] },
+    data: { rows: data.rows ?? [], symbols: data.symbols ?? [], venues: data.venues ?? [], min_trades: data.min_trades ?? 0 },
     connected,
   };
 }
@@ -42,7 +43,7 @@ export async function getTriplet(
 export async function getComparison(versionId: string): Promise<{ data: LabSymbolsResponse; connected: boolean }> {
   const { data, connected } = await getJson<LabSymbolsResponse>(`/strategies/${versionId}/comparison`, emptyLabSymbols);
   return {
-    data: { rows: data.rows ?? [], symbols: data.symbols ?? [], venues: data.venues ?? [] },
+    data: { rows: data.rows ?? [], symbols: data.symbols ?? [], venues: data.venues ?? [], min_trades: data.min_trades ?? 0 },
     connected,
   };
 }
