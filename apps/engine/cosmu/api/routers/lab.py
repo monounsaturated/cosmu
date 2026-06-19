@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from cosmu.api._shared import _metric, _summary_to_response, annualized_return, oos_window_days, settings, store
+from cosmu.knowledge.store import backtest_symbols_has_oos_window
 from cosmu.api.models import (
     AuthorRequest,
     AuthorResponse,
@@ -63,11 +64,13 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
 
 # The per-cell SELECT — one row per backtest_symbols, carrying the algo id (sv.strategy_id) the comparison table
 # groups on AND the parent backtest's pooled OOS return (b.oos_return) as the ADVISORY pooled number. Shared by
-# /lab/symbols and the strategy-triplet routes so every granular cell is built the SAME way, from the SAME columns.
-_CELL_SELECT = (
+# /lab/symbols and the strategy-triplet routes (via _cell_select) so every granular cell is built the SAME way.
+# `bs.oos_window_days` is the CELL's OWN validation window (the annualizer denominator) — selected only when the
+# live schema carries the column (see _cell_select); pre-migration prod falls back to the parent backtest window.
+_CELL_SELECT_BASE = (
     "SELECT bs.strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
     "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, "
-    "b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at "
+    "{cell_window}b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at "
     "FROM backtest_symbols bs "
     "JOIN strategy_versions sv ON sv.id = bs.strategy_version_id "
     "JOIN strategies s ON s.id = sv.strategy_id "
@@ -75,13 +78,25 @@ _CELL_SELECT = (
 )
 
 
+def _cell_select() -> str:
+    """The per-cell SELECT, schema-adaptive: includes `bs.oos_window_days AS cell_window_days` (each cell's OWN
+    validation window) ONLY when the live `backtest_symbols` table carries the column. On a pre-migration prod
+    table the column is OMITTED entirely (SELECTing it would raise UndefinedColumn) and `_cell_row` falls back to
+    the parent backtest's shared window. The probe is memoized per DSN (see knowledge/store.py)."""
+    cell_window = "bs.oos_window_days AS cell_window_days, " if backtest_symbols_has_oos_window(store) else ""
+    return _CELL_SELECT_BASE.format(cell_window=cell_window)
+
+
 def _cell_row(r: dict) -> LabSymbolRow:
-    """Build one granular triplet cell from a `_CELL_SELECT` row. return_pct is the standalone truth on THIS
+    """Build one granular triplet cell from a `_cell_select()` row. return_pct is the standalone truth on THIS
     (symbol, venue); pooled_return_pct rides along as advisory only (NULL when the parent backtest is missing)."""
     pooled = r.get("pooled_return")
-    # Annualize this cell's standalone return over its OOS window so the screener compares combos of DIFFERENT
-    # window lengths apples-to-apples (return_pct is a fraction; window from the parent backtest's monthly bounds).
-    window_days = oos_window_days(r.get("oos_start"), r.get("oos_end"))
+    # Annualize this cell's standalone return over ITS OWN validation window (cell_window_days, persisted at screen
+    # time) so a recently-listed coin's CAGR is computed over ITS short window — NOT the parent backtest's shared
+    # (longest-cell) window. Fall back to the parent backtest's monthly bounds only for legacy/pre-migration cells
+    # whose own window is NULL (residual cross-window non-comparability fix; the per-cell return_pct is unchanged).
+    cell_window = r.get("cell_window_days")
+    window_days = float(cell_window) if cell_window is not None else oos_window_days(r.get("oos_start"), r.get("oos_end"))
     ann = annualized_return(r["return_pct"], window_days)
     return LabSymbolRow(
         strategy_version_id=r["strategy_version_id"],
@@ -188,7 +203,7 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
     with store.reading():
         # Fetch latest-first so the per-triplet dedup below keeps the most recent backtest, then we
         # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
-        rows = store.rows(f"{_CELL_SELECT}{where} ORDER BY bs.created_at DESC LIMIT 5000", tuple(params))
+        rows = store.rows(f"{_cell_select()}{where} ORDER BY bs.created_at DESC LIMIT 5000", tuple(params))
         symbols = [r["symbol"] for r in store.rows("SELECT DISTINCT symbol FROM backtest_symbols ORDER BY symbol")]
         venues = [
             r["venue_id"]

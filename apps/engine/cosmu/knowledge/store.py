@@ -470,3 +470,50 @@ def reset_backtest_symbols_curve_cache() -> None:
     in-process); never needed in prod (the schema is fixed per process)."""
     with _BACKTEST_SYMBOLS_CURVE_LOCK:
         _BACKTEST_SYMBOLS_CURVE_COLUMN.clear()
+
+
+# --- schema probe: is the PER-CELL OOS-window column live on `backtest_symbols`? --------------------
+# Same out-of-band-migration reality as the equity-curve column above: `backtest_symbols.oos_window_days` (the
+# 2026-06-19 migration) annualizes EACH cell over its OWN validation window — so a recently-listed coin is no
+# longer annualized over a sibling's far longer window (the residual cross-window non-comparability). Until prod
+# is migrated the column is absent; the finder/loop persist must PROBE and only write it when present (INSERTing
+# `oos_window_days` against a pre-migration prod table raises `UndefinedColumn` and would crash the WHOLE
+# cohort/finder persist transaction). The read layer falls back to the parent backtest's window when the cell
+# column is missing/NULL. Memoized per DSN (a migration is an out-of-band, restart-bounded event).
+_BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN: dict[str, bool] = {}
+_BACKTEST_SYMBOLS_OOS_WINDOW_LOCK = threading.Lock()
+
+
+def backtest_symbols_has_oos_window(store: Store) -> bool:
+    """True when the live `backtest_symbols` table carries `oos_window_days` (the per-cell validation window, days).
+
+    Present → the finder/loop persist writes each cell's OWN window AND the screener annualizes over it; absent
+    (pre-migration prod) → the write SKIPS the column byte-for-byte (no crash) and the read falls back to the
+    parent backtest's window. Result is memoized per database_url; tests that ALTER a store's schema in-process
+    call `reset_backtest_symbols_oos_window_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN.get(key)
+    if cached is not None:
+        return cached
+    with _BACKTEST_SYMBOLS_OOS_WINDOW_LOCK:
+        cached = _BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'backtest_symbols'"
+            )
+            names = {r["column_name"] for r in rows}
+        else:
+            rows = store.rows("PRAGMA table_info(backtest_symbols)")
+            names = {r["name"] for r in rows}
+        present = "oos_window_days" in names
+        _BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN[key] = present
+        return present
+
+
+def reset_backtest_symbols_oos_window_cache() -> None:
+    """Clear the per-DSN `backtest_symbols.oos_window_days` column memo (for tests that ALTER a store's schema
+    in-process); never needed in prod (the schema is fixed per process)."""
+    with _BACKTEST_SYMBOLS_OOS_WINDOW_LOCK:
+        _BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN.clear()

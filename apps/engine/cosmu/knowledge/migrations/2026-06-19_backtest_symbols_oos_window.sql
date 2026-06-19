@@ -1,0 +1,21 @@
+-- Migration: add oos_window_days to backtest_symbols — the PER-CELL validation window in days (2026-06-19).
+--
+-- The screener's "Return /yr" (CAGR) annualized each (strategy × symbol × venue) cell's standalone return over the
+-- PARENT backtest's SHARED OOS window (backtests.oos_start/oos_end, set from the LONGEST-history cell). So in a
+-- multi-symbol backtest a recently-listed coin's cell was annualized over (say) BTC's 800-day window instead of its
+-- OWN ~150-day window → its CAGR was WRONG, re-introducing the exact cross-window non-comparability the brut model
+-- forbids. This column stores each cell's OWN validation window (calendar days between its first and last
+-- validation bar, from data/backtest.py: SymbolRun.bar_ts) so the read layer annualizes each cell over ITS OWN
+-- window. The per-cell return_pct is unchanged — only the annualizer's denominator becomes per-cell.
+--
+-- Additive, nullable, idempotent. Forward-only: existing rows stay NULL and the read layer FALLS BACK to the parent
+-- backtest's window for them (until the finder sweep / evolution cron re-screen and re-persist, OR the one-time
+-- backfill below recomputes each cell's own window from its symbol's bars). The finder/loop persist is
+-- SCHEMA-ADAPTIVE — it probes for this column (knowledge/store.py::backtest_symbols_has_oos_window) and only writes
+-- it when present, so a pre-migration prod never crashes. The deterministic gate math (scorer/fdr/trials/cohort) is
+-- byte-unchanged — this is DISPLAY/annualization only, never a funding input.
+--
+-- PROD (Postgres) is applied OUT-OF-BAND in the Supabase SQL editor (see knowledge/store.py::migrate). Run this
+-- statement there, run scripts/backfill_cell_oos_window.py to re-window the legacy NULL cells, then redeploy Modal
+-- so the cron persists per-cell windows going forward.
+ALTER TABLE backtest_symbols ADD COLUMN IF NOT EXISTS oos_window_days NUMERIC;

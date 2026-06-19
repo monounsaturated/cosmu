@@ -19,7 +19,19 @@ from cosmu.lab.finder import CellResult, StrategyFinder, VariantResult
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
-from tests.test_lab_finder import _FixtureBars
+
+try:  # the offline market fixture lives in the finder test; import it however the harness resolves `tests`
+    from tests.test_lab_finder import _FixtureBars
+except ModuleNotFoundError:  # collected without the rest of the suite (no `tests` namespace) → load by path
+    import importlib.util
+    import pathlib
+
+    _spec = importlib.util.spec_from_file_location(
+        "_tlf_fixture", pathlib.Path(__file__).with_name("test_lab_finder.py")
+    )
+    _tlf = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_tlf)
+    _FixtureBars = _tlf._FixtureBars
 
 
 def _store(tmp_path, name="cellcurve") -> Store:

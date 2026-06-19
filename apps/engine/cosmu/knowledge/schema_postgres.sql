@@ -159,6 +159,7 @@ create table if not exists backtest_symbols (
   trades integer,
   verdict text,
   equity_curve_json text,
+  oos_window_days numeric,
   created_at text not null
 );
 create index if not exists idx_backtest_symbols_version on backtest_symbols(strategy_version_id);

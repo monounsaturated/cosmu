@@ -18,7 +18,9 @@ class LabSymbolRow(BaseModel):
     return_pct: float             # standalone validation TOTAL return over the OOS window on THIS symbol+venue (NEVER pooled)
     return_pct_annualized: float | None = None  # CAGR of return_pct over oos_window_days — the cross-combo comparable
     #                                             (windows differ); NULL when the window is unknown. Fraction (0.034=+3.4%/yr).
-    oos_window_days: float | None = None  # the OOS window (days) return_pct covers; NULL = legacy/unknown
+    oos_window_days: float | None = None  # the OOS window (days) return_pct covers — THIS cell's OWN validation
+    #                                        window (annualizer denominator), falling back to the parent backtest's
+    #                                        shared window only for legacy cells; NULL = legacy/unknown
     sharpe: float
     max_drawdown: float
     trades: int

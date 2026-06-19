@@ -6,7 +6,7 @@ import logging
 import math
 import statistics
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -391,6 +391,36 @@ def equity_curve_points(run: SymbolRun, *, base: float = 100_000.0) -> list[dict
         equity *= 1.0 + run.bar_returns[i]
         points.append({"ts": run.bar_ts[i], "net": round(equity, 4)})
     return points
+
+
+def _parse_ts(ts: object) -> datetime | None:
+    """A bar timestamp (ISO string or datetime) → datetime, or None when unparseable. Tolerant of a trailing 'Z'
+    (treated as +00:00, the UTC offset Python's fromisoformat rejected before 3.11)."""
+    if isinstance(ts, datetime):
+        return ts
+    if not ts:
+        return None
+    s = str(ts).strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+
+
+def cell_window_days(run: SymbolRun) -> float | None:
+    """The CALENDAR-day span of ONE cell's OWN validation window — the elapsed days between its first and last bar
+    timestamp (SymbolRun.bar_ts IS the validation stream). The read layer annualizes THIS cell's standalone return
+    over THIS window, so a recently-listed coin (150 bars) is no longer annualized over a sibling's 800-bar window
+    (the cross-window non-comparability the brut model forbids). Returns None when the run has < 2 parseable
+    timestamps (nothing to span) — an honest unknown the screener renders as '—'. Pure display/persistence helper:
+    it READS a SymbolRun and is NO gate input, so the locked scorer/FDR/cohort math is byte-unchanged."""
+    ts = [t for t in (_parse_ts(t) for t in (run.bar_ts or [])) if t is not None]
+    if len(ts) < 2:
+        return None
+    span = (max(ts) - min(ts)).total_seconds() / 86400.0
+    return span if span > 0 else None
 
 
 def _purged_embargoed_split(
