@@ -250,6 +250,9 @@ create table if not exists tracks (
   equity numeric not null,
   return_pct numeric not null,
   target_vol real,
+  -- CROWDING EXPOSURE CAP (master/crowding.py): per-cell capital scale in (0, 1]; NULL → 1.0. Portfolio risk
+  -- only — vol-scales down a redundant member of a correlation cluster; never a gate input.
+  exposure_factor real,
   updated_at text not null
 );
 create unique index if not exists uq_tracks_cell on tracks(strategy_version_id, symbol, venue_id);

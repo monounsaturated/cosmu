@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -29,13 +30,21 @@ from cosmu.data.price_cells import alt_ingest_symbol
 if TYPE_CHECKING:
     from cosmu.config.settings import Settings
 from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES, PAPER_ALIASES, sql_in_list
-from cosmu.knowledge.store import Store, tracks_has_cell_columns, utcnow
+from cosmu.knowledge.store import (
+    Store,
+    tracks_has_cell_columns,
+    tracks_has_exposure_factor,
+    utcnow,
+)
+from cosmu.master.crowding import cluster_exposure_factors
 from cosmu.master.drift import DriftVerdict, assess_drift, track_return_series
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.neutral import accrue_funding, neutral_tracks
 from cosmu.master.portfolio import Portfolio
 from cosmu.portfolio.rotation import Track, select_tracks
 from cosmu.spine.venue import VenueCatalog, default_catalog
+
+log = logging.getLogger(__name__)
 
 # ASSET-CLASS → its DEFAULT funding venue (the fallback when a cell's own screen venue can't execute). It MUST be a
 # venue with a real ExecutionAdapter (adapters/exec/registry.EXEC_ADAPTER_VENUES = binance/kraken/alpaca/polymarket),
@@ -124,6 +133,7 @@ class TrackFundingReport:
     equity: float = 0.0
     pnl: float = 0.0
     drift_defunded: int = 0   # tracks the anticipatory drift monitor pulled this cycle (edge half-life / live drift)
+    crowding_capped: int = 0  # cells the crowding overlay vol-scaled DOWN this cycle (redundant cluster members)
 
 
 def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Track, str, str]]:
@@ -190,6 +200,63 @@ def _survivor_tracks(store: Store, catalog: VenueCatalog) -> list[tuple[str, Tra
     return out
 
 
+def _apply_crowding_caps(
+    store: Store, cell_keyed: list[tuple[str, Track, str, str]]
+) -> int:
+    """PORTFOLIO-RISK overlay (master/crowding) — AFTER the per-combo gate, BEFORE capital deploys: cluster the
+    fundable cells by the correlation of their REALIZED return streams and persist a per-cell `exposure_factor`
+    that vol-scales DOWN the redundant members of each cluster (the cluster's best representative + every
+    decorrelated cell stay 1.0). This stops the book funding N near-identical momentum cells at full exposure
+    (concentration risk) WITHOUT touching the gate: every cell still passed on its OWN data and still paper-
+    trades (generous-paper model intact) — only how much CAPITAL a redundant cluster member deploys changes.
+
+    Reads each cell's OWN cell-keyed return stream (drift.track_return_series), so no sibling stream pollutes a
+    cell's clustering. HONEST NO-OP until cells accumulate enough overlapping forward history to correlate (the
+    crowding detector returns no clusters → every factor 1.0), and a hard no-op when the `tracks.exposure_factor`
+    column isn't live yet (pre-migration prod) — the write is skipped and the executor uses the 1.0 default.
+    Returns the number of cells capped (factor < 1.0) this cycle. Best-effort: a persist hiccup never breaks
+    funding."""
+    # Both columns are required: the cap LIVES in exposure_factor and is keyed by the cell's symbol/venue_id.
+    # On a pre-migration table (either column absent) this is a hard no-op — never reference a missing column.
+    if len(cell_keyed) < 2 or not tracks_has_exposure_factor(store) or not tracks_has_cell_columns(store):
+        return 0
+    streams: dict[str, list[float]] = {}
+    dsr: dict[str, float] = {}
+    cell_by_cid: dict[str, tuple[str, str, str]] = {}
+    for vid, track, symbol, venue_id in cell_keyed:
+        cid = track.id  # already re-keyed to cell_id(vid, symbol, venue_id) by the caller
+        streams[cid] = track_return_series(store, vid, symbol=symbol, venue_id=venue_id)
+        dsr[cid] = float(track.rolling_dsr)
+        cell_by_cid[cid] = (vid, symbol, venue_id)
+
+    factors = cluster_exposure_factors(streams, dsr)
+    capped = 0
+    try:
+        for cid, factor in factors.items():
+            vid, symbol, venue_id = cell_by_cid[cid]
+            # Persist EVERY cell's factor (incl. the 1.0 reset) so a cell that LEAVES a cluster (its correlation
+            # decayed) is restored to full exposure — the cap is re-derived from current streams each cycle.
+            store.rows(
+                "UPDATE tracks SET exposure_factor = ?, updated_at = ? "
+                "WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+                (float(factor), utcnow(), vid, symbol, venue_id),
+            )
+            if factor < 1.0:
+                capped += 1
+        if capped:
+            store.append_event(
+                actor="master",
+                kind="crowding_capped",
+                ref_type="portfolio",
+                ref_id="aggregate",
+                payload={"cells_capped": capped, "cells_scanned": len(factors)},
+            )
+    except Exception:  # noqa: BLE001 — a crowding-persist hiccup must never break the funding tick.
+        log.warning("crowding cap persist failed", exc_info=True)
+        return 0
+    return capped
+
+
 def fund_tracks_from_survivors(
     store: Store,
     *,
@@ -233,6 +300,12 @@ def fund_tracks_from_survivors(
             symbol, venue_id,
         ))
     report.drift_defunded = sum(1 for (_v, t, _s, _vn) in cell_keyed if t.drift_defund)
+
+    # PORTFOLIO-RISK overlay (post-gate): cluster the fundable cells by realized-return correlation and vol-scale
+    # DOWN redundant cluster members' exposure (persisted to tracks.exposure_factor, read by the executor at
+    # entry sizing). Runs over ALL fundable cells (not just the ones registered this tick) so a cap is re-derived
+    # from current streams every cycle. Never touches the brut per-combo gate — only how much capital deploys.
+    report.crowding_capped = _apply_crowding_caps(store, cell_keyed)
 
     track_by_cid = {cell_id(vid, symbol, venue_id): (vid, symbol, venue_id) for vid, _t, symbol, venue_id in cell_keyed}
     fundable_cids = {v.version_id for v in select_tracks([t for _v, t, _s, _vn in cell_keyed]) if v.funded}

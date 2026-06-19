@@ -263,6 +263,11 @@ CREATE TABLE IF NOT EXISTS tracks (
   equity NUMERIC NOT NULL,
   return_pct NUMERIC NOT NULL,
   target_vol REAL,
+  -- CROWDING EXPOSURE CAP (master/crowding.py): per-cell capital scale in (0, 1]. The crowding overlay sets it
+  -- < 1 for a redundant member of a correlation cluster (vol-scaled down so the cluster deploys ~one cell's
+  -- worth in aggregate); the cluster's best representative + every decorrelated cell stay 1.0. NULL → 1.0 (no
+  -- cap). PORTFOLIO RISK ONLY — never a gate input; the brut per-combo verdict is untouched.
+  exposure_factor REAL,
   updated_at TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tracks_cell ON tracks(strategy_version_id, symbol, venue_id);

@@ -28,7 +28,7 @@ from cosmu.data.backtest import (
 )
 from cosmu.data.market import _cache_is_fresh, _equity_cache_is_fresh
 from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES
-from cosmu.knowledge.store import Store
+from cosmu.knowledge.store import Store, tracks_has_cell_columns, tracks_has_exposure_factor
 from cosmu.master.drift import monitor_drift
 from cosmu.master.execution import (
     IntendedOrder,
@@ -452,10 +452,32 @@ def step_tracks(
                 else _cache_is_fresh(bars, m.spec.horizon.bar_size, now)
             )
             # SIZING PARITY (audit #7): T1 when target_vol is frozen on this track, T0 otherwise.
-            # T1 vol-target: scale with current realized vol vs the strategy's frozen baseline.
-            _tv_row = store.row("SELECT target_vol FROM tracks WHERE strategy_version_id = ?", (m.version_id,))
+            # T1 vol-target: scale with current realized vol vs the strategy's frozen baseline. CELL-SCOPED when
+            # the per-cell columns are live (a version with multiple cells reads THIS cell's own anchor), else the
+            # legacy version-only read. `exposure_factor` (crowding cap, master/crowding) is read on the SAME row
+            # and multiplied into the sized fraction below — NULL/absent → 1.0 (no cap), so behaviour is unchanged
+            # until the crowding overlay sets it for a redundant cluster member.
+            _has_cap = tracks_has_exposure_factor(store)
+            _cap_sel = ", exposure_factor" if _has_cap else ""
+            if tracks_has_cell_columns(store):
+                _tv_row = store.row(
+                    f"SELECT target_vol{_cap_sel} FROM tracks "
+                    "WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+                    (m.version_id, m.symbol, m.venue_id),
+                )
+            else:
+                _tv_row = store.row(
+                    f"SELECT target_vol{_cap_sel} FROM tracks WHERE strategy_version_id = ?", (m.version_id,)
+                )
             _target_vol = float(_tv_row["target_vol"]) if _tv_row and _tv_row.get("target_vol") is not None else None
-            frac = Decimal(str(size_fraction(m.spec, closes=closes, target_vol=_target_vol)))
+            # Crowding exposure cap (portfolio risk, post-gate): scales the sized fraction DOWN for a redundant
+            # cluster member. Default 1.0 (no row, no column, or NULL) so the un-crowded path is byte-identical.
+            _exposure = (
+                float(_tv_row["exposure_factor"])
+                if _has_cap and _tv_row and _tv_row.get("exposure_factor") is not None
+                else 1.0
+            )
+            frac = Decimal(str(size_fraction(m.spec, closes=closes, target_vol=_target_vol))) * Decimal(str(_exposure))
             qty = (per_track_capital * frac / mark).quantize(Decimal("0.00000001"), rounding=ROUND_DOWN)
             if qty <= 0:
                 continue
