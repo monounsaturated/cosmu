@@ -546,7 +546,8 @@ export function SymbolsTable({
       {filtered.length > 0 ? (
         <div className="screener-pager">
           <span className="quiet">
-            {rangeFrom.toLocaleString()}–{rangeTo.toLocaleString()} of {filtered.length.toLocaleString()}
+            {/* Fixed 'en-US' grouping — bare toLocaleString() differs server vs client → hydration mismatch. */}
+            {rangeFrom.toLocaleString("en-US")}–{rangeTo.toLocaleString("en-US")} of {filtered.length.toLocaleString("en-US")}
           </span>
           {pageCount > 1 ? (
             <div className="pager-ctrl">
