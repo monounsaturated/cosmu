@@ -149,12 +149,23 @@ class BinanceSpotOHLCVProvider:
         return merged
 
 
+# PROCESS-SCOPED memo for RemoteBarsProvider: a cohort screens N specs and each builds a fresh provider, so
+# WITHOUT this every spec would re-fetch the same pair's bars from Railway (N×M HTTP calls per tick). Memoizing
+# per (base_url, symbol, timeframe, limit) for the life of the process collapses that to ONE fetch per pair per
+# tick — recovering the local-cache efficiency the cacheless design otherwise loses — while staying account-
+# swappable (the memo is built from Railway at runtime, not a bundled file, and a new container starts empty so
+# bars are never stale across ticks). In-memory only; never persisted.
+_REMOTE_BARS_MEMO: dict[tuple[str, str, str, int], list[Bar]] = {}
+
+
 class RemoteBarsProvider:
     """Fetch OHLCV from a Binance-REACHABLE HTTP engine (the always-on Railway EU `/market/bars` endpoint) instead
     of calling Binance directly. THE FIX for Binance geo-blocking cloud IPs (Modal US returns nothing on a live
     fetch): the remote does the venue fetch in a region that CAN reach Binance and returns closed-candle bars as
     JSON; this provider just relays them. That removes the per-deploy local bar cache — so the compute fleet stays
     MODULAR and ACCOUNT-SWAPPABLE (any Modal account deploys cacheless; point COSMU_BARS_URL at the EU engine).
+    EFFICIENCY: a process-scoped memo (_REMOTE_BARS_MEMO) means each pair is fetched from Railway ONCE per tick,
+    not once per spec — so a 100-spec cohort makes ~M (not N×M) HTTP calls.
     Read-only + offline-safe (any transport error / non-200 → [] → the caller degrades, never fabricates). Sends
     `x-api-key` when COSMU_BARS_KEY / API_SECRET_KEY is set — the same shared secret the engine middleware checks."""
 
@@ -166,6 +177,10 @@ class RemoteBarsProvider:
         self.timeout = timeout
 
     def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        memo_key = (self.base_url, symbol, timeframe, int(limit))
+        cached = _REMOTE_BARS_MEMO.get(memo_key)
+        if cached is not None:
+            return cached
         query = urllib.parse.urlencode({"symbol": symbol, "timeframe": timeframe, "limit": int(limit)})
         url = f"{self.base_url}/market/bars?{query}"
         headers = {"User-Agent": "cosmu-engine/0.1"}
@@ -175,7 +190,7 @@ class RemoteBarsProvider:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=self.timeout, context=_ssl_context()) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
-        except Exception:  # noqa: BLE001 — offline / refused / non-200 → empty, the caller degrades honestly
+        except Exception:  # noqa: BLE001 — offline / refused / non-200 → empty, the caller degrades honestly (NOT memoized: a transient failure must be retryable next call)
             return []
         rows = payload.get("bars", []) if isinstance(payload, dict) else payload
         out: list[Bar] = []
@@ -184,7 +199,10 @@ class RemoteBarsProvider:
                 out.append(_bar_from_json(row))
             except Exception:  # noqa: BLE001 — skip a malformed row, never fabricate
                 continue
-        return out[-int(limit):] if limit else out
+        result = out[-int(limit):] if limit else out
+        if result:  # memoize only a non-empty fetch (an empty/failed result stays retryable)
+            _REMOTE_BARS_MEMO[memo_key] = result
+        return result
 
 
 def default_crypto_reference() -> MarketDataProvider:

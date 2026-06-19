@@ -99,7 +99,7 @@ function LifeBadge({ row }: { row: LabSymbolRow }) {
 
 // Sortable column keys. "combo" and "strategy" are the two identity columns (always shown); the rest are pickable.
 // The legacy "verdict" column is gone; "status" is the per-row lifecycle stage.
-type ColKey = "status" | "return" | "annualized" | "venue" | "symbol" | "trades" | "dd" | "sharpe";
+type ColKey = "status" | "return" | "venue" | "symbol" | "trades" | "dd" | "sharpe";
 type SortKey = "combo" | "strategy" | ColKey;
 type SortDir = "asc" | "desc";
 
@@ -109,8 +109,9 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
   strategy: (r) => r.strategy_name.toLowerCase(),
   symbol: (r) => r.symbol.toLowerCase(),
   venue: (r) => (r.venue_id ?? "").toLowerCase(),
-  return: (r) => r.return_pct,
-  annualized: (r) => (typeof r.return_pct_annualized === "number" ? r.return_pct_annualized : -Infinity),
+  // The ONE return axis is ANNUALIZED (CAGR) — comparing total returns over different windows is meaningless, so
+  // there is no total-return column to sort on. Cells with no recorded window sort last (-Infinity).
+  return: (r) => (typeof r.return_pct_annualized === "number" ? r.return_pct_annualized : -Infinity),
   sharpe: (r) => r.sharpe,
   dd: (r) => r.max_drawdown,
   trades: (r) => r.trades,
@@ -121,15 +122,14 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
 // Sharpe is HIDDEN by default; everything else is visible.
 const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
   { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
-  { key: "return", label: "Return", align: "right", tip: "Standalone net-of-fee TOTAL return over the backtest window on THIS symbol at THIS venue — the truth, never a pooled mean. Windows differ, so compare on Ann." },
-  { key: "annualized", label: "Ann.", align: "right", tip: "Annualized (CAGR) of the Return over its window — the cross-combo comparable (a +6% over 3 months ≠ +6% over 2 years). Short windows amplify; read with Trades/Sharpe. — = window unknown." },
+  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. Short windows amplify — read with Trades/Sharpe and the strat sheet's OOS duration. — = window not yet recorded (re-screened cells fill in)." },
   { key: "venue", label: "Venue" },
   { key: "symbol", label: "Symbol" },
   { key: "trades", label: "Trades", align: "right" },
   { key: "dd", label: "Max DD", align: "right" },
   { key: "sharpe", label: "Sharpe", align: "right" },
 ];
-const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, annualized: true, venue: true, symbol: true, trades: true, dd: true, sharpe: false };
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, trades: true, dd: true, sharpe: false };
 const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
 
 // Per-column CSS width class (table-layout:fixed honours these). The identity columns (.col-combo, .col-strat)
@@ -137,7 +137,6 @@ const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
 const COL_CLASS: Record<ColKey, string> = {
   status: "col-status",
   return: "col-num",
-  annualized: "col-num",
   venue: "col-venue",
   symbol: "col-sym",
   trades: "col-num-sm",
@@ -408,10 +407,7 @@ export function SymbolsTable({
       case "venue":
         return <td key={key} className={r.venue_id ? undefined : "quiet"}>{uncomputed ? "—" : formatVenue(r.venue_id)}</td>;
       case "return":
-        return uncomputed
-          ? <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>
-          : <td key={key} style={{ textAlign: "right", color: r.return_pct >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct * 100)}</td>;
-      case "annualized":
+        // The ONE return column = ANNUALIZED (CAGR). "—" when no OOS window is recorded for the cell (can't annualize).
         return uncomputed || typeof r.return_pct_annualized !== "number"
           ? <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>
           : <td key={key} style={{ textAlign: "right", color: r.return_pct_annualized >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(r.return_pct_annualized * 100)}<span className="quiet" style={{ fontSize: "0.85em" }}>/yr</span></td>;
