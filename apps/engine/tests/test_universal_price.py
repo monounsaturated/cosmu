@@ -501,3 +501,181 @@ def test_funding_venue_preserves_the_cells_own_venue():
     assert _funding_venue_for_cell(None, "crypto") == "binance"
     # An asset class with no default funding venue AND a non-executable cell venue → None (the cell is SKIPPED).
     assert _funding_venue_for_cell("ibkr", "prediction") is None
+
+
+# ============================================================================================================
+# SURVIVORSHIP / LOOK-AHEAD — the point-in-time UniverseCalendar wired into the screen bar source. The screen
+# used to rank/trade only TODAY's surviving, currently-active symbols over FULL history (delisted losers silently
+# excluded; a not-yet-listed coin's bars used before it existed). These prove the fix: a delisted symbol IS
+# included over the window it traded, a not-yet-listed symbol is EXCLUDED before its listing, and the
+# offline/empty-universe fallback is byte-identical (nothing trimmed).
+# ============================================================================================================
+
+from cosmu.data.market import UniversalOHLCVProvider  # noqa: E402
+from cosmu.data.price_cells import _calendar_from_rows, eligible_bars  # noqa: E402
+from cosmu.data.universe import UniverseRow  # noqa: E402
+from cosmu.data.universe_calendar import Listing, UniverseCalendar  # noqa: E402
+
+
+def _seed_pit(store: Store, rows: list[dict]) -> None:
+    """Insert universe_pairs rows with explicit PIT fields (listed_at / delisted_at / active). Each dict supplies
+    venue, symbol, base, quote and optionally listed_at, delisted_at, active (defaults: live, no window)."""
+    with store.batch() as b:
+        for r in rows:
+            b.insert("universe_pairs", {
+                "id": f"{r['venue']}:{r['symbol']}", "venue": r["venue"], "symbol": r["symbol"],
+                "base": r["base"], "quote": r["quote"], "asset_class": "crypto", "instrument_type": "spot",
+                "liquidity_usd_24h": 1.0e9, "tier": 0, "rank": 0,
+                "active": int(r.get("active", 1)), "source": r.get("source", "live"),
+                "listed_at": r.get("listed_at"), "delisted_at": r.get("delisted_at"),
+                "fetched_at": "2024-01-01T00:00:00+00:00",
+            })
+
+
+def _row(venue, symbol, *, active=True, listed_at=None, delisted_at=None) -> UniverseRow:  # noqa: ANN001
+    return UniverseRow(
+        venue=venue, symbol=symbol, base="", quote="USDT", asset_class="crypto", instrument_type="spot",
+        liquidity_usd_24h=1.0, tier=0, rank=0, active=active, listed_at=listed_at, delisted_at=delisted_at,
+    )
+
+
+# --------------------------------------------------------------------------- eligible_bars / calendar units
+
+
+def test_eligible_bars_no_calendar_or_no_window_is_identity_preserving():
+    """The byte-identical contract: calendar None, row_symbol None, or a symbol with no window → the SAME list
+    object is returned (so the UNIFY de-dup `is` identity and the whole-history path are untouched)."""
+    bars = _bars(_walk(120, seed=1))
+    assert eligible_bars(bars, None, "BTCUSDT") is bars                      # no calendar
+    cal = UniverseCalendar([Listing(symbol="BTCUSDT")])                      # symbol present, no window
+    assert eligible_bars(bars, cal, "BTCUSDT") is bars
+    assert eligible_bars(bars, cal, None) is bars                           # no reference-venue symbol → no trim
+
+
+def test_eligible_bars_trims_to_listed_and_delisted_window():
+    """A bar is kept only while listed (>= listed_at) and not yet delisted (< delisted_at)."""
+    bars = _bars([100.0] * 10, start=datetime(2024, 1, 1, tzinfo=UTC))  # 2024-01-01 .. 2024-01-10
+    cal = UniverseCalendar([Listing(
+        symbol="FOOUSDT",
+        listed_at=datetime(2024, 1, 3, tzinfo=UTC),
+        delisted_at=datetime(2024, 1, 8, tzinfo=UTC),
+    )])
+    kept = eligible_bars(bars, cal, "FOOUSDT")
+    days = [b.ts.day for b in kept]
+    assert days == [3, 4, 5, 6, 7]  # before listing dropped, at/after delisting dropped
+
+
+def test_calendar_from_rows_avoids_the_or_null_negation_trap():
+    """A symbol with a DATED row (binanceperp listed 2024-06) AND a NULL-listed duplicate (binance spot) must still
+    be trimmed to the dated listing — the bug from_universe_pairs would hit is the NULL row making it 'eligible
+    always'. _calendar_from_rows collapses to the EARLIEST known listing, ignoring NULLs."""
+    rows = [
+        _row("binance", "APTUSDT", listed_at=None),                                       # spot: no date
+        _row("binanceperp", "APTUSDT", listed_at="2024-06-01T00:00:00+00:00"),            # perp: real listing
+    ]
+    cal = _calendar_from_rows(rows)
+    assert cal is not None
+    assert cal.is_eligible("APTUSDT", datetime(2024, 7, 1, tzinfo=UTC)) is True
+    assert cal.is_eligible("APTUSDT", datetime(2024, 5, 1, tzinfo=UTC)) is False  # NULL row did NOT negate the date
+
+
+def test_calendar_from_rows_delists_only_when_every_row_is_delisted():
+    """delisted_at caps the window ONLY when EVERY row of the symbol is delisted — a coin still active on ANY venue
+    has not delisted (no cap), so a live sibling row keeps it tradable past one venue's delisting."""
+    # All rows delisted → capped.
+    dead = _calendar_from_rows([
+        _row("binance", "DEADUSDT", active=False, listed_at="2021-01-01T00:00:00+00:00",
+             delisted_at="2022-01-01T00:00:00+00:00"),
+    ])
+    assert dead.is_eligible("DEADUSDT", datetime(2023, 1, 1, tzinfo=UTC)) is False
+    # One venue delisted but another still active → NOT capped (still tradable somewhere).
+    mixed = _calendar_from_rows([
+        _row("binance", "LIVEUSDT", active=False, delisted_at="2022-01-01T00:00:00+00:00"),
+        _row("kraken", "LIVEUSDT", active=True),
+    ])
+    assert mixed is None or mixed.is_eligible("LIVEUSDT", datetime(2023, 1, 1, tzinfo=UTC)) is True
+
+
+def test_calendar_from_rows_none_when_no_windows():
+    """No row carries any date → None calendar (nothing to trim) so the whole-history path stays byte-identical."""
+    assert _calendar_from_rows([_row("binance", "BTCUSDT"), _row("kraken", "XBTUSD")]) is None
+
+
+# --------------------------------------------------------------------------- build_crypto_cells: the wired fix
+
+
+def test_not_yet_listed_symbol_is_excluded_before_its_listing(tmp_path):
+    """LOOK-AHEAD FIX: a currently-active symbol that listed mid-history is screened ONLY from its listing date —
+    bars before it (when the pair did not exist) are dropped, never used as if tradable."""
+    store = _store(tmp_path)
+    store.migrate()
+    _seed_pit(store, [
+        {"venue": "binance", "symbol": "NEWUSDT", "base": "NEW", "quote": "USDT",
+         "active": 1, "listed_at": "2024-01-05T00:00:00+00:00"},
+    ])
+    closes = [100.0 + i for i in range(10)]  # 2024-01-01 .. 2024-01-10
+    reference = UniversalOHLCVProvider(_StubProvider({"NEWUSDT": _bars(closes)}))
+    cells = build_crypto_cells(store, timeframe="1d", limit=200, enabled_venues={"binance"},
+                               reference=reference, fallback_symbols=("NEWUSDT",))
+    assert len(cells) == 1
+    # Only bars on/after the 2024-01-05 listing survive — the 4 pre-listing look-ahead bars are gone.
+    assert [b.ts.day for b in cells[0].bars] == [5, 6, 7, 8, 9, 10]
+
+
+def test_delisted_symbol_is_included_over_the_window_it_traded(tmp_path):
+    """SURVIVORSHIP FIX: a delisted coin (active=0) is, with include_delisted, screened over EXACTLY the window it
+    traded ([listed_at, delisted_at)) — the loser the active-only screen silently excluded is back, point-in-time."""
+    store = _store(tmp_path)
+    store.migrate()
+    _seed_pit(store, [
+        {"venue": "binance", "symbol": "DEADUSDT", "base": "DEAD", "quote": "USDT",
+         "active": 0, "source": "vision",
+         "listed_at": "2024-01-03T00:00:00+00:00", "delisted_at": "2024-01-08T00:00:00+00:00"},
+    ])
+    closes = [100.0] * 10  # bars 2024-01-01 .. 2024-01-10 ARE available (e.g. via a Vision-backed source)
+    reference = UniversalOHLCVProvider(_StubProvider({"DEADUSDT": _bars(closes)}))
+    cells = build_crypto_cells(store, timeframe="1d", limit=200, enabled_venues={"binance"},
+                               reference=reference, fallback_symbols=(), include_delisted=True)
+    assert len(cells) == 1
+    assert cells[0].symbol == "DEAD/USDT"
+    # Included over its live window only: at/after the 2024-01-08 delisting dropped, before the 2024-01-03 listing dropped.
+    assert [b.ts.day for b in cells[0].bars] == [3, 4, 5, 6, 7]
+
+
+def test_delisted_excluded_by_default_and_skipped_when_no_runtime_bars(tmp_path):
+    """include_delisted defaults OFF (no compute change), AND even when ON a delisted symbol whose runtime bar
+    source returns NOTHING (the real prod data gap) is skipped honestly — never a fabricated cell."""
+    store = _store(tmp_path)
+    store.migrate()
+    _seed_pit(store, [
+        {"venue": "binance", "symbol": "GONEUSDT", "base": "GONE", "quote": "USDT",
+         "active": 0, "source": "vision",
+         "listed_at": "2024-01-03T00:00:00+00:00", "delisted_at": "2024-01-08T00:00:00+00:00"},
+    ])
+    # The runtime reference returns NO bars for the delisted symbol (the live venue no longer serves it).
+    reference = UniversalOHLCVProvider(_StubProvider({}))
+    default_off = build_crypto_cells(store, timeframe="1d", limit=200, enabled_venues={"binance"},
+                                     reference=reference, fallback_symbols=())
+    assert default_off == []  # not even a candidate by default
+    no_bars = build_crypto_cells(store, timeframe="1d", limit=200, enabled_venues={"binance"},
+                                 reference=reference, fallback_symbols=(), include_delisted=True)
+    assert no_bars == []  # included as a candidate but skipped — empty bars, never fabricated
+
+
+def test_active_symbol_with_no_window_is_byte_identical_whole_history(tmp_path):
+    """REGRESSION GUARD: a curated active symbol with no listing window screens over its FULL history (no trim),
+    and the cell's bars are the SAME object the reference returned — the universal-price de-dup is preserved."""
+    store = _store(tmp_path)
+    store.migrate()
+    _seed_pit(store, [
+        {"venue": "binance", "symbol": "BTCUSDT", "base": "BTC", "quote": "USDT", "active": 1},
+    ])
+    ref_bars = _bars(_walk(150, seed=99))
+    inner = _StubProvider({"BTCUSDT": ref_bars})
+    reference = UniversalOHLCVProvider(inner)
+    cells = build_crypto_cells(store, timeframe="1d", limit=200, enabled_venues={"binance"},
+                               reference=reference, fallback_symbols=("BTCUSDT",))
+    assert len(cells) == 1
+    # No window → not trimmed → the cell serves the reference's bars unchanged (same length).
+    assert len(cells[0].bars) == len(ref_bars)
+    assert [float(b.close) for b in cells[0].bars] == [float(b.close) for b in ref_bars]

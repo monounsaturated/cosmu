@@ -14,12 +14,17 @@
 // HONESTY: the KPI row reads the engine's live-vs-sim SPLIT (getPortfolioSummary). When nothing is routed
 // live (`has_live` false) every live money figure is null and renders an explicit "—" — NEVER 0 and NEVER
 // the SIM number. The guardrails sit at 0% while disarmed (the honest safe state). Max DD has no live metric
-// source yet, so it renders an honest "—" rather than a fabricated reading. The recent-trades feed has no
-// engine endpoint, so it is an honest empty.
+// source yet, so it renders an honest "—" rather than a fabricated reading.
+//
+// LIVE ORDERS panel (control panel): lists the engine's real-venue orders (GET /live/orders — is_paper=0
+// only, NEVER the sim/paper lane) with a per-row Cancel that POSTs /live/orders/{id}/cancel (confirm → cancel
+// → refresh). This surface only LISTS + CANCELS; it never places or modifies an order. Empty list → the honest
+// "No live orders — nothing armed" state. Cancel is a real money-path control: the engine resolves the order's
+// own venue adapter and is conservative (404 for unknown/sim orders, honest reason for data-only venues).
 
 import { useState, type ReactNode } from "react";
 import type { PortfolioSummaryResponse, RulesResponse } from "@cosmu/contracts-ts";
-import type { PositionsResponse } from "./contracts";
+import type { LiveOrdersResponse, PositionsResponse } from "./contracts";
 import { RulesModal } from "./rules-modal";
 import { GuardTile } from "./guard-tile";
 import { EquityHero } from "./equity-hero";
@@ -45,22 +50,26 @@ export function LiveSurface({
   initial,
   initialSummary,
   initialRules,
-  venues
+  venues,
+  initialOrders
 }: {
   initial: PositionsResponse & { connected: boolean };
   initialSummary: PortfolioSummaryResponse & { connected: boolean };
   initialRules: RulesResponse & { connected: boolean };
   venues: { name: string; amount: number }[];
+  initialOrders: LiveOrdersResponse & { connected: boolean };
 }) {
   const [state, setState] = useState<PositionsResponse>(initial);
   const [connected, setConnected] = useState(initial.connected);
   const [summary, setSummary] = useState<PortfolioSummaryResponse>(initialSummary);
   const [rules, setRules] = useState<RulesResponse>(initialRules);
+  const [orders, setOrders] = useState<LiveOrdersResponse>(initialOrders);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [liqOpen, setLiqOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [defundAllPending, setDefundAllPending] = useState(false);
   const [defundingPosition, setDefundingPosition] = useState<string | null>(null);
+  const [cancelingOrder, setCancelingOrder] = useState<string | null>(null);
   const [showAllPositions, setShowAllPositions] = useState(false);
 
   const armed = state.armed;
@@ -92,20 +101,57 @@ export function LiveSurface({
       return;
     }
     try {
-      // The two reads are independent — fetch them in PARALLEL (was a sequential waterfall: positions, THEN
+      // The reads are independent — fetch them in PARALLEL (was a sequential waterfall: positions, THEN
       // summary, ~2× the latency on a Rules save / defund). ONLY positions drives connected-state, so the
-      // summary fetch swallows its own rejection (→ null) — a summary miss must keep the last-known split, NOT
-      // falsely disconnect the surface (matches the prior nested-try/catch behaviour).
-      const [res, sres] = await Promise.all([
+      // summary + orders fetches swallow their own rejection (→ null) — a miss keeps the last-known value, NOT
+      // a false disconnect (matches the prior nested-try/catch behaviour).
+      const [res, sres, ores] = await Promise.all([
         engineFetch("/live/positions"),
         engineFetch("/portfolio/summary").catch(() => null),
+        engineFetch("/live/orders").catch(() => null),
       ]);
       if (!res.ok) throw new Error("engine unavailable");
       setState((await res.json()) as PositionsResponse);
       setConnected(true);
       if (sres?.ok) setSummary((await sres.json()) as PortfolioSummaryResponse);
+      if (ores?.ok) setOrders((await ores.json()) as LiveOrdersResponse);
     } catch {
       setConnected(false);
+    }
+  }
+
+  // Cancel ONE live order at its venue (the control-panel action). Confirm → POST /live/orders/{id}/cancel →
+  // refresh. The engine is the authority: it resolves the order's own venue adapter and refuses anything that
+  // is not a real live order (404 for unknown/sim ids). A non-2xx or an engine `canceled:false` surfaces the
+  // honest reason; only that row's button goes grey while in flight.
+  async function cancelOrder(orderId: string) {
+    if (cancelingOrder) return;
+    if (typeof window !== "undefined" && !window.confirm(`Cancel live order ${orderId}? This sends a cancel to the venue.`)) return;
+    setCancelingOrder(orderId);
+    setNote(null);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      if (!ENGINE_CONFIGURED) {
+        setNote("Engine not connected — cancel unavailable.");
+        return;
+      }
+      const res = await engineFetch(`/live/orders/${encodeURIComponent(orderId)}/cancel`, {
+        method: "POST",
+        signal: ctrl.signal
+      });
+      if (!res.ok) {
+        setNote(res.status === 404 ? "That order is no longer a live order — nothing to cancel." : "Could not cancel that order.");
+        return;
+      }
+      const body = (await res.json()) as { canceled: boolean; reason?: string | null };
+      if (!body.canceled) setNote(body.reason ? `Cancel rejected: ${body.reason}` : "Cancel was not accepted by the venue.");
+      await refreshAll();
+    } catch {
+      setNote("Engine not connected — could not cancel.");
+    } finally {
+      clearTimeout(timer);
+      setCancelingOrder(null);
     }
   }
 
@@ -173,6 +219,10 @@ export function LiveSurface({
   const positions = isLive ? (state.positions ?? []) : [];
   const POS_LIM = 4;
   const shownPositions = showAllPositions ? positions : positions.slice(0, POS_LIM);
+
+  // Live orders feed (engine is the authority — these are real-venue orders only, never sim/paper). Cancel
+  // is only meaningful on a still-working order; a canceled row stays visible (audit) but its button is gone.
+  const liveOrders = orders.orders ?? [];
 
   return (
     <Page>
@@ -362,25 +412,79 @@ export function LiveSurface({
             </div>
           </div>
 
-          {/* Recent trades — hidden when nothing is armed live (no fills can exist, so an empty card
-              just reads as broken). Shows the honest empty state only once armed, when fills are possible. */}
-          {isLive ? (
-            <div className="card dh">
-              <div className="card-hdr">
-                <span className="card-lbl">Recent trades</span>
-              </div>
-              <div className="card-body">
+          {/* Live orders control panel — the engine's real-venue orders (is_paper=0 only). Always shown so the
+              operator has a fixed place to watch + cancel; an honest empty state when nothing has routed live.
+              Cancel is a real money-path control (confirm → POST /live/orders/{id}/cancel → refresh). */}
+          <div className="card dh">
+            <div className="card-hdr">
+              <span className="card-lbl">
+                Live orders{" "}
+                {liveOrders.length > 0 ? (
+                  <span className="badge badge-up" style={{ marginLeft: 4 }}>
+                    {liveOrders.filter((o) => o.status === "working").length} working
+                  </span>
+                ) : null}
+              </span>
+            </div>
+            <div className="card-body">
+              {liveOrders.length === 0 ? (
                 <EmptyState
-                  title="No live trades yet"
+                  title="No live orders — nothing armed"
                   hint={
                     connected
-                      ? "Live fills appear here once the engine executes a real order. Nothing here is fabricated — paper trades are not shown as live."
-                      : "Engine not connected — recent live fills appear here once it is reachable."
+                      ? "Orders appear here the moment a strategy is armed and the engine routes a real order. Sim and paper orders are never shown here."
+                      : "Engine not connected — live orders appear here once it is reachable."
                   }
                 />
-              </div>
+              ) : (
+                <table className="mini-tbl">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Venue</th>
+                      <th>Side</th>
+                      <th className="r">Qty</th>
+                      <th className="r">Price</th>
+                      <th>Status</th>
+                      <th className="r">Cancel</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liveOrders.map((o, i) => (
+                      <tr key={`${o.order_id}-${i}`}>
+                        <td style={{ fontWeight: 500, color: "var(--fg)" }}>{o.symbol}</td>
+                        <td className="muted">{o.venue}</td>
+                        <td className={cn(o.side === "buy" ? "up" : "dn")}>{o.side}</td>
+                        <td className="r tab muted">{o.qty}</td>
+                        <td className="r tab muted">{formatUsd(o.price)}</td>
+                        <td>
+                          {o.status === "working" ? (
+                            <span className="badge badge-run">working</span>
+                          ) : (
+                            <span className="badge badge-muted">canceled</span>
+                          )}
+                        </td>
+                        <td className="r">
+                          {o.status === "working" ? (
+                            <button
+                              className="btn btn-ghost btn-xs"
+                              onClick={() => cancelOrder(o.order_id)}
+                              disabled={cancelingOrder === o.order_id}
+                              title={`Cancel order ${o.order_id} at ${o.venue}`}
+                            >
+                              {cancelingOrder === o.order_id ? "…" : "Cancel"}
+                            </button>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          ) : null}
+          </div>
         </div>
 
       </div>

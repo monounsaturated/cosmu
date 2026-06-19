@@ -36,6 +36,28 @@ class UniverseCalendar:
     def is_eligible(self, symbol: str, at: datetime) -> bool:
         return symbol in set(self.eligible(at))
 
+    def window_for(self, symbol: str) -> tuple[datetime | None, datetime | None] | None:
+        """The (listed_at, delisted_at) eligibility window for one symbol, resolved ONCE — for trimming a whole bar
+        series without the per-bar O(N) `is_eligible` set rebuild. Collapses across the symbol's listings to the
+        WIDEST listed-to-delisted span (earliest listing, latest delisting; a None bound stays None = open). None
+        when the symbol has no listing at all (caller treats as 'unknown' → no trim, never trim-to-empty)."""
+        listed: datetime | None = None
+        delisted: datetime | None = None
+        found = False
+        for listing in self._listings:
+            if listing.symbol != symbol:
+                continue
+            found = True
+            if listing.listed_at is not None:
+                listed = listing.listed_at if listed is None else min(listed, listing.listed_at)
+            else:
+                listed = None  # an open-start listing widens the window to the beginning
+            if listing.delisted_at is not None:
+                delisted = listing.delisted_at if delisted is None else max(delisted, listing.delisted_at)
+            else:
+                delisted = None  # an open-end listing keeps the window live
+        return (listed, delisted) if found else None
+
     @classmethod
     def from_store(cls, store) -> UniverseCalendar:  # noqa: ANN001 - Store import would be circular
         rows = store.rows("SELECT symbol, listed_at, delisted_at FROM instruments")

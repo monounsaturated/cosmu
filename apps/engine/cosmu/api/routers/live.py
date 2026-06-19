@@ -11,6 +11,7 @@ from cosmu.api._shared import _metric, _portfolio, _version_reference_bars, sett
 from cosmu.api.models import (
     ActivateRequest,
     ActivateResponse,
+    CancelOrderResponse,
     DefundRequest,
     DefundResponse,
     EligibleStrategy,
@@ -19,6 +20,8 @@ from cosmu.api.models import (
     LaunchActivateRequest,
     LaunchActivateResponse,
     LiveCaps,
+    LiveOrder,
+    LiveOrdersResponse,
     LivePosition,
     LivePositionsResponse,
     LiveVenue,
@@ -158,6 +161,125 @@ def live_positions() -> LivePositionsResponse:
             for p in pf.positions()
         ]
     return LivePositionsResponse(armed=armed, mode=_live_mode(), daily_loss=float(daily.daily_loss), caps=caps, positions=positions)
+
+
+def _coid_of(fill_log: object) -> str | None:
+    """Pull the client_order_id out of an executions.fill_log (stored as a JSON string). The client_order_id
+    is the engine's idempotency + cancel anchor; a row without one cannot be cancelled, so it is skipped."""
+    if isinstance(fill_log, dict):
+        coid = fill_log.get("client_order_id")
+        return str(coid) if coid else None
+    if isinstance(fill_log, str):
+        try:
+            coid = json.loads(fill_log).get("client_order_id")
+        except (TypeError, ValueError, AttributeError):
+            return None
+        return str(coid) if coid else None
+    return None
+
+
+def _canceled_coids() -> set[str]:
+    """The client_order_ids already cancelled live (an `order_canceled_live` event on the ledger). A cancel is
+    audited as an event — there is no order-status column — so this is the single source for the 'canceled'
+    badge on the orders panel."""
+    out: set[str] = set()
+    for r in store.rows("SELECT payload FROM events WHERE kind = 'order_canceled_live'"):
+        coid = _coid_of(r["payload"])
+        if coid:
+            out.add(coid)
+    return out
+
+
+@router.get("/live/orders", response_model=LiveOrdersResponse)
+def live_orders() -> LiveOrdersResponse:
+    """The LIVE orders control-panel feed: every order that genuinely routed to a venue (executions.is_paper=0
+    — testnet or live), NEVER the deterministic sim/paper lane. Each row carries venue/symbol/side/qty/price/
+    status/order_id(client_order_id)/ts so the operator can see what is working and cancel it. Status is
+    'working' until an `order_canceled_live` event is on the ledger for that id. With nothing routed live this
+    returns an empty list (the honest 'nothing armed' state). Read-only — placing/cancelling is elsewhere."""
+    # One connection for the batch (remote-Postgres latency — see live_positions). is_paper=0 is the ONLY
+    # discriminator that admits a real-venue order; the sim/paper lane (is_paper=1) is structurally excluded.
+    with store.reading():
+        live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
+        armed = bool(live_row and live_row["enabled"]) and live_mode(settings) != "disabled"
+        canceled = _canceled_coids()
+        rows = store.rows(
+            "SELECT venue_id, side, qty, price, ts, fill_log, instrument_id FROM executions "
+            "WHERE is_paper = 0 ORDER BY ts DESC LIMIT 200"
+        )
+    orders: list[LiveOrder] = []
+    for r in rows:
+        coid = _coid_of(r["fill_log"])
+        if not coid:
+            continue  # no client_order_id → not a cancellable order; never invent one
+        log = json.loads(r["fill_log"]) if isinstance(r["fill_log"], str) else (r["fill_log"] or {})
+        symbol = str(log.get("symbol") or r["instrument_id"] or "")
+        side = "buy" if str(r["side"]).lower() == "buy" else "sell"
+        orders.append(
+            LiveOrder(
+                order_id=coid,
+                venue=str(r["venue_id"] or ""),
+                symbol=symbol,
+                side=side,  # type: ignore[arg-type]
+                qty=_metric(r["qty"]),
+                price=_metric(r["price"]),
+                status="canceled" if coid in canceled else "working",
+                ts=str(r["ts"]),
+            )
+        )
+    return LiveOrdersResponse(armed=armed, mode=_live_mode(), orders=orders)
+
+
+@router.post("/live/orders/{order_id}/cancel", response_model=CancelOrderResponse)
+def cancel_live_order(order_id: str) -> CancelOrderResponse:
+    """Cancel ONE live order at its venue. This is a real money-path control, so it is conservative:
+      - the order_id (client_order_id) MUST exist on the LIVE ledger (executions.is_paper=0) — a sim/paper
+        order is never cancellable (it never reached a venue), and an unknown id is an honest 404;
+      - it resolves the order's OWN venue adapter via the exec registry and calls its `cancel`; a venue with no
+        execution adapter (e.g. kraken/hyperliquid are data-only today) returns an honest 'not implemented'
+        instead of pretending to cancel;
+      - the adapter is SAFE by construction (disabled with no keys → cancel raises), so this never fires a
+        phantom request. The auth is the same x-api-key gate as every route. Audited as `order_canceled_live`.
+    It NEVER places or modifies an order — only cancel. Idempotent: re-cancelling an already-cancelled id
+    is reported as already canceled (no second venue call)."""
+    from cosmu.adapters.exec.registry import adapter_for
+    from cosmu.core.interfaces import OrderId
+
+    with store.reading():
+        row = store.row(
+            "SELECT venue_id, fill_log FROM executions WHERE is_paper = 0 AND fill_log LIKE ? ORDER BY ts DESC LIMIT 1",
+            (f'%"client_order_id": "{order_id}"%',),
+        )
+        already = order_id in _canceled_coids()
+    if row is None:
+        # Not on the live ledger → either unknown or a sim/paper-only id. Never cancel something off-venue.
+        raise HTTPException(status_code=404, detail=f"no live order with id '{order_id}' (sim/paper orders are not cancellable)")
+    venue_id = str(row["venue_id"] or "")
+    if already:
+        # Idempotent: the cancel is already audited; do not call the venue a second time.
+        return CancelOrderResponse(canceled=True, order_id=order_id, venue=venue_id, reason="already canceled")
+
+    adapter = adapter_for(venue_id, settings)
+    if adapter is None:
+        # Honest NotImplemented for a data-only venue (no exec adapter wired) — never fake a cancel.
+        return CancelOrderResponse(canceled=False, order_id=order_id, venue=venue_id, reason=f"venue '{venue_id}' has no execution adapter — cancel not implemented")
+
+    # Resolve the venue order id from the recorded fill_log when present (some venues cancel by their own id);
+    # fall back to the client_order_id, which every adapter accepts as the cancel ref.
+    log = json.loads(row["fill_log"]) if isinstance(row["fill_log"], str) else (row["fill_log"] or {})
+    venue_order_id = log.get("venue_order_id")
+    oid = OrderId(venue=venue_id, client_order_id=order_id, venue_order_id=str(venue_order_id) if venue_order_id else None)
+    try:
+        adapter.cancel(oid)
+    except Exception as exc:  # noqa: BLE001 — a venue/adapter error must NEVER 500 the control plane nor leak a
+        # secret-bearing message; surface only the type (e.g. disabled adapter / network) as an honest reason.
+        return CancelOrderResponse(canceled=False, order_id=order_id, venue=venue_id, reason=f"venue rejected cancel ({type(exc).__name__})")
+
+    store.append_event(
+        actor="human", kind="order_canceled_live", ref_type="execution", ref_id=None,
+        payload={"client_order_id": order_id, "venue": venue_id},
+    )
+    return CancelOrderResponse(canceled=True, order_id=order_id, venue=venue_id)
 
 
 # Which venues have LIVE execution credentials wired (Binance, Alpaca, Polymarket have execution adapters).

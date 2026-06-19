@@ -221,11 +221,13 @@ body{
    timing match `.side-panel` (var(--panel-w) capped at 54vw). */
 .screener-wrap.panel-open{margin-right:min(var(--panel-w),54vw)}
 .screener-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
-/* Per-column widths (table-layout:fixed honours these). The identity .col-strat is left WITHOUT a fixed width so
-   it absorbs all the slack and the default set fits ~1280px with NO horizontal scroll on load; toggling extra
+/* Per-column widths (table-layout:fixed honours these). The identity .col-strat is WIDTH-CAPPED (not slack-
+   absorbing) so the long strategy name truncates with an ellipsis instead of stretching the column across the
+   table; the full name is on the hover tooltip (data-tip). The default set still fits ~1280px with NO horizontal
+   scroll on load (leftover slack distributes across the fixed columns so the table breathes); toggling extra
    columns adds the JS min-width floor (symbols-table.tsx) which is what introduces the scroll. */
 .col-combo{width:74px}
-.col-strat{min-width:200px}
+.col-strat{width:300px}
 .col-sym{width:96px}
 .col-venue{width:88px}
 .col-num{width:80px}
@@ -1213,7 +1215,13 @@ select.search-input{cursor:pointer}
   border:1px solid var(--iris-mid);vertical-align:middle;line-height:18px}
 /* SECONDARY algorithm number — small, muted, low-contrast; reads as clearly less important than the combo pill. */
 .strat-num-sub{display:inline-block;margin-right:6px;font-size:9px;font-weight:600;font-variant-numeric:tabular-nums;
-  letter-spacing:.02em;color:var(--quiet);vertical-align:middle;line-height:16px;opacity:.8}
+  letter-spacing:.02em;color:var(--quiet);vertical-align:middle;line-height:16px;opacity:.8;flex-shrink:0}
+/* STRATEGY cell — flex row so the "#n" prefix and the LLM badge stay pinned (flex-shrink:0) while only the long
+   strategy NAME truncates (min-width:0 is what lets a flex child shrink below its content to ellipsize). The cell
+   keeps the table's own overflow:hidden; the full name is revealed on the shared #tipbox tooltip (data-tip). */
+.strat-cell{display:flex;align-items:center;gap:0}
+.strat-name{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.strat-llm{flex-shrink:0;margin-left:6px}
 /* multi-select: a caret on the button; the menu opens DOWN-LEFT (left:0) so an inline trigger reads naturally */
 .ms-caret{font-size:8px;opacity:.6;margin-left:1px}
 .ms-wrap .col-picker-menu{transform-origin:top left}

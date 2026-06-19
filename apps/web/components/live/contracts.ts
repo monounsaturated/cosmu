@@ -15,10 +15,13 @@
 
 import type {
   ActivateResponse,
+  CancelOrderResponse,
   DefundResponse,
   EligibleStrategy,
   LaunchActivateResponse,
   LiveCaps,
+  LiveOrder,
+  LiveOrdersResponse,
   LivePosition,
   LivePositionsResponse,
   LiveVenue,
@@ -33,9 +36,12 @@ import type {
 // Generated response/shared types, re-exported under the names the surface uses.
 export type {
   ActivateResponse,
+  CancelOrderResponse,
   DefundResponse,
   EligibleStrategy,
   LaunchActivateResponse,
+  LiveOrder,
+  LiveOrdersResponse,
   LivePosition,
   LiveVenue,
   LiveVenuesResponse,

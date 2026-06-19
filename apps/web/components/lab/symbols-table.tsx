@@ -36,11 +36,13 @@ export function tripletHref(r: { strategy_version_id: string; symbol: string; ve
 
 export type TripletKey = { strategy_version_id: string; symbol: string; venue_id: string | null };
 
-// The canonical (algo × symbol × venue) identity of a cell — the unit the operator tracks. venue_id is
-// normalised to "" so a NULL-venue cell has ONE stable key everywhere (the combo-number map, the row React
-// key, the highlight/selection compare). Single source of triplet identity.
-function comboKeyOf(r: { strategy_version_id: string; symbol: string; venue_id: string | null }): string {
-  return `${r.strategy_version_id} ${r.symbol} ${r.venue_id ?? ""}`;
+// The canonical (algo × symbol × venue) identity of a cell — the unit the operator tracks. Keyed on the ALGO
+// (strategy_id), NOT the version: a strategy's many near-identical versions on the SAME (symbol, venue) are ONE
+// combo, so one triplet = one combo number (the engine already dedups cells to the latest version per triplet).
+// venue_id is normalised to "" so a NULL-venue cell has ONE stable key everywhere (the combo-number map). Single
+// source of triplet identity.
+function comboKeyOf(r: { strategy_id: string; symbol: string; venue_id: string | null }): string {
+  return `${r.strategy_id} ${r.symbol} ${r.venue_id ?? ""}`;
 }
 
 // Triplet equality — the FULL (version × symbol × venue) compare with the same `?? ""` NULL-venue normalisation
@@ -528,10 +530,13 @@ export function SymbolsTable({
                     <td>
                       {comboNum !== undefined ? <span className="combo-num" title={`Combo #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
                     </td>
-                    <td>
+                    {/* STRATEGY: width-capped + ellipsis. The combo/algo "#n" prefix and the LLM badge stay
+                        flex-shrink:0 (always visible); only the long name ellipsizes inside .strat-name. The
+                        full name shows on the shared #tipbox tooltip (data-tip) after a deliberate hover rest. */}
+                    <td className="strat-cell" data-tip={r.strategy_name}>
                       {stratNum !== undefined ? <span className="strat-num-sub" title={`Algorithm #${stratNum}`}>#{stratNum}</span> : null}
-                      {r.strategy_name}
-                      {r.kind === "llm" ? <span className="badge badge-iris" style={{ marginLeft: 6 }}>LLM</span> : null}
+                      <span className="strat-name">{r.strategy_name}</span>
+                      {r.kind === "llm" ? <span className="badge badge-iris strat-llm">LLM</span> : null}
                     </td>
                     {visibleCols.map((c) => renderCell(r, c.key))}
                   </tr>

@@ -804,6 +804,47 @@
         "title": "BrainSurvivor",
         "type": "object"
       },
+      "CancelOrderResponse": {
+        "description": "The result of POST /live/orders/{order_id}/cancel. `canceled` is True only when the resolved venue\nadapter accepted the cancel. `reason` carries the honest failure (order not on the live ledger, venue has\nno execution adapter, or the adapter rejected the cancel). Never cancels a sim/paper order \u2014 those are not\nreal and have nothing to cancel at a venue.",
+        "properties": {
+          "canceled": {
+            "title": "Canceled",
+            "type": "boolean"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          }
+        },
+        "required": [
+          "canceled",
+          "order_id"
+        ],
+        "title": "CancelOrderResponse",
+        "type": "object"
+      },
       "CellCurvePoint": {
         "description": "A single (ts, net_value) point of a PER-CELL net-of-fee backtest equity curve.",
         "properties": {
@@ -4393,6 +4434,95 @@
           "reason"
         ],
         "title": "LiveEligibilityView",
+        "type": "object"
+      },
+      "LiveOrder": {
+        "description": "One LIVE (real-money / testnet) order on the control panel \u2014 derived from the live execution ledger\n(`executions.is_paper = 0`), never the sim/paper lane. `order_id` is the client_order_id, which is the\ncancel anchor (the engine resolves it to the venue order id when cancelling). `status` is \"working\" until a\ncancel for that id is on the ledger (\"canceled\"). Spot venues book a market fill immediately, so a row is\nthe recorded live fill; a resting limit order (Polymarket CLOB) is genuinely working until canceled.",
+        "properties": {
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "side": {
+            "enum": [
+              "buy",
+              "sell"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "working",
+              "canceled"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          },
+          "venue": {
+            "title": "Venue",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "venue",
+          "symbol",
+          "side",
+          "qty",
+          "price",
+          "status",
+          "ts"
+        ],
+        "title": "LiveOrder",
+        "type": "object"
+      },
+      "LiveOrdersResponse": {
+        "description": "The live-orders control panel feed. HONESTY CONTRACT: only LIVE-book orders (testnet/live, is_paper=0)\never appear \u2014 a sim/paper fill is NEVER listed here. `armed` mirrors /live/positions so the UI shows the\nsame honest \"nothing armed\" empty state. When nothing has routed live, `orders` is an empty list.",
+        "properties": {
+          "armed": {
+            "title": "Armed",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "testnet",
+              "live",
+              "sim"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/LiveOrder"
+            },
+            "title": "Orders",
+            "type": "array"
+          }
+        },
+        "required": [
+          "armed",
+          "mode",
+          "orders"
+        ],
+        "title": "LiveOrdersResponse",
         "type": "object"
       },
       "LivePosition": {
@@ -8646,6 +8776,65 @@
           }
         },
         "summary": "Live Launch"
+      }
+    },
+    "/live/orders": {
+      "get": {
+        "description": "The LIVE orders control-panel feed: every order that genuinely routed to a venue (executions.is_paper=0\n\u2014 testnet or live), NEVER the deterministic sim/paper lane. Each row carries venue/symbol/side/qty/price/\nstatus/order_id(client_order_id)/ts so the operator can see what is working and cancel it. Status is\n'working' until an `order_canceled_live` event is on the ledger for that id. With nothing routed live this\nreturns an empty list (the honest 'nothing armed' state). Read-only \u2014 placing/cancelling is elsewhere.",
+        "operationId": "live_orders_live_orders_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveOrdersResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live Orders"
+      }
+    },
+    "/live/orders/{order_id}/cancel": {
+      "post": {
+        "description": "Cancel ONE live order at its venue. This is a real money-path control, so it is conservative:\n  - the order_id (client_order_id) MUST exist on the LIVE ledger (executions.is_paper=0) \u2014 a sim/paper\n    order is never cancellable (it never reached a venue), and an unknown id is an honest 404;\n  - it resolves the order's OWN venue adapter via the exec registry and calls its `cancel`; a venue with no\n    execution adapter (e.g. kraken/hyperliquid are data-only today) returns an honest 'not implemented'\n    instead of pretending to cancel;\n  - the adapter is SAFE by construction (disabled with no keys \u2192 cancel raises), so this never fires a\n    phantom request. The auth is the same x-api-key gate as every route. Audited as `order_canceled_live`.\nIt NEVER places or modifies an order \u2014 only cancel. Idempotent: re-cancelling an already-cancelled id\nis reported as already canceled (no second venue call).",
+        "operationId": "cancel_live_order_live_orders__order_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelOrderResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Live Order"
       }
     },
     "/live/positions": {

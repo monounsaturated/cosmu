@@ -12,26 +12,29 @@ from decimal import Decimal
 import cosmu.api.routers.strategies as strat_mod
 from cosmu.config.settings import Settings
 from cosmu.data.backtest import SymbolRun, equity_curve_points
+from cosmu.data.market import Bar
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
 from cosmu.knowledge.store import Store, reset_backtest_symbols_curve_cache
 from cosmu.lab.finder import CellResult, StrategyFinder, VariantResult
 from cosmu.master.scorer import BacktestMetrics
+from cosmu.research.fixtures import edge_bearing_screen_market
 from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 
-try:  # the offline market fixture lives in the finder test; import it however the harness resolves `tests`
-    from tests.test_lab_finder import _FixtureBars
-except ModuleNotFoundError:  # collected without the rest of the suite (no `tests` namespace) → load by path
-    import importlib.util
-    import pathlib
+class _FixtureBars:
+    """Small, fast OFFLINE market provider for the finder sweep — 2 catalog symbols × ~280 edge-bearing bars (the
+    screen's 80-bar floor + holdout split). Built on the PACKAGE-level fixture (cosmu.research.fixtures) so this
+    test never cross-imports another test module (which doesn't resolve as a package under the default pytest
+    import mode). Mirrors the same helper in test_lab_finder."""
 
-    _spec = importlib.util.spec_from_file_location(
-        "_tlf_fixture", pathlib.Path(__file__).with_name("test_lab_finder.py")
-    )
-    _tlf = importlib.util.module_from_spec(_spec)
-    _spec.loader.exec_module(_tlf)
-    _FixtureBars = _tlf._FixtureBars
+    def __init__(self) -> None:
+        full = edge_bearing_screen_market(n=280)
+        self._by = {sym: full[sym][-280:] for sym in ("BTCUSDT", "ETHUSDT")}
+        self._default = self._by["BTCUSDT"]
+
+    def fetch_bars(self, symbol: str, timeframe: str, *, limit: int) -> list[Bar]:
+        return self._by.get(symbol, self._default)[-limit:]
 
 
 def _store(tmp_path, name="cellcurve") -> Store:
@@ -234,3 +237,97 @@ def test_cell_curve_empty_when_column_absent(tmp_path, monkeypatch):
     body = _client(monkeypatch, store).get(f"/strategies/{vid}/cell-curve?symbol=BTCUSDT&venue=binance").json()
     assert body["available"] is False and body["points"] == []
     reset_backtest_symbols_curve_cache()
+
+
+# ------------------------------------------------------------------ the RECOMPUTE-ON-DEMAND fallback (NULL curve)
+# Existing cells (the bulk of prod) were screened BEFORE equity_curve_json shipped, so the column is NULL. The
+# endpoint must recompute the curve on the fly from the version's spec over the cell's bars (and cache it back),
+# never show "No backtest curve". These tests inject an OFFLINE bar provider so the recompute is deterministic.
+
+
+def _runnable_version_null_curve(store: Store, *, symbol: str, venue: str | None) -> str:
+    """Seed a version with a REAL runnable spec (seed_orb_fvg_spec) + a backtest_symbols cell whose
+    equity_curve_json is NULL — the existing-prod-cell shape the recompute path must populate."""
+    spec = seed_orb_fvg_spec()
+    sid = _algo(store)
+    vid = store.insert("strategy_versions", {
+        "strategy_id": sid, "spec": spec.model_dump(mode="json"), "generated_code": "", "code_hash": "h",
+        "params": fit_params(spec), "origin": "test", "status": "screened", "kind": "quant",
+        "created_at": "2026-06-18T00:00:00Z",
+    })
+    bt = store.insert("backtests", {
+        "strategy_version_id": vid, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0",
+        "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 30, "pbo": "0.2",
+        "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0,
+        "venue_id": venue, "fee_bps": "10", "slippage_bps": "5", "impact_bps": "40",
+        "created_at": "2026-06-18T00:00:00Z",
+    })
+    store.insert("backtest_symbols", {
+        "backtest_id": bt, "strategy_version_id": vid, "symbol": symbol, "venue_id": venue,
+        "return_pct": "0.3", "sharpe": "1.0", "max_drawdown": "0.05", "trades": 30, "verdict": "pass",
+        "created_at": "2026-06-18T00:00:00Z",  # NB: NO equity_curve_json → NULL, the existing-cell shape
+    })
+    return vid
+
+
+def _patch_offline_bars(monkeypatch, *, symbol: str, venue: str, bars):
+    """Make the recompute's build_crypto_cells return ONE offline PriceCell for (symbol, venue) — no network."""
+    from cosmu.data import price_cells as pc_mod
+
+    def _fake_build(store, *, timeframe, limit, enabled_venues=None, reference=None, persist=True, fallback_symbols=()):  # noqa: ANN001, ARG001
+        return [pc_mod.PriceCell(key=pc_mod.cell_key(symbol, venue), symbol=symbol, venue_id=venue,
+                                 bars=bars, reuses_reference=(venue == "binance"))]
+
+    monkeypatch.setattr(pc_mod, "build_crypto_cells", _fake_build)
+
+
+def test_cell_curve_recomputes_when_curve_null(tmp_path, monkeypatch):
+    """A cell with a NULL stored curve but a runnable spec → the endpoint RECOMPUTES a non-empty net-of-fee curve
+    from the cell's bars (so an existing backtest combo's sheet draws a real curve, never 'No backtest curve')."""
+    store = _store(tmp_path)
+    vid = _runnable_version_null_curve(store, symbol="BTCUSDT", venue="binance")
+    _patch_offline_bars(monkeypatch, symbol="BTCUSDT", venue="binance", bars=_FixtureBars().fetch_bars("BTCUSDT", "1h", limit=1000))
+    body = _client(monkeypatch, store).get(f"/strategies/{vid}/cell-curve?symbol=BTCUSDT&venue=binance").json()
+    assert body["available"] is True
+    assert len(body["points"]) >= 2
+    nets = [p["net"] for p in body["points"]]
+    assert all(isinstance(v, (int, float)) for v in nets)
+    assert len(set(nets)) > 1  # a real net-of-fee trajectory, never a constant
+
+
+def test_cell_curve_recompute_caches_back_to_row(tmp_path, monkeypatch):
+    """The recomputed curve is WRITTEN BACK to backtest_symbols.equity_curve_json so the next request is cached
+    (no second backtest). After the first GET the row carries the curve; a second GET serves it directly."""
+    store = _store(tmp_path)
+    vid = _runnable_version_null_curve(store, symbol="BTCUSDT", venue="binance")
+    _patch_offline_bars(monkeypatch, symbol="BTCUSDT", venue="binance", bars=_FixtureBars().fetch_bars("BTCUSDT", "1h", limit=1000))
+    client = _client(monkeypatch, store)
+    first = client.get(f"/strategies/{vid}/cell-curve?symbol=BTCUSDT&venue=binance").json()
+    assert first["available"] is True
+    row = store.row("SELECT equity_curve_json FROM backtest_symbols WHERE strategy_version_id = ?", (vid,))
+    assert row["equity_curve_json"], "the recomputed curve must be cached back to the row"
+    cached = json.loads(row["equity_curve_json"])
+    assert [(p["ts"], p["net"]) for p in cached] == [(p["ts"], p["net"]) for p in first["points"]]
+    # A second request with the bar provider made empty still serves the (now cached) curve — proof it didn't re-run.
+    _patch_offline_bars(monkeypatch, symbol="BTCUSDT", venue="binance", bars=[])
+    second = client.get(f"/strategies/{vid}/cell-curve?symbol=BTCUSDT&venue=binance").json()
+    assert second["available"] is True and len(second["points"]) == len(first["points"])
+
+
+def test_cell_curve_honest_empty_when_recompute_has_no_bars(tmp_path, monkeypatch):
+    """When the cell's bars are unavailable (offline / delisted) the recompute yields nothing → honest empty
+    (available=False), never a fabricated curve."""
+    store = _store(tmp_path)
+    vid = _runnable_version_null_curve(store, symbol="BTCUSDT", venue="binance")
+    _patch_offline_bars(monkeypatch, symbol="BTCUSDT", venue="binance", bars=[])  # no bars at all
+    body = _client(monkeypatch, store).get(f"/strategies/{vid}/cell-curve?symbol=BTCUSDT&venue=binance").json()
+    assert body["available"] is False and body["points"] == []
+
+
+def test_cell_curve_honest_empty_when_spec_unparseable(tmp_path, monkeypatch):
+    """A legacy/malformed spec can't be re-run → the recompute returns honest empty rather than crashing the
+    endpoint (the existing placeholder-spec NULL-curve cell exercises exactly this fallback branch)."""
+    store = _store(tmp_path)
+    vid = _version_with_cell(store, symbol="ETHUSDT", venue="binance", curve=None)  # spec={"name":"s"} = unparseable
+    body = _client(monkeypatch, store).get(f"/strategies/{vid}/cell-curve?symbol=ETHUSDT&venue=binance").json()
+    assert body["available"] is False and body["points"] == []

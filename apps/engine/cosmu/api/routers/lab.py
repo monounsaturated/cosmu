@@ -119,14 +119,17 @@ def _cell_row(r: dict) -> LabSymbolRow:
 
 
 def _dedup_cells(rows: list[dict]) -> list[dict]:
-    """Keep ONE cell per (version, symbol, venue) — the triplet IS the unit. A re-run fans out a fresh backtest
-    for the same triplet; rows arrive created_at DESC so the FIRST seen is the latest. Crucially the key carries
-    venue_id: the SAME edge on the SAME symbol at two venues is two DISTINCT cells (the fee axis differs) and must
-    NEVER be collapsed into one — that was the bug that hid a venue's P&L behind its sibling's."""
+    """Keep ONE cell per (STRATEGY, symbol, venue) TRIPLET — the (algo × asset × venue) combo IS the unit the
+    operator tracks, NOT the version. A strategy with many near-identical VERSIONS (e.g. DeFi-flow with 3 versions
+    all on SOL/USDT at binance) used to show 3 separate rows for the SAME combo; keying on `strategy_id` collapses
+    them to one. Rows arrive created_at DESC, so the FIRST seen wins → the LATEST version's cell. This is HONEST:
+    latest, never the best-RETURN version (best-of-N selection bias). Crucially the key still carries venue_id: the
+    SAME edge on the SAME symbol at two venues is two DISTINCT combos (the fee axis differs) and must NEVER be
+    collapsed into one — that was the older bug that hid a venue's P&L behind its sibling's."""
     seen: set[tuple[str, str, str]] = set()
     deduped: list[dict] = []
     for r in rows:
-        key = (r["strategy_version_id"], r["symbol"], r.get("venue_id") or "")
+        key = (r["strategy_id"], r["symbol"], r.get("venue_id") or "")
         if key in seen:
             continue
         seen.add(key)
@@ -134,28 +137,36 @@ def _dedup_cells(rows: list[dict]) -> list[dict]:
     return deduped
 
 
-# Authored-but-uncomputed versions: a Version that has NO backtest_symbols cell yet (today the screener INNER-JOINs
-# backtest_symbols, so 418/426 versions are invisible). One synthetic "New" row per such version so the operator
-# sees the whole authored population — symbol/venue empty (there is no cell), metrics zeroed (nothing computed), the
-# version's own status (which normalizes to the "New" lane via the web LifeBadge). NULL spec-only, never fabricated.
-_CELL_LESS_SELECT = (
+# Track-only strategies: a Version that holds a paper/live TRACK but has NO backtest_symbols cell. These were armed
+# via the documented-cohort / arm_fleet path (DAA, ADM, TSMOM, funding-carry, …) rather than the finder/loop screen,
+# so they never wrote per-symbol cells — yet they trade on /paper and have a working detail page. The cell-backed
+# screener INNER-JOINs backtest_symbols, so they were INVISIBLE here. One synthetic row per such version surfaces
+# them: symbol/venue empty (no cell exists), metrics NULL (nothing was computed per-symbol — never a fabricated 0%),
+# and the VERSION'S OWN status carried straight through so the lifecycle badge reads Paper/Live (not "New"). We scope
+# to track-BEARING versions deliberately: surfacing every cell-less version would dump the whole killed graveyard
+# (~420 rows) into the screener; a track is the honest signal that the strategy is actually being forward-tested.
+_TRACK_ONLY_SELECT = (
     "SELECT sv.id AS strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
     "sv.created_at "
     "FROM strategy_versions sv "
     "JOIN strategies s ON s.id = sv.strategy_id "
-    "WHERE NOT EXISTS (SELECT 1 FROM backtest_symbols bs WHERE bs.strategy_version_id = sv.id)"
+    "WHERE EXISTS (SELECT 1 FROM tracks tr WHERE tr.strategy_version_id = sv.id) "
+    "AND NOT EXISTS (SELECT 1 FROM backtest_symbols bs WHERE bs.strategy_version_id = sv.id)"
 )
 
 
-def _new_version_row(r: dict) -> LabSymbolRow:
-    """A cell-less (authored, not-yet-computed) Version as a synthetic 'New' screener row. No symbol/venue (no cell
-    exists), metrics zeroed (nothing computed — never a fabricated number), the version's real status drives the
-    lifecycle badge. verdict None so the front renders nothing in that slot."""
+def _track_only_row(r: dict) -> LabSymbolRow:
+    """A track-only (armed, no per-symbol cell) Version as a synthetic screener row. No symbol/venue (no cell
+    exists); the per-cell metrics are NULL/"—" placeholders (nothing was computed per symbol — NEVER a fabricated
+    number) while the version's REAL status drives the lifecycle badge (Paper/Live, not "New"). verdict None so the
+    front renders nothing in that slot. The web treats an empty symbol as the uncomputed signal and shows "—"."""
     return LabSymbolRow(
         strategy_version_id=r["strategy_version_id"],
         strategy_name=r["strategy_name"],
         strategy_id=r["strategy_id"],
         kind=r.get("kind") or "quant",
+        # The version's real status — a track-only strategy is paper/live, NOT "New". Fall back to "lab" only when
+        # the status is genuinely absent (never invent a more-advanced stage).
         status=r.get("status") or "lab",
         symbol="",
         venue_id=None,
@@ -173,15 +184,18 @@ def _new_version_row(r: dict) -> LabSymbolRow:
 def lab_symbols(symbol: str | None = None, venue: str | None = None,
                 verdict: str | None = None, version_id: str | None = None,
                 limit: int = 500) -> LabSymbolsResponse:
-    """Per-symbol backtest cells — one row per (strategy × symbol × venue), the granular truth the pooled
-    leaderboard averages away. Outlier-sorted (highest standalone return first) so the operator can SNIPE, with
-    the honest verdict (robust/fragile/thin/negative) carried so a lone best-of-N winner is flagged, not
-    celebrated. Optional filters narrow by symbol / venue / verdict / version_id. Pure read; never a funding signal.
+    """Per-symbol backtest cells — one row per (strategy × symbol × venue) TRIPLET, the granular truth the pooled
+    leaderboard averages away. ONE row per combo (algo × asset × venue): a strategy's many versions on the SAME
+    triplet collapse to the LATEST (see `_dedup_cells`), never the best-return one. Outlier-sorted (highest
+    standalone return first) so the operator can SNIPE, with the honest verdict carried. Optional filters narrow by
+    symbol / venue / verdict / version_id. Pure read; never a funding signal.
 
-    Authored-but-UNCOMPUTED versions (no backtest_symbols cell yet) are ALSO surfaced — one synthetic 'New' row each
-    — so the whole authored population is visible, not just the ~8 versions that have cells. They are appended AFTER
-    the computed cells (which keep the outlier ranking) and only when no symbol/venue/verdict filter is active (a
-    cell-less version has no symbol/venue/verdict to match)."""
+    TRACK-ONLY strategies (a paper/live track but NO backtest_symbols cell — armed via the documented-cohort /
+    arm_fleet path, e.g. DAA / ADM / TSMOM / funding-carry) are ALSO surfaced — one synthetic row each, carrying the
+    version's REAL status (so the badge reads Paper/Live, not "New") with metrics NULL/"—" (nothing was computed per
+    symbol). They are appended AFTER the computed cells (no return to rank by), only when no symbol/venue/verdict
+    filter is active (a cell-less row has no symbol/venue/verdict to match), and only for strategies NOT already
+    represented by a cell-backed row (no double-counting a strategy that has both cells and a track)."""
     conds: list[str] = []
     params: list[object] = []
     if symbol:
@@ -197,11 +211,11 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
         conds.append("bs.strategy_version_id = ?")
         params.append(version_id)
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
-    # Cell-less 'New' rows only make sense unfiltered (or filtered to a specific version_id) — a symbol/venue/verdict
-    # filter is asking for cells, which a not-yet-computed version has none of.
-    include_new = not (symbol or venue or verdict)
+    # Track-only rows only make sense unfiltered (or filtered to a specific version_id) — a symbol/venue/verdict
+    # filter is asking for cells, which a track-only (uncomputed) version has none of.
+    include_track_only = not (symbol or venue or verdict)
     with store.reading():
-        # Fetch latest-first so the per-triplet dedup below keeps the most recent backtest, then we
+        # Fetch latest-first so the per-triplet dedup below keeps the most recent version's cell, then we
         # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
         rows = store.rows(f"{_cell_select()}{where} ORDER BY bs.created_at DESC LIMIT 5000", tuple(params))
         symbols = [r["symbol"] for r in store.rows("SELECT DISTINCT symbol FROM backtest_symbols ORDER BY symbol")]
@@ -209,21 +223,24 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
             r["venue_id"]
             for r in store.rows("SELECT DISTINCT venue_id FROM backtest_symbols WHERE venue_id IS NOT NULL ORDER BY venue_id")
         ]
-        new_rows: list[dict] = []
-        if include_new:
-            vsql = _CELL_LESS_SELECT
+        track_only: list[dict] = []
+        if include_track_only:
+            vsql = _TRACK_ONLY_SELECT
             vparams: tuple = ()
             if version_id:
                 vsql += " AND sv.id = ?"
                 vparams = (version_id,)
-            new_rows = store.rows(f"{vsql} ORDER BY sv.created_at DESC LIMIT 5000", vparams)
+            track_only = store.rows(f"{vsql} ORDER BY sv.created_at DESC LIMIT 5000", vparams)
     deduped = _dedup_cells(rows)
     deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
     out = [_cell_row(r) for r in deduped[: max(1, limit)]]
-    # Append the authored-but-uncomputed 'New' versions after the ranked cells (they carry no return to rank by),
-    # trimmed so the whole response still respects `limit`.
-    if new_rows and len(out) < max(1, limit):
-        out += [_new_version_row(r) for r in new_rows[: max(1, limit) - len(out)]]
+    # Append the track-only strategies after the ranked cells (they carry no return to rank by), trimmed so the
+    # whole response still respects `limit`. Skip any strategy ALREADY represented by a cell-backed row — a strategy
+    # that has both cells and a (cell-less) track must NOT be double-counted with a redundant synthetic row.
+    if track_only and len(out) < max(1, limit):
+        seen_strategies = {r["strategy_id"] for r in deduped}
+        fresh = [r for r in track_only if r["strategy_id"] not in seen_strategies]
+        out += [_track_only_row(r) for r in fresh[: max(1, limit) - len(out)]]
     return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues)
 
 

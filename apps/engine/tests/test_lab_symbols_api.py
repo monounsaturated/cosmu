@@ -85,9 +85,9 @@ def test_filters_by_symbol_venue_verdict(tmp_path, monkeypatch):
     assert {r["verdict"] for r in by_verdict} == {"robust"} and len(by_verdict) == 2
 
 
-def test_dedup_keeps_latest_backtest_per_version_symbol(tmp_path, monkeypatch):
-    """A re-run fans out a second backtest for the same (version, symbol, venue). The endpoint keeps ONE cell —
-    the latest — so the leaderboard never double-counts a single edge."""
+def test_dedup_keeps_latest_backtest_per_triplet(tmp_path, monkeypatch):
+    """A re-run fans out a second backtest for the same (strategy, symbol, venue) triplet. The endpoint keeps ONE
+    cell — the latest — so the leaderboard never double-counts a single edge."""
     store = _store(tmp_path)
     sid = store.insert("strategies", {"name": "R", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
     vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "R"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
@@ -97,6 +97,26 @@ def test_dedup_keeps_latest_backtest_per_version_symbol(tmp_path, monkeypatch):
     rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
     assert len(rows) == 1
     assert rows[0]["return_pct"] == 0.25  # the later re-run, not the earlier 0.10
+
+
+def test_dedup_collapses_many_versions_of_one_strategy_on_one_triplet(tmp_path, monkeypatch):
+    """FIX 1 — the core triplet fix: ONE strategy with THREE near-identical VERSIONS, each with its own cell on the
+    SAME (symbol=SOLUSDT, venue=binance) triplet, must show ONE row — the LATEST version (most recent created_at) —
+    NOT three near-duplicate rows, and HONESTLY the latest, NEVER the best-return version (no best-of-N selection)."""
+    store = _store(tmp_path)
+    sid = store.insert("strategies", {"name": "DeFi-flow risk appetite", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+    latest_vid = None
+    # Three versions: oldest has the BEST return; newest is created_at-latest with a MIDDLING return. The kept row
+    # must be the newest (0.15), proving we keep the LATEST, not the best (0.40).
+    for ts, ret in [("2026-06-17T00:00:00Z", 0.40), ("2026-06-17T01:00:00Z", 0.05), ("2026-06-17T02:00:00Z", 0.15)]:
+        vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "DeFi-flow risk appetite"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": ts})
+        latest_vid = vid
+        bt = store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0", "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 40, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "created_at": ts})
+        store.insert("backtest_symbols", {"backtest_id": bt, "strategy_version_id": vid, "symbol": "SOLUSDT", "venue_id": "binance", "return_pct": str(ret), "sharpe": "1.2", "max_drawdown": "0.08", "trades": 40, "verdict": "robust", "created_at": ts})
+    rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
+    assert len(rows) == 1                                  # ONE row per (strategy, symbol, venue) triplet
+    assert rows[0]["strategy_version_id"] == latest_vid    # the LATEST version, not the oldest
+    assert rows[0]["return_pct"] == 0.15                   # the latest's return — NEVER the best-of-N 0.40
 
 
 def test_two_venues_same_version_symbol_are_distinct_cells(tmp_path, monkeypatch):
@@ -125,51 +145,88 @@ def test_version_id_filter_narrows_to_one_version(tmp_path, monkeypatch):
     assert {r["symbol"] for r in only} == {"BTCUSDT"}
 
 
-def _seed_cell_less_version(store: Store, *, name: str, status: str = "screened") -> str:
-    """An AUTHORED version with NO backtest_symbols cell (no backtest at all). Returns version_id."""
+def _seed_track_only_version(store: Store, *, name: str, status: str = "paper", track: bool = True) -> str:
+    """A version with NO backtest_symbols cell. When ``track`` it ALSO holds a paper/live track (the armed,
+    documented-cohort shape — DAA / ADM / TSMOM); when not, it's a plain cell-less version (e.g. killed graveyard)
+    that must NOT surface. The track is seeded HONESTLY (equity = starting_capital, return_pct = 0), mirroring
+    master.tracks.open_paper_track. Returns version_id."""
     sid = store.insert("strategies", {"name": name, "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
-    return store.insert("strategy_versions", {
+    vid = store.insert("strategy_versions", {
         "strategy_id": sid, "spec": {"name": name}, "generated_code": "", "code_hash": "h", "params": {},
         "origin": "test", "status": status, "kind": "quant", "created_at": "2026-06-17T00:00:00Z",
     })
+    if track:
+        store.insert("tracks", {
+            "strategy_version_id": vid, "starting_capital": "1000", "equity": "1000.00",
+            "return_pct": "0.00", "updated_at": "2026-06-17T00:00:00Z",
+        })
+    return vid
 
 
-def test_cell_less_versions_surface_as_new_rows(tmp_path, monkeypatch):
-    """Item 6: an authored-but-UNCOMPUTED version (no backtest_symbols cell) must surface as a synthetic 'New' row
-    — symbol empty, metrics zeroed, its own status carried — so the whole authored population is visible, not just
-    versions that have cells."""
+def test_track_only_strategies_surface_as_rows(tmp_path, monkeypatch):
+    """FIX 2: an ARMED strategy (a paper/live track but NO backtest_symbols cell — DAA / ADM / TSMOM, armed via the
+    documented-cohort path) must surface as a synthetic row — symbol empty, metrics NULL/zeroed, and crucially its
+    REAL status carried (paper, not 'New') — so it's visible on the screener like it is on /paper."""
     store = _store(tmp_path)
     _seed_cell(store, name="HasCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
-    new_vid = _seed_cell_less_version(store, name="JustAuthored", status="screened")
+    armed_vid = _seed_track_only_version(store, name="Defensive Asset Allocation", status="paper")
     rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
-    # The computed cell ranks first; the cell-less version is appended as a New row.
+    # The computed cell ranks first; the track-only armed strategy is appended.
     assert any(r["symbol"] == "BTCUSDT" for r in rows)
-    new_rows = [r for r in rows if r["strategy_version_id"] == new_vid]
-    assert len(new_rows) == 1
-    nr = new_rows[0]
-    assert nr["symbol"] == "" and nr["venue_id"] is None        # no cell → no symbol/venue
-    assert nr["return_pct"] == 0.0 and nr["trades"] == 0          # nothing computed → zeroed, never fabricated
-    assert nr["verdict"] is None
-    assert nr["strategy_name"] == "JustAuthored"
+    armed = [r for r in rows if r["strategy_version_id"] == armed_vid]
+    assert len(armed) == 1
+    ar = armed[0]
+    assert ar["symbol"] == "" and ar["venue_id"] is None        # no cell → no symbol/venue
+    assert ar["return_pct"] == 0.0 and ar["trades"] == 0          # nothing computed per-symbol → never fabricated
+    assert ar["verdict"] is None
+    assert ar["status"] == "paper"                                # REAL track/version status, not "New"
+    assert ar["strategy_name"] == "Defensive Asset Allocation"
 
 
-def test_cell_less_versions_excluded_when_symbol_filtered(tmp_path, monkeypatch):
-    """A symbol/venue/verdict filter is asking for CELLS — a not-yet-computed version (no symbol) is not added."""
+def test_cell_less_version_without_a_track_is_hidden(tmp_path, monkeypatch):
+    """The noise filter: a cell-less version with NO track (e.g. a killed graveyard version) must NOT flood the
+    screener — only track-bearing (forward-tested) strategies are surfaced as synthetic rows."""
     store = _store(tmp_path)
     _seed_cell(store, name="HasCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
-    _seed_cell_less_version(store, name="JustAuthored")
+    ghost_vid = _seed_track_only_version(store, name="KilledGraveyard", status="killed", track=False)
+    rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
+    assert all(r["strategy_version_id"] != ghost_vid for r in rows)  # no track → never surfaced
+
+
+def test_track_only_strategies_excluded_when_symbol_filtered(tmp_path, monkeypatch):
+    """A symbol/venue/verdict filter is asking for CELLS — a track-only (no symbol) version is not added."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="HasCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
+    _seed_track_only_version(store, name="Accelerating Dual Momentum", status="paper")
     rows = _client(monkeypatch, store).get("/lab/symbols?symbol=BTCUSDT").json()["rows"]
-    assert {r["symbol"] for r in rows} == {"BTCUSDT"}  # no empty-symbol New row leaks into a filtered view
+    assert {r["symbol"] for r in rows} == {"BTCUSDT"}  # no empty-symbol track-only row leaks into a filtered view
 
 
-def test_cell_less_version_appears_after_computed_cells(tmp_path, monkeypatch):
-    """New rows are appended AFTER the outlier-ranked computed cells (they carry no return to rank by)."""
+def test_track_only_strategy_appears_after_computed_cells(tmp_path, monkeypatch):
+    """Track-only rows are appended AFTER the outlier-ranked computed cells (they carry no return to rank by)."""
     store = _store(tmp_path)
     _seed_cell(store, name="HasCell", symbol="ETHUSDT", venue="binance", return_pct=0.33, verdict="robust")
-    new_vid = _seed_cell_less_version(store, name="JustAuthored")
+    armed_vid = _seed_track_only_version(store, name="Diversified Time-Series Momentum", status="paper")
     rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
-    assert rows[0]["symbol"] == "ETHUSDT"                 # computed cell first
-    assert rows[-1]["strategy_version_id"] == new_vid     # New row last
+    assert rows[0]["symbol"] == "ETHUSDT"                  # computed cell first
+    assert rows[-1]["strategy_version_id"] == armed_vid    # track-only row last
+
+
+def test_strategy_with_both_cells_and_track_is_not_double_counted(tmp_path, monkeypatch):
+    """Don't-double-count: a strategy that has BOTH a cell-backed version AND a separate cell-less track version
+    appears ONCE (its cell row) — no redundant synthetic track-only row for the same algo."""
+    store = _store(tmp_path)
+    # One strategy, two versions: v1 has a cell, v2 is a cell-less track. Share the SAME strategy_id.
+    sid = store.insert("strategies", {"name": "FundingCarry", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+    v1 = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "FundingCarry"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "killed", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
+    bt = store.insert("backtests", {"strategy_version_id": v1, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0", "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 30, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "created_at": "2026-06-17T00:00:00Z"})
+    store.insert("backtest_symbols", {"backtest_id": bt, "strategy_version_id": v1, "symbol": "BTCUSDT", "venue_id": "binance", "return_pct": "0.12", "sharpe": "1.0", "max_drawdown": "0.05", "trades": 30, "verdict": "robust", "created_at": "2026-06-17T00:00:00Z"})
+    v2 = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": "FundingCarry"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T01:00:00Z"})
+    store.insert("tracks", {"strategy_version_id": v2, "starting_capital": "1000", "equity": "1000.00", "return_pct": "0.00", "updated_at": "2026-06-17T01:00:00Z"})
+    rows = _client(monkeypatch, store).get("/lab/symbols").json()["rows"]
+    fc = [r for r in rows if r["strategy_id"] == sid]
+    assert len(fc) == 1                       # the cell row only — no redundant synthetic row for v2
+    assert fc[0]["strategy_version_id"] == v1 and fc[0]["symbol"] == "BTCUSDT"
 
 
 def test_pooled_return_is_advisory_not_an_average_of_cells(tmp_path, monkeypatch):

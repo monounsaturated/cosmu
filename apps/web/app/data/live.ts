@@ -1,4 +1,4 @@
-import type { AutonomyStatusResponse, RulesResponse } from "@cosmu/contracts-ts";
+import type { AutonomyStatusResponse, LiveOrdersResponse, RulesResponse } from "@cosmu/contracts-ts";
 import type { PositionsResponse, LiveVenuesResponse } from "@/components/live/contracts";
 import { getJson, LIVE_TTL_S } from "./client";
 
@@ -43,6 +43,16 @@ export async function getLivePositions(): Promise<PositionsResponse & { connecte
 
 export async function getLiveVenues(): Promise<LiveVenuesResponse & { connected: boolean }> {
   const { data, connected } = await getJson<LiveVenuesResponse>("/live/venues", emptyVenues, LIVE_TTL_S);
+  return { ...data, connected };
+}
+
+// GET /live/orders — the LIVE orders control-panel feed (real-venue orders only; the sim/paper lane is never
+// listed). `connected:false` → honest empty, never a fabricated order. Empty `orders` is the honest
+// "nothing armed" state.
+const emptyOrders: LiveOrdersResponse = { armed: false, mode: "sim", orders: [] };
+
+export async function getLiveOrders(): Promise<LiveOrdersResponse & { connected: boolean }> {
+  const { data, connected } = await getJson<LiveOrdersResponse>("/live/orders", emptyOrders, LIVE_TTL_S);
   return { ...data, connected };
 }
 
