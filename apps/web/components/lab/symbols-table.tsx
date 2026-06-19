@@ -36,11 +36,13 @@ export function tripletHref(r: { strategy_version_id: string; symbol: string; ve
 
 export type TripletKey = { strategy_version_id: string; symbol: string; venue_id: string | null };
 
-// The canonical (algo × symbol × venue) identity of a cell — the unit the operator tracks. venue_id is
-// normalised to "" so a NULL-venue cell has ONE stable key everywhere (the combo-number map, the row React
-// key, the highlight/selection compare). Single source of triplet identity.
-function comboKeyOf(r: { strategy_version_id: string; symbol: string; venue_id: string | null }): string {
-  return `${r.strategy_version_id} ${r.symbol} ${r.venue_id ?? ""}`;
+// The canonical (algo × symbol × venue) identity of a cell — the unit the operator tracks. Keyed on the ALGO
+// (strategy_id), NOT the version: a strategy's many near-identical versions on the SAME (symbol, venue) are ONE
+// combo, so one triplet = one combo number (the engine already dedups cells to the latest version per triplet).
+// venue_id is normalised to "" so a NULL-venue cell has ONE stable key everywhere (the combo-number map). Single
+// source of triplet identity.
+function comboKeyOf(r: { strategy_id: string; symbol: string; venue_id: string | null }): string {
+  return `${r.strategy_id} ${r.symbol} ${r.venue_id ?? ""}`;
 }
 
 // Triplet equality — the FULL (version × symbol × venue) compare with the same `?? ""` NULL-venue normalisation
