@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>H5 basis-momentum carry — 2026-06-25</title>
+<style>
+ body{font:13px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;margin:24px;color:#1a1a1a;background:#fafafa}
+ h1{font-size:20px;margin:0 0 4px} h2{font-size:15px;margin:28px 0 8px}
+ .sub{color:#666;margin:0 0 16px} .meta{background:#fff;border:1px solid #e2e2e2;border-radius:8px;padding:10px 14px;margin:0 0 12px;font-size:12px}
+ table{border-collapse:collapse;width:100%;background:#fff;font-size:12px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+ th,td{padding:4px 8px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap}
+ th{background:#f0f0f0;position:sticky;top:0;text-align:right;font-weight:600}
+ td.cfg,th.cfg{text-align:left;font-family:ui-monospace,Menlo,monospace;font-size:11px}
+ td.pre{font-weight:700;color:#7a4d00;background:#fff8e6}
+ td.killed{text-align:left;color:#b00;font-size:11px}
+ td.good{background:#e7f7e7;color:#0a0} td.bad{background:#fdeaea;color:#b00}
+ .verdict{background:#fff3cd;border:1px solid #ffd24d;border-radius:8px;padding:10px 14px;margin:8px 0 16px}
+ code{background:#eee;padding:1px 4px;border-radius:3px}
+</style></head><body>
+<h1>H5 — basis-momentum carry (d(basis)/dt cross-sectional book)</h1>
+<p class="sub">2026-06-25 · EXPERIMENT ONLY · slate #6 · BRUT per config · locked Gate + decisive β-orthogonality · zero production impact</p>
+<div class="meta">
+ <b>Thesis:</b> ride an ACCELERATING perp-spot basis — trade the TIME-DERIVATIVE d(basis)/dt, not the level
+ (level-fade tested elsewhere). A different family from price-momentum.<br>
+ <b>Basis:</b> reconstructed honestly as <code>(perp_close − spot_close)/spot_close</code> (the registered
+ tier0 <code>perp_spot_basis</code> = (mark−index)/index shape, PIT, evaluated at bar close).<br>
+ <b>Data:</b> Bybit v5 keyless, <b>paginated</b> SPOT+PERP to 7,999 × 4h bars/leg
+ (1333 d ≈ 3.65 yr) common window across 12 names ·
+ taker 10 bps + liquidity-tiered slippage on both legs · real Binance funding (PIT, 4h accrual).<br>
+ <b>Gate (locked):</b> DSR ≥ 0.95 · PBO ≤ 0.50 · folds ≥ 0.60 · trades ≥ 30 · holdout DSR &gt; 0 ·
+ <b>+ decisive: residual α &gt; 0</b> (regress book on BTC B&amp;H; α must NOT collapse to β).<br>
+ <b>Pre-registered config:</b> lb=6 (24h) · quantile=0.33 (tertile) ·
+ rebalance every 6 bars (~daily). One point; grid is diagnostic only.
+</div>
+<div class="verdict">
+ <b>Verdict: 0 survivors — clean KILL.</b> <b>config</b> <code>bybit:240:lb6:q0.33:reb6 *PRE-REG</code> · <b>N</b> 11,882 leg-trades · <b>net</b> -0.817 (gross -0.101) · <b>residual α</b> -0.398/yr (t=-2.46) · <b>β-BTC</b> -0.016 · <b>corr-BTC</b> -0.021 · <b>DSR</b> 0.001 · <b>holdout DSR</b> -0.484<br><b>verdict: KILL</b><br><br>
+ The β-test is unambiguous: the book IS genuinely market-neutral (β-BTC ≈ 0, corr-BTC ≈ 0), so this is
+ <b>NOT</b> disguised bull-beta — that failure mode is ruled out. But the residual α is <b>NEGATIVE</b>
+ (≈ −40%/yr, t ≈ −2.5): the basis-momentum spread carries <b>negative skill</b>, not zero. Even gross, most
+ configs lose; the high-turnover spread (≈ 11.9k leg-trades) is then buried by two-leg cost. This confirms the
+ prior — crypto carry/basis on liquid majors is arbitraged out and chasing its <i>acceleration</i> loses net of fees.
+</div>
+
+<h2>Every basis-momentum book config (ranked by deflated Sharpe) — pre-registered row highlighted</h2>
+<table><thead><tr>
+ <th class="cfg">config</th><th>DSR</th><th>Sharpe</th><th>trades</th><th>rebal</th><th>folds+</th><th>PBO</th>
+ <th>net ret</th><th>gross ret</th><th>α /yr</th><th>β-BTC</th><th>α t-stat</th><th>corr-BTC</th><th>holdout DSR</th><th>killed by</th>
+</tr></thead><tbody><tr><td class="cfg">bybit:240:lb3:q0.33:reb12</td><td class="bad">0.019</td><td class="">-0.82</td><td class="good">5129</td><td class="">666</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.656</td><td class="bad">-0.323</td><td class="bad">-0.272</td><td class="">+0.03</td><td class="bad">-1.48</td><td class="good">+0.034</td><td class="bad">-0.27</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb6:q0.2:reb12</td><td class="bad">0.017</td><td class="">-0.85</td><td class="good">3668</td><td class="">666</td><td class="bad">0.40</td><td class="good">0.33</td><td class="bad">-0.819</td><td class="bad">-0.462</td><td class="bad">-0.371</td><td class="">+0.02</td><td class="bad">-1.50</td><td class="good">+0.016</td><td class="bad">-0.49</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb3:q0.2:reb12</td><td class="bad">0.009</td><td class="">-1.01</td><td class="good">3650</td><td class="">666</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.857</td><td class="bad">-0.559</td><td class="bad">-0.425</td><td class="">+0.04</td><td class="bad">-1.80</td><td class="good">+0.032</td><td class="bad">-0.39</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb6:q0.33:reb12</td><td class="bad">0.007</td><td class="">-1.05</td><td class="good">5162</td><td class="">666</td><td class="bad">0.20</td><td class="good">0.33</td><td class="bad">-0.723</td><td class="bad">-0.452</td><td class="bad">-0.318</td><td class="">+0.01</td><td class="bad">-1.83</td><td class="good">+0.014</td><td class="bad">-0.47</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb6:q0.2:reb6</td><td class="bad">0.003</td><td class="">-1.21</td><td class="good">7710</td><td class="">1332</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.887</td><td class="good">+0.218</td><td class="bad">-0.452</td><td class="">-0.02</td><td class="bad">-2.02</td><td class="good">-0.017</td><td class="bad">-0.50</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg pre">bybit:240:lb6:q0.33:reb6 *PRE-REG</td><td class="bad">0.001</td><td class="">-1.47</td><td class="good">11882</td><td class="">1332</td><td class="bad">0.40</td><td class="good">0.33</td><td class="bad">-0.817</td><td class="bad">-0.101</td><td class="bad">-0.398</td><td class="">-0.02</td><td class="bad">-2.46</td><td class="good">-0.021</td><td class="bad">-0.48</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb3:q0.33:reb6</td><td class="bad">0.000</td><td class="">-1.86</td><td class="good">10353</td><td class="">1332</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.884</td><td class="bad">-0.546</td><td class="bad">-0.501</td><td class="">+0.03</td><td class="bad">-3.28</td><td class="good">+0.043</td><td class="bad">-0.43</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb12:q0.33:reb6</td><td class="bad">0.000</td><td class="">-1.98</td><td class="good">10171</td><td class="">1331</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.895</td><td class="bad">-0.601</td><td class="bad">-0.510</td><td class="">+0.01</td><td class="bad">-3.39</td><td class="good">+0.009</td><td class="bad">-0.50</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb12:q0.2:reb6</td><td class="bad">0.000</td><td class="">-2.22</td><td class="good">7341</td><td class="">1331</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.973</td><td class="bad">-0.756</td><td class="bad">-0.678</td><td class="">+0.03</td><td class="bad">-3.86</td><td class="good">+0.026</td><td class="bad">-0.50</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb12:q0.33:reb12</td><td class="bad">0.000</td><td class="">-2.25</td><td class="good">5915</td><td class="">666</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.921</td><td class="bad">-0.826</td><td class="bad">-0.557</td><td class="">+0.01</td><td class="bad">-3.89</td><td class="good">+0.017</td><td class="bad">-0.49</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb3:q0.2:reb6</td><td class="bad">0.000</td><td class="">-2.55</td><td class="good">7339</td><td class="">1332</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.988</td><td class="bad">-0.889</td><td class="bad">-0.751</td><td class="">+0.03</td><td class="bad">-4.42</td><td class="good">+0.028</td><td class="bad">-0.47</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr><tr><td class="cfg">bybit:240:lb12:q0.2:reb12</td><td class="bad">0.000</td><td class="">-2.50</td><td class="good">3883</td><td class="">666</td><td class="bad">0.00</td><td class="good">0.33</td><td class="bad">-0.981</td><td class="bad">-0.936</td><td class="bad">-0.716</td><td class="">+0.04</td><td class="bad">-4.36</td><td class="good">+0.034</td><td class="bad">-0.47</td><td class="killed">max_drawdown, folds_positive, deflated_sharpe, holdout, buy_and_hold, alpha<=beta</td></tr></tbody></table>
+<p class="sub">net ret = book return after fees+slippage on both legs · gross ret = the SAME book cost-free
+(isolates the cost wall) · α /yr = annualized residual intercept of <code>r_book = α + β·r_btc</code> NET of fees
+(the decisive disconfirmer — must be &gt; 0) · β-BTC ≈ 0 + corr-BTC ≈ 0 confirm the book is genuinely
+market-neutral (so a positive return could NOT be disguised beta) · α t-stat &lt; 0 means the negative skill is
+statistically real, not noise.</p>
+</body></html>
