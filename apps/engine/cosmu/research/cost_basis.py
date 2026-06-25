@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
+from cosmu.data.market import MarketDataProvider, default_crypto_reference
 from cosmu.data.universe import CORE_PERP_UNIVERSE
 from cosmu.research.cost_surface import CostScenario, compute_cost_surface, venue_fee_scenarios
 from cosmu.spine.venue import default_catalog
@@ -145,7 +145,7 @@ def compute_version_cost_basis(
     # asset classes aren't wired for on-demand recompute yet (honest, never faked).
     if "crypto" not in (spec.universe.asset_classes or []) or "binance" not in (spec.universe.venues or []):
         return _unavailable(version_id, name, "cost-basis recompute currently supports crypto/binance specs")
-    provider = market_data or BinanceSpotOHLCVProvider()
+    provider = market_data or default_crypto_reference()
     market = _crypto_market(spec, provider)
     if not market:
         return _unavailable(version_id, name, "no cached bars for this spec's universe (offline)")

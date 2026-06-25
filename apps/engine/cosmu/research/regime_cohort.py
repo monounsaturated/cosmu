@@ -27,7 +27,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from cosmu.config.settings import Settings
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, default_crypto_reference
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import score
@@ -93,7 +93,7 @@ def load_tr_bars(symbol: str) -> list[Bar]:
 def load_bars(asset: str) -> list[Bar]:
     """crypto symbols (…USDT) come from the Binance daily cache; everything else from the equity TR cache."""
     if asset.endswith("USDT"):
-        return BinanceSpotOHLCVProvider().fetch_bars(asset, "1d", limit=5000)
+        return default_crypto_reference().fetch_bars(asset, "1d", limit=5000)
     return load_tr_bars(asset)
 
 

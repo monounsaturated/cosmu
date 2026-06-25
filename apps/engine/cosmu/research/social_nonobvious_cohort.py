@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from cosmu.data.altdata import AltDataStore, StoreBackedAltProvider
-from cosmu.data.market import BinanceSpotOHLCVProvider
+from cosmu.data.market import default_crypto_reference
 from cosmu.research.carry_ablation import _real_market
 from cosmu.research.social_norm import derive_social_alt
 from cosmu.research.social_signal_cohort import _clip_to_social_window, run_cohort
@@ -44,7 +44,7 @@ def _main() -> int:
     store = Store(Settings(database_url=f"sqlite:///{tmp}/social.sqlite3", openrouter_api_key=None))
     specs = load_specs()
     provider = StoreBackedAltProvider(AltDataStore())
-    market = _clip_to_social_window(_real_market(BinanceSpotOHLCVProvider()), provider)
+    market = _clip_to_social_window(_real_market(default_crypto_reference()), provider)
 
     # NORMALIZED alt-join (the only seam that differs from social_signal_cohort): scale-stable, PIT.
     norm_alt = derive_social_alt(market, provider)

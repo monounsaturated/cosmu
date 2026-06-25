@@ -38,7 +38,7 @@ from decimal import Decimal
 from cosmu.config.settings import Settings
 from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
 from cosmu.data.backtest import sum_funding_per_bar
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, default_crypto_reference
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.data.providers._types import AltDataPoint
 from cosmu.data.providers.store import AltDataStore
@@ -140,7 +140,11 @@ def load_perp_market(
 ) -> dict[str, list[Bar]]:
     """Read cached REAL perp bars for each universe symbol. A symbol with no cache file (or that errors) is simply
     absent from the returned dict — NEVER synthetic-filled. Deterministic for a fixed cache."""
-    provider = BinanceSpotOHLCVProvider(cache_dir=cache_dir)
+    # Flip off the Binance-local cache when the bars venue is reconfigured (COSMU_BARS_VENUE=kraken /
+    # COSMU_BARS_URL). NB: perp price series approximated by the configured spot reference until a dedicated
+    # perp venue (Kraken Futures / Hyperliquid) is wired — interim, never stale-Binance.
+    ref = default_crypto_reference()
+    provider = ref if not isinstance(ref, BinanceSpotOHLCVProvider) else BinanceSpotOHLCVProvider(cache_dir=cache_dir)
     out: dict[str, list[Bar]] = {}
     for sym in symbols:
         try:

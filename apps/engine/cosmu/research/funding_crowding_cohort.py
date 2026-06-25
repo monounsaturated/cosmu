@@ -20,7 +20,7 @@ from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, CachedFundingRateProvider
 from cosmu.data.backtest import _regime_labels, run_strategy_backtest_detailed
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, default_crypto_reference
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import cscv_pbo, score
@@ -240,7 +240,7 @@ def _main() -> int:
     store = Store(Settings(database_url=f"sqlite:///{tmp}/crowding.sqlite3", openrouter_api_key=None))
     specs = load_specs()
     funding = CachedFundingRateProvider()
-    market = _clip_to_funding_window(_real_market(BinanceSpotOHLCVProvider()), funding)
+    market = _clip_to_funding_window(_real_market(default_crypto_reference()), funding)
     report = run_cohort(specs, market, funding, store, persist=True)
 
     print(f"PHASE-0 FUNDING-CROWDING COHORT — {report.verdict}")

@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from cosmu.core.interfaces import AssetClass, Bar, Feature, Instrument
-from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
+from cosmu.data.market import MarketDataProvider, default_crypto_reference
 from cosmu.data.universe_calendar import Listing, UniverseCalendar
 
 _VENUE = "binance"
@@ -48,7 +48,7 @@ class CryptoDataAdapter:
         transform_versions: dict[str, str] | None = None,
     ) -> None:
         self._symbols = list(symbols)
-        self._market = market_provider or BinanceSpotOHLCVProvider()
+        self._market = market_provider or default_crypto_reference()
         self._alt = alt_reader
         self._alt_metrics = alt_metrics
         self._calendar = UniverseCalendar(listings) if listings else None

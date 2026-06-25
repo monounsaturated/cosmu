@@ -25,10 +25,10 @@ from datetime import datetime
 
 from cosmu.data.market import (
     Bar,
-    BinanceSpotOHLCVProvider,
     KrakenSpotOHLCVProvider,
     MarketDataProvider,
     UniversalOHLCVProvider,
+    default_crypto_reference,
 )
 from cosmu.data.reference import AlignmentDecision as _AlignmentDecision
 from cosmu.data.reference import (
@@ -159,7 +159,7 @@ def _fallback_provider(venue_id: str) -> MarketDataProvider | None:
     if venue_id == "kraken":
         return KrakenSpotOHLCVProvider()
     if venue_id == "binance":
-        return BinanceSpotOHLCVProvider()
+        return default_crypto_reference()
     return None
 
 

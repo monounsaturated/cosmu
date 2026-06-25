@@ -27,7 +27,7 @@ from cosmu.config.voices import (
     Voice,
 )
 from cosmu.data.events_store import MarketEvent, PgEventsStore
-from cosmu.data.market import BinanceSpotOHLCVProvider, MarketDataProvider
+from cosmu.data.market import MarketDataProvider, default_crypto_reference
 from cosmu.data.sources.voices import (
     RedditVoiceProvider,
     RssVoiceProvider,
@@ -214,7 +214,7 @@ def run_voices_pass(
     panel = panel if panel is not None else VOICE_PANEL
     providers = providers if providers is not None else _default_providers(settings)
     extractor = extractor if extractor is not None else build_claim_extractor_from_settings(settings)
-    bars_provider = bars_provider or BinanceSpotOHLCVProvider()
+    bars_provider = bars_provider or default_crypto_reference()
     now = now or datetime.now(tz=UTC)
     events_store = PgEventsStore(store)
     report = VoicesPassReport(voices=len(panel))

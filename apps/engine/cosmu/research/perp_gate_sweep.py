@@ -26,7 +26,7 @@ from cosmu.data.backtest import (
     run_strategy_backtest_detailed,
     sum_funding_per_bar,
 )
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, default_crypto_reference
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import BacktestMetrics, sample_moments
 from cosmu.research.carry_ablation import (
@@ -475,7 +475,7 @@ def _main() -> int:
     # Use the offline cache (deterministic; no network). For a live run cache funding first via
     # cosmu.research.carry_ablation.fetch_and_cache_funding().
     funding = CachedFundingRateProvider()
-    market_provider = BinanceSpotOHLCVProvider()
+    market_provider = default_crypto_reference()
     # SURVIVORSHIP BIAS: PERP_UNIVERSE is today's liquid perps; assets that delisted or lost
     # liquidity during the 2-year backtest window are absent.  A point-in-time universe calendar
     # is the proper fix — deferred.  Results should be interpreted with this caveat.
@@ -487,7 +487,7 @@ def _main() -> int:
             market[sym] = bars
 
     if not market:
-        print("[perp_gate_sweep] no market data — fetch bars first (BinanceSpotOHLCVProvider needs network)")
+        print("[perp_gate_sweep] no market data — fetch bars first (the configured bars provider needs network)")
         return 1
 
     tmp = tempfile.mkdtemp(prefix="cosmu-perp-sweep-")

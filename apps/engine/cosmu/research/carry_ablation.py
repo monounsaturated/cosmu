@@ -25,7 +25,7 @@ from cosmu.data.backtest import (
     run_strategy_backtest,
     sum_funding_per_bar,
 )
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, MarketDataProvider
+from cosmu.data.market import Bar, MarketDataProvider, default_crypto_reference
 from cosmu.knowledge.store import Store
 from cosmu.master.scorer import BacktestMetrics, sample_moments, score
 from cosmu.master.trials import record_trial, trial_stats
@@ -674,7 +674,7 @@ def _main() -> int:
     store = Store(Settings(database_url=f"sqlite:///{tmp}/carry.sqlite3", openrouter_api_key=None))
     carry_short, carry_long, xsec_long, xsec_short = load_specs()
     funding = CachedFundingRateProvider()
-    market = _clip_to_funding_window(_real_market(BinanceSpotOHLCVProvider()), funding)
+    market = _clip_to_funding_window(_real_market(default_crypto_reference()), funding)
     report = run_carry_ablation(carry_short, carry_long, xsec_long, xsec_short, market, funding, store)
 
     print(f"PHASE-0 CARRY/NEUTRAL GATE — {report.verdict}")

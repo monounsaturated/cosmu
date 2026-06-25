@@ -280,10 +280,10 @@ def run_cross_feature_sweep(*, assets: list[str] | None = None, lags: tuple[int,
     Degrades gracefully: a feature with no store data never pairs; an asset whose bars fail to load is skipped. Reuses
     the single scan's configured asset universe so the two sweeps visit the SAME universe."""
     from cosmu.config.settings import get_settings
-    from cosmu.data.market import BinanceSpotOHLCVProvider
+    from cosmu.data.market import default_crypto_reference
     from cosmu.research.correlation_scan import _sweep_universe
 
-    prov = BinanceSpotOHLCVProvider()
+    prov = default_crypto_reference()
     universe = assets or _sweep_universe()
     market: dict[str, list[Bar]] = {}
     for sym in universe:
@@ -323,7 +323,7 @@ def _main() -> int:
     import sys
 
     from cosmu.config.settings import get_settings
-    from cosmu.data.market import BinanceSpotOHLCVProvider
+    from cosmu.data.market import default_crypto_reference
     from cosmu.research.correlation_scan import _DEFAULT_UNIVERSE
 
     do_sweep = "--sweep" in sys.argv or os.environ.get("CROSS_FEATURE_SWEEP") == "1"
@@ -342,7 +342,7 @@ def _main() -> int:
         _print_report(rep, "CROSS-FEATURE SWEEP (full pair grid · tracked)")
         return 0
 
-    prov = BinanceSpotOHLCVProvider()
+    prov = default_crypto_reference()
     universe = cli_assets or os.environ.get("SCAN_UNIVERSE", ",".join(_DEFAULT_UNIVERSE)).split(",")
     market = {s: prov.fetch_bars(s, "1d", limit=1500) for s in universe}
     persist_spec: "CorrelationPersist | None" = None
