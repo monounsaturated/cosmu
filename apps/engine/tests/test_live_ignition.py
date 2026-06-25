@@ -290,6 +290,59 @@ def test_alpaca_paper_order_books_on_live_testnet_book_not_sim(tmp_path):
     assert int(ex["is_paper"]) == 0 and ex["venue_id"] == "alpaca"
 
 
+def _run_regime_gated_order(tmp_path):
+    """Drive ONE regime-GATED live entry (gate_passed, active adapter, not reduce-only) through execute_orders."""
+    from cosmu.master.execution import IntendedOrder, execute_orders
+    from cosmu.master.portfolio import Portfolio
+
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/regime.sqlite3", openrouter_api_key=None,
+                           sim_bankroll=Decimal("100000")))
+    portfolio = Portfolio(store, bankroll=Decimal("100000"))
+    fake = _FakeLiveAdapter(venue="alpaca", mode="paper")
+    fake.asset_class = AssetClass.EQUITY
+    order = IntendedOrder(
+        strategy_version_id="regime-fc", symbol="IEF", venue_id="alpaca", side=1,
+        qty=Decimal("1"), price=Decimal("93.62"), stop_loss=Decimal("88.94"), take_profit=Decimal("102.98"),
+        conviction=Decimal("0.5"), gate_passed=True, order_type="market", client_order_id="coid-regime-fc",
+    )
+    outcomes = execute_orders([order], live_enabled=True, kill_switch=False, adapter=fake,
+                              store=store, portfolio=portfolio, risk=store.settings.risk, catalog=default_catalog())
+    return store, fake, outcomes
+
+
+def test_regime_gated_entry_with_unreadable_bars_is_advisory_skip(tmp_path, monkeypatch):
+    """DELIBERATE scope of the regime gate: when the current regime can't be READ (no reference bars), the
+    check is an advisory SKIP — the entry still routes live (a data-availability state is not a check failure).
+    Making this fail-closed too is a stricter calibration left to the operator; pinned here so it's not an
+    accidental fail-open. (Contrast the ERROR path below, which DOES fail closed.)"""
+    import cosmu.master.execution as execmod
+
+    monkeypatch.setattr(execmod, "_regime_returns", lambda store, vid: {"mixed": [0.01, -0.02, 0.03]})  # IS regime-gated
+    monkeypatch.setattr(execmod, "_reference_bars", lambda adapter, symbol: [])  # current regime unreadable
+    store, fake, outcomes = _run_regime_gated_order(tmp_path)
+
+    assert outcomes[0].routed_live and outcomes[0].venue == "testnet"  # advisory skip → still routes live
+    assert store.row("SELECT id FROM events WHERE kind = 'order_regime_unverified'") is None  # no block event
+
+
+def test_regime_gated_entry_fails_closed_when_check_errors(tmp_path, monkeypatch):
+    """A regime check that THROWS (timeout / transport / compute error) must FAIL CLOSED — not 'fall through to
+    sim' as the old comment wrongly claimed (it fell through to LIVE). Block + audit, never route real money."""
+    import cosmu.master.execution as execmod
+
+    def _boom(adapter, symbol):
+        raise TimeoutError("regime bars timed out")
+
+    monkeypatch.setattr(execmod, "_regime_returns", lambda store, vid: {"mixed": [0.01, -0.02, 0.03]})
+    monkeypatch.setattr(execmod, "_reference_bars", _boom)
+    store, fake, outcomes = _run_regime_gated_order(tmp_path)
+
+    assert not outcomes[0].routed_live and outcomes[0].venue == "sim"
+    assert fake.submitted == []
+    evt = store.row("SELECT payload FROM events WHERE kind = 'order_regime_unverified'")
+    assert evt is not None and "regime_check_error" in evt["payload"]
+
+
 def test_resolve_live_adapters_empty_when_toggle_off(tmp_path):
     store = _store(tmp_path)
     assert ps._resolve_live_adapters(store) == {}  # toggle defaults off

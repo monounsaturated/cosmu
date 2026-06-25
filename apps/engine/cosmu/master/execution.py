@@ -171,7 +171,10 @@ def execute_orders(
 
         # Regime eligibility gate: a live-routed ENTRY must be in a regime the strategy proved in. A
         # reduce-only close is exempt — blocking an exit because the regime moved would trap the very
-        # position the regime change endangers. Failure → sim-fill with an audit event (never silently drops).
+        # position the regime change endangers. FAIL CLOSED on a regime check that ERRORS: a check we cannot
+        # COMPLETE (timeout / transport / compute error) must never route real money — it blocks → sim-fill +
+        # audit. (A missing-bars read stays an advisory skip — a data-availability state, not a check failure;
+        # making THAT fail-closed too is a stricter calibration left to the operator.)
         regime_blocked = False
         if live_enabled and intent.gate_passed and getattr(adapter, "active", False) and not intent.reduce_only:
             try:
@@ -197,8 +200,18 @@ def execute_orders(
                                     "client_order_id": coid,
                                 },
                             )
-            except Exception:  # noqa: BLE001 — regime check is advisory; failure falls through to sim
-                pass
+            except Exception:  # noqa: BLE001 — a regime check we cannot COMPLETE must FAIL CLOSED, not route live
+                regime_blocked = True  # timeout / transport / compute error → could not confirm regime → block
+                try:
+                    store.append_event(
+                        actor="master",
+                        kind="order_regime_unverified",
+                        ref_type="strategy_version",
+                        ref_id=intent.strategy_version_id,
+                        payload={"symbol": intent.symbol, "reason": "regime_check_error", "client_order_id": coid},
+                    )
+                except Exception:  # noqa: BLE001 — never let an audit-log failure crash the tick or unblock the gate
+                    pass
 
         route_live = bool(live_enabled and not kill_switch and intent.gate_passed and getattr(adapter, "active", False) and not regime_blocked)
         venue_label = _live_venue(adapter) if route_live else "sim"
