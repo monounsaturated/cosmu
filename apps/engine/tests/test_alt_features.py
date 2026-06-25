@@ -220,3 +220,43 @@ def test_every_enabled_feature_is_routable_or_computed():
 
     unaccounted = feature_names() - (PRICE_FEATURES | set(_STORE_PROVIDER_OF))
     assert not unaccounted, f"no route, not bar-computed: {unaccounted}"
+
+
+def test_fetch_series_canonical_pair_reads_bare_keyed_alt_on_pg_path(tmp_path):
+    """Postgres-path regression guard for the universal price layer's canonical-pair cells.
+
+    The finder now stamps crypto cells with the CANONICAL pair id ("BTC/USDT"), but alt series (funding_rate,
+    LunarCrush social, …) are stored under the BARE venue symbol ("BTCUSDT") / base asset ("BTC"). PgAltDataStore
+    matches `symbol` LITERALLY (`WHERE symbol = ?`), so a canonical fetch reads EMPTY on prod — while the JSONL
+    store's `_path` strips "/" and accidentally works, which masked the bug in JSONL-backed tests. This test runs
+    over a REAL SQLite-backed PgAltDataStore (literal match, NO slash stripping) so that masking can't return:
+    StoreBackedAltProvider must resolve the canonical spelling back to the stored key."""
+    from cosmu.config.settings import Settings
+    from cosmu.data.altdata import StoreBackedAltProvider
+    from cosmu.data.providers.store import PgAltDataStore
+    from cosmu.knowledge.store import Store
+
+    # File-backed (NOT :memory:) so every Store connection sees the migrated schema — and a REAL PgAltDataStore,
+    # whose literal `WHERE symbol = ?` is the exact prod (Postgres) behaviour the JSONL store's `_path` masks.
+    store = Store(Settings(database_url=f"sqlite:///{tmp_path}/alt.sqlite3"))
+    pg = PgAltDataStore(store)
+    # funding_rate is stored under the BARE venue symbol, the way the ingest pipeline writes it.
+    funding = [AltDataPoint(ts=_d(d), available_at=_d(d), value=round(0.0001 * d, 6)) for d in (1, 2, 3)]
+    pg.append("binance", "BTCUSDT", "funding_rate", funding)
+    # LunarCrush hoards by BASE asset ("BTC") — the other spelling the canonical key must resolve through.
+    social = [AltDataPoint(ts=_d(d), available_at=_d(d), value=10.0 + d) for d in (1, 2, 3)]
+    pg.append("lunarcrush", "BTC", "social_volume", social)
+
+    provider = StoreBackedAltProvider(pg)
+
+    # The bug + fix: a canonical "BTC/USDT" fetch must find the bare-keyed funding (was EMPTY pre-fix on PG).
+    canon = provider.fetch_series("BTC/USDT", "funding_rate", limit=100)
+    assert [p.value for p in canon] == [0.0001, 0.0002, 0.0003], "canonical pair must read bare-keyed funding"
+
+    # No regression: the bare spelling still resolves identically (the exact match always wins first).
+    bare = provider.fetch_series("BTCUSDT", "funding_rate", limit=100)
+    assert [p.value for p in bare] == [p.value for p in canon]
+
+    # The base-asset fallback must also fire under a canonical key (BTC/USDT -> BTCUSDT -> BTC).
+    social_out = provider.fetch_series("BTC/USDT", "social_volume", limit=100)
+    assert [p.value for p in social_out] == [11.0, 12.0, 13.0], "canonical pair must reach base-asset social"

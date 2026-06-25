@@ -387,22 +387,34 @@ class StoreBackedAltProvider:
                 f"{sorted(self._provider_of)}"
             )
         key = "MARKET" if metric in self._market_wide else symbol
-        points = self._store.read_all(provider, key, metric)
-        if not points:
-            alias = _STORE_METRIC_ALIAS.get(metric)
-            if alias:
-                points = self._store.read_all(provider, key, alias)
+        alias = _STORE_METRIC_ALIAS.get(metric)
+
+        def _read(sym: str) -> list[AltDataPoint]:
+            # The canonical metric, then its legacy-rename alias (a read-time fallback for data banked under the
+            # old name). Factored so every symbol-SPELLING fallback below reuses the SAME metric+alias read.
+            pts = self._store.read_all(provider, sym, metric)
+            if not pts and alias:
+                pts = self._store.read_all(provider, sym, alias)
+            return pts
+
+        points = _read(key)
+        # Canonical-pair fallback: the universal price layer stamps crypto cells with the CANONICAL pair id
+        # ("BTC/USDT"), but alt series are stored under the BARE venue symbol ("BTCUSDT"). On Postgres a literal
+        # `WHERE symbol = 'BTC/USDT'` never matches the stored "BTCUSDT" rows, so funding/alt would silently read
+        # EMPTY for every populated-universe crypto cell (the JSONL store's `_path` strips "/", which masked this
+        # in tests). Retry with the slash-removed spelling. Only fires when the exact key found nothing, so an
+        # exact match always wins and the point-in-time semantics are unchanged.
+        bare = key.replace("/", "")
+        if not points and bare != key:
+            points = _read(bare)
         # Base-asset fallback: a provider hoarded by coin id (e.g. LunarCrush "BTC") is read by the backtest
-        # under the venue pair ("BTCUSDT"). Only fires when the exact key found nothing, so an exact match
-        # always wins and the point-in-time semantics are unchanged (we just look under the other key form).
+        # under the venue pair ("BTCUSDT" or the canonical "BTC/USDT"). Strip the quote off the BARE form so it
+        # resolves whichever spelling the cell used. Only fires when the exact + slash-stripped keys found
+        # nothing, so an exact match always wins and the point-in-time semantics are unchanged.
         if not points and provider in _STORE_BASE_ASSET_PROVIDERS and key != "MARKET":
-            base = _strip_quote(key)
+            base = _strip_quote(bare)
             if base:
-                points = self._store.read_all(provider, base, metric)
-                if not points:
-                    alias = _STORE_METRIC_ALIAS.get(metric)
-                    if alias:
-                        points = self._store.read_all(provider, base, alias)
+                points = _read(base)
         # Collapse exact re-appended duplicates (same ts AND available_at; last write wins, matching
         # read_asof's id-DESC rule) BEFORE the trailing slice — the slice must count DISTINCT points, or a
         # store that accreted duplicate copies of a window (the pre-dedup scheduled ingest did this every
