@@ -380,11 +380,12 @@ def _seed_funding(alt_store, symbol: str, bars: list[Bar], *, value: float = 0.0
 
 def test_alt_by_cell_maps_canonical_pair_to_bare_ingest_key(tmp_path):
     """REGRESSION (universal-price layer): a crypto cell on the POPULATED-universe screen path carries the CANONICAL
-    slash pair (BTC/USDT), but ingest keys funding/OI/on-chain by the BARE full-pair symbol (BTCUSDT). _alt_by_cell
-    must map canonical→bare (alt_ingest_symbol) BEFORE the alt fetch — otherwise fetch_series('BTC/USDT',
-    'funding_rate') misses and funding silently reads None for every crypto cell, making funding/alt edges
-    untestable on the universe path. Uses an EXACT-MATCH store (PgAltDataStore over SQLite, like prod Postgres):
-    the JSONL store would MASK the bug by stripping '/' in its file path."""
+    slash pair (BTC/USDT), but ingest keys funding/OI/on-chain by the BARE full-pair symbol (BTCUSDT). The
+    canonical→bare resolution is defended at TWO layers: StoreBackedAltProvider.fetch_series resolves the slash pair
+    to the bare key itself (#361), AND _alt_by_cell maps canonical→bare (alt_ingest_symbol) before the alt fetch.
+    Without it, funding silently reads None for every crypto cell, making funding/alt edges untestable on the
+    universe path. Uses an EXACT-MATCH store (PgAltDataStore over SQLite, like prod Postgres): the JSONL store would
+    MASK the bug by stripping '/' in its file path."""
     from cosmu.data.altdata import PgAltDataStore, StoreBackedAltProvider
     from cosmu.evolution.seeder import seed_funding_squeeze_spec
     from cosmu.lab.finder import _alt_by_cell
@@ -397,12 +398,16 @@ def test_alt_by_cell_maps_canonical_pair_to_bare_ingest_key(tmp_path):
     bars = _bars(_walk(120, seed=42))
     _seed_funding(alt, "BTCUSDT", bars)  # ingest banks funding under the BARE symbol
 
-    # Sanity: the store is EXACT-MATCH (prod Postgres semantics) — the slash key alone finds nothing, the bare key
-    # does. This mismatch is what made the regression bite: the cell carried 'BTC/USDT' but the series lives under
-    # 'BTCUSDT'. (The JSONL store strips '/' in its file path and would hide this — hence the PG-backed store here.)
+    # Sanity (post-#361): the provider RESOLVES the canonical slash pair to the bare ingest key itself, so on an
+    # EXACT-MATCH store (prod Postgres semantics) fetch_series('BTC/USDT', ...) now SUCCEEDS — the SAME series as the
+    # bare 'BTCUSDT' key. The regression is defended at BOTH layers: the provider's canonical→bare resolution (#361)
+    # AND _alt_by_cell's mapping below. (The PG-backed store keys by the bare 'BTCUSDT' and would expose any
+    # un-resolved slash miss; the JSONL store strips '/' in its file path and would hide it — hence PG here.)
     provider = StoreBackedAltProvider(alt)
-    assert provider.fetch_series("BTC/USDT", "funding_rate", limit=10_000) == []
-    assert provider.fetch_series("BTCUSDT", "funding_rate", limit=10_000)
+    slash_series = provider.fetch_series("BTC/USDT", "funding_rate", limit=10_000)
+    bare_series = provider.fetch_series("BTCUSDT", "funding_rate", limit=10_000)
+    assert bare_series, "the bare ingest key must find the seeded series"
+    assert slash_series == bare_series, "post-#361 the provider resolves canonical 'BTC/USDT' → bare 'BTCUSDT' → same series"
 
     # The POPULATED-universe path: the cell key + canonical symbol are the slash pair, the venue is binance.
     market = {"BTC/USDT": bars}
