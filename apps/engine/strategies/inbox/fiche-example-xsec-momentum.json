@@ -1,0 +1,55 @@
+{
+  "name": "Fiche example — plain cross-sectional momentum (long leaders)",
+  "rationale": "A minimal, worked cross-sectional momentum reference (paired with the authoring fiche, docs/AUTHORING.md). Mechanism: at each bar close, rank every screened instrument by its N-day return; the relative-strength LEADERS (top percentile) tend to keep outperforming the laggards at a weekly-to-monthly horizon — the cross-sectional momentum premium documented since Jegadeesh-Titman (1993) and replicated on liquid crypto. The xsec_momentum_rank feature is a point-in-time percentile [0,1] of ret_Nd over the universe present at that bar (no survivorship look-ahead). Entry: rank above a fitted top-rank floor AND realized vol below a fitted ceiling (momentum bleeds in crash/whipsaw regimes). Exit: rank drops below a fitted exit floor (leadership lost) or the stop/take/time-stop fires. This is the PLAIN single-stop/take version — exactly what paper and live execute today (no multi-TP, trailing, or meta-label, which are backtest-only; see the SKILL toolbox matrix). No magic numbers — every threshold is a ParamRef in param_space.",
+  "catalyst": "Cross-sectional momentum leadership: relative-strength leaders outperform laggards at the weekly-monthly horizon.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 10
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 5,
+    "max_hold_days": 14
+  },
+  "entry": [
+    {
+      "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "mom_lookback" } },
+      "op": "gt",
+      "threshold": { "param": "rank_floor" }
+    },
+    {
+      "feature": { "name": "vol_realized" },
+      "op": "lt",
+      "threshold": { "param": "vol_ceiling" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "xsec_momentum_rank", "lookback": { "param": "mom_lookback" } },
+        "op": "lt",
+        "threshold": { "param": "rank_exit_floor" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mom_lookback":     { "kind": "int",   "lo": 20,   "hi": 40,   "step": 1 },
+    "rank_floor":       { "kind": "float", "lo": 0.70, "hi": 0.90 },
+    "rank_exit_floor":  { "kind": "float", "lo": 0.40, "hi": 0.65 },
+    "vol_ceiling":      { "kind": "float", "lo": 0.02, "hi": 0.12 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":               { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":        { "kind": "int",   "lo": 5,    "hi": 14,   "step": 1 }
+  },
+  "direction": 1
+}

@@ -1,0 +1,56 @@
+{
+  "name": "Fiche example — funding contrarian (fade crowded-short capitulation, long spot)",
+  "rationale": "A minimal, worked funding-contrarian reference (paired with the authoring fiche, docs/AUTHORING.md). Mechanism: perpetual funding is a crowding gauge — DEEPLY NEGATIVE funding means shorts are paying longs, i.e. the market is positioned net-short and crowded into the down-side. That crowding mean-reverts: a short squeeze / capitulation bottom tends to follow extreme-negative funding, so a long-spot entry fades the crowded short. We require funding below a fitted NEGATIVE floor (crowded short) AND an oversold RSI below a fitted floor (price already washed out, not still falling), to avoid catching a knife in a clean down-trend. Exit: funding normalizes back above a fitted ceiling (the crowd has unwound — edge gone) or the stop/take/time-stop fires. The funding_feature wires the point-in-time funding rate as P&L accrual on the open position in the BACKTEST physics (paper/live trade the plain single stop/take — funding accrual is backtest-only today; see the SKILL toolbox matrix). No magic numbers — every threshold is a ParamRef in param_space.",
+  "catalyst": "Deeply negative funding = crowded shorts paying longs; an oversold wash-out mean-reverts up as shorts capitulate.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 21
+  },
+  "entry": [
+    {
+      "feature": { "name": "funding_rate" },
+      "op": "lt",
+      "threshold": { "param": "funding_floor" }
+    },
+    {
+      "feature": { "name": "rsi", "lookback": { "param": "rsi_lookback" } },
+      "op": "lt",
+      "threshold": { "param": "rsi_floor" }
+    }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      {
+        "feature": { "name": "funding_rate" },
+        "op": "gt",
+        "threshold": { "param": "funding_exit_ceiling" }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 3,
+    "max_position_pct": 0.15,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_floor":         { "kind": "float", "lo": -0.0006, "hi": -0.0001 },
+    "funding_exit_ceiling":  { "kind": "float", "lo": -0.00005, "hi": 0.0001 },
+    "rsi_lookback":          { "kind": "int",   "lo": 7,      "hi": 21,    "step": 1 },
+    "rsi_floor":             { "kind": "float", "lo": 20.0,   "hi": 38.0 },
+    "stop":                  { "kind": "float", "lo": 0.04,   "hi": 0.15 },
+    "tp":                    { "kind": "float", "lo": 0.05,   "hi": 0.25 },
+    "time_stop":             { "kind": "int",   "lo": 5,      "hi": 21,    "step": 1 }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}
