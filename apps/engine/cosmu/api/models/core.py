@@ -338,6 +338,27 @@ class DefundRequest(BaseModel):
 class DefundResponse(BaseModel):
     ok: bool
     defunded: list[str]
+    # How many open legs the engine actually ROUTED a reduce_only liquidation order for before zeroing the book
+    # (0 when nothing was open / no positions to close). On an ARMED venue this is a real exchange order; on the
+    # sim/unarmed path it sim-closes through the same managed path. SQL-zero remains the final bookkeeping.
+    liquidated: int = 0
+
+
+class LiquidateRequest(BaseModel):
+    scope: Literal["all", "strategy"]
+    version_id: str | None = None
+
+
+class LiquidateResponse(BaseModel):
+    """The honest result of a Liquidate-all / per-strategy Stop. `routed` = legs a reduce_only exit order was
+    accepted for (real reduce-only order on an ARMED venue, sim-close otherwise); `closed` = legs the book is now
+    flat on after the SQL-zero backstop. Idempotent: a second call with nothing open returns routed=0."""
+
+    ok: bool
+    scope: Literal["all", "strategy"]
+    routed: int
+    closed: int
+    version_ids: list[str]
 
 
 class LivePosition(BaseModel):
