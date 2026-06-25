@@ -51,14 +51,24 @@ def test_permutation_null_actually_trades_and_tempts(correlated):
     # nothing. Here the grid DOES trade and a real chunk of variants look profitable in-sample (PF > 1), some
     # with enough trades to be gate-eligible — so the 0 below is the gate rejecting tempting-but-spurious
     # edges, not an empty backtest or a min_trades artifact.
+    #
+    # Density (n=800 / 256 variants) MATTERS — it is the same regime the leak-zone guard below runs at, and it
+    # is what makes this assertion ROBUST instead of a seed lottery. The brittle version ran at n=400 / 128: in
+    # the `correlated=True` regime every symbol is driven by ONE shared shuffled factor, so a 400-bar market is
+    # too short for the breakout grid to reliably surface a chunk of by-chance winners — the profitable-looking
+    # count swung from 0 to 126 across seeds (seed=13 happened to land on 8 < 10, seed=97 on 0), so any positive
+    # floor was a coin-flip on the draw, not a real property. Lengthening the market + widening the grid is a
+    # strictly stabler estimator of the by-chance winner rate: across every seed that used to collapse (13/97/2/
+    # 42) this regime now yields >=51 profitable-looking and >=13 gate-eligible variants, clearing the floors by
+    # a wide margin while still failing loudly if the backtest ever genuinely went vacuous (no trades / no PF>1).
     spec = seed_orb_fvg_spec()
-    market = permutation_null_market(correlated=correlated, n=400, seed=13)
+    market = permutation_null_market(correlated=correlated, n=800, seed=13)
     venue = default_catalog().venue("binance")
     gates = Settings(openrouter_api_key=None).gates
 
     profitable_looking = 0
     gate_eligible_winners = 0
-    grid = build_grid(spec, max_variants=128)
+    grid = build_grid(spec, max_variants=256)
     for v in grid:
         d = run_strategy_backtest_detailed(spec, v.params, market, fee_bps=venue.taker_fee_bps)
         if float(d.metrics.profit_factor) > 1.0:
