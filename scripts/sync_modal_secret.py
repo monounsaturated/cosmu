@@ -33,6 +33,12 @@ WANTED = (
     "FRED_API_KEY",
     "LUNARCRUSH_API_KEY",
     "POLYMARKET_TOKEN",
+    # LIVE EXEC keys — optional: only set in .env.local when ARMING a venue for real money (the venue's exec
+    # adapter stays disabled → sim-fill without them). Listed here so a future arming syncs them to the Modal
+    # fleet automatically; absent → skipped (the `if env.get(k)` filter below), so they cost nothing unset.
+    # See docs/runbooks/kraken-live-arming.md. LIVE__MODE is the real-money interlock the adapters read.
+    "KRAKEN_API_KEY",
+    "KRAKEN_API_SECRET",
     # Cloudflare R2 creds — the cold tier needs these so the heavy lake jobs run on Modal compute, not the M2:
     # the DuckLake lane (cosmu.data.ducklake_store / age_out / retention → sync_lake, prune) AND the Parquet lane
     # (export_lake / lake_run / lake_smoke). Shipping the creds does NOT by itself flip a backend; ALT_DATA_BACKEND
