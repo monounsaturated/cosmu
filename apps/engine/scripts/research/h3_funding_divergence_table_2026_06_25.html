@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>COSMU H3 cross-venue funding divergence — 2026-06-25</title>
+<style>
+:root{--bg:#0d1117;--fg:#e6edf3;--mut:#8b949e;--line:#21262d;--card:#161b22;--red:#f85149;--green:#3fb950;--amber:#d29922;--blue:#58a6ff}
+*{box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:24px;font-size:13px;line-height:1.5}
+h1{font-size:20px;margin:0 0 4px} .sub{color:var(--mut);margin:0 0 18px;font-size:13px}
+h2{font-size:14px;margin:22px 0 8px;color:var(--fg)}
+.cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px;min-width:140px}
+.card .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.card .val{font-size:22px;font-weight:600;margin-top:2px}
+.big-red{color:var(--red)} .big-green{color:var(--green)} .big-blue{color:var(--blue)} .big-amber{color:var(--amber)}
+.verdict{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--red);border-radius:6px;padding:14px 16px;margin-bottom:20px}
+.verdict b{color:var(--fg)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;margin-bottom:6px}
+th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{background:#010409;color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.num{text-align:right;font-feature-settings:'tnum'}
+tr.fail td:nth-child(3){color:var(--red)}
+.ok{color:var(--green);font-weight:600} .no{color:var(--red);font-weight:600}
+.legend{color:var(--mut);font-size:11px;margin:10px 0 0}
+code{background:#010409;padding:1px 5px;border-radius:4px;color:var(--blue)}
+.wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}
+</style></head><body>
+<h1>COSMU H3 — cross-venue funding divergence (fade the outlier-funding venue)</h1>
+<p class="sub">2026-06-25 · pooled event-study basket · REAL PIT funding (Binance / OKX / Kraken-Futures), Kraken-spot reference, real Kraken fees · EXPERIMENT, zero production impact</p>
+<div class="cards">
+  <div class="card"><div class="k">Pooled events N</div><div class="val big-blue">597</div></div>
+  <div class="card"><div class="k">Reversion sign</div><div class="val big-red">WRONG</div></div>
+  <div class="card"><div class="k">Gross mean</div><div class="val big-red">-19.8 bps</div></div>
+  <div class="card"><div class="k">Net mean</div><div class="val big-red">-99.8 bps</div></div>
+  <div class="card"><div class="k">Frac positive</div><div class="val big-amber">47.9%</div></div>
+  <div class="card"><div class="k">Fee hurdle (2× r/t)</div><div class="val">160 bps</div></div>
+</div>
+<div class="verdict">
+<b>Verdict: KILL.</b> 597 pooled |z|&gt;2 events clear the ≥30 floor (check a), but the <b>reversion sign is WRONG</b>
+(check b): fading the outlier-funding venue returns a <b>gross −19.8 bps</b> mean on the Kraken-spot reference —
+the spread does <b>not</b> mean-revert as the thesis predicted; if anything the outlier venue's price mildly
+<i>continues</i>. The gross edge is far below the 160 bps fee hurdle (check c). The result is
+uniform across all 10 assets (9/10 negative mean) and survives a 3-venue-median / z-capped robustness cut
+(−46.5 bps). Structurally orthogonal to the failed single-venue funding-level set, and it ALSO fails — cleanly.
+</div>
+<h2>Three honest checks (pre-registered |z|&gt;2.0 · horizon 1d · z-window 30d · NO sweep)</h2>
+<table>
+<tr><th>Check</th><th>Bar</th><th>Observed</th><th>Result</th></tr>
+<tr><td>(a) ≥30 pooled entries</td><td>N ≥ 30</td><td class=num>597</td><td><span class=ok>PASS</span></td></tr>
+<tr><td>(b) reversion sign correct</td><td>gross mean &gt; 0</td><td class=num>-19.8 bps</td><td><span class=no>FAIL</span></td></tr>
+<tr><td>(c) gross edge &gt; 2× round-trip fee</td><td>&gt; 160 bps</td><td class=num>-19.8 bps</td><td><span class=no>FAIL</span></td></tr>
+</table>
+<p class="legend">Gate stats NOT computed: the basket failed (b)+(c), so it was never promoted to the BRUT Gate (DSR/PBO/PSR). Killing on the cheap checks is the point — &lt;1 day, no Gate constant touched.</p>
+<h2>Per-asset signed fade return (gross, fade direction) — ranked most-against-thesis first</h2>
+<div class="wrap"><table>
+<tr><th>Asset</th><th class=num>Events</th><th class=num>Mean bps</th><th class=num>Median bps</th><th class=num>Frac positive</th></tr>
+<tr class="fail"><td>DOT</td><td class=num>45</td><td class=num>-51.9</td><td class=num>-61.7</td><td class=num>0.467</td></tr><tr class="fail"><td>AVAX</td><td class=num>68</td><td class=num>-35.4</td><td class=num>-32.3</td><td class=num>0.456</td></tr><tr class="fail"><td>ADA</td><td class=num>57</td><td class=num>-35.2</td><td class=num>-36.3</td><td class=num>0.456</td></tr><tr class="fail"><td>LINK</td><td class=num>63</td><td class=num>-20.6</td><td class=num>-21.8</td><td class=num>0.476</td></tr><tr class="fail"><td>BTC</td><td class=num>64</td><td class=num>-17.4</td><td class=num>-11.6</td><td class=num>0.469</td></tr><tr class="fail"><td>SOL</td><td class=num>60</td><td class=num>-12.7</td><td class=num>-34.8</td><td class=num>0.483</td></tr><tr class="fail"><td>ETH</td><td class=num>74</td><td class=num>-10.8</td><td class=num>8.2</td><td class=num>0.527</td></tr><tr class="fail"><td>DOGE</td><td class=num>54</td><td class=num>-9.7</td><td class=num>-8.5</td><td class=num>0.481</td></tr><tr class="fail"><td>XRP</td><td class=num>50</td><td class=num>-9.1</td><td class=num>-25.8</td><td class=num>0.460</td></tr><tr class="fail"><td>LTC</td><td class=num>62</td><td class=num>-1.9</td><td class=num>0.0</td><td class=num>0.500</td></tr>
+</table></div>
+<p class="legend">Fade direction: high-z (outlier venue funding above the cross-venue median) ⇒ perp over-long ⇒ SHORT Kraken spot; low-z ⇒ LONG. A positive number = the fade made money gross. Every asset is ≈0 or negative.</p>
+<h2>Data coverage (REAL, PIT — available_at == ts on every funding point)</h2>
+<div class="wrap"><table>
+<tr><th>Asset</th><th class=num>Binance (d)</th><th class=num>OKX (d)</th><th class=num>Kraken-Fut (d)</th><th class=num>Kraken-spot (d)</th></tr>
+<tr><td>BTC</td><td class=num>732</td><td class=num>100</td><td class=num>366</td><td class=num>720</td></tr><tr><td>ETH</td><td class=num>732</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>SOL</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>XRP</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>DOGE</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>ADA</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>AVAX</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>LINK</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>DOT</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr><tr><td>LTC</td><td class=num>731</td><td class=num>95</td><td class=num>366</td><td class=num>720</td></tr>
+</table></div>
+<p class="legend">OKX public funding-rate-history caps at ~94 days (a hard API limit) ⇒ the 3-venue overlap is recent-only; Binance &amp; Kraken-Futures carry the 2-venue median across the full ~1–2yr window. Binance BTC/ETH run 4h funding (≈4.6/day) → summed into 8h-equivalent buckets before the cross-venue median. Kraken-Futures settles hourly → 8 × 1h <code>relativeFundingRate</code> summed per 8h bucket.</p>
+<p class="legend">Reference price = Kraken-spot daily close (keyless, closed candle). Fees = real Kraken taker 40 bps/leg ⇒ 80 bps round-trip; hurdle = 2× = 160 bps. Harness: <code>scripts/research/h3_funding_divergence_2026_06_25.py</code> · raw: <code>h3_funding_divergence_results_2026_06_25.json</code>.</p>
+</body></html>
