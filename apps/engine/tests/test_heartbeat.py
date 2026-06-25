@@ -21,7 +21,10 @@ def _recorder() -> tuple[SlackNotifier, list[str]]:
     return notifier, sent
 
 
-def _seed(store: Store, *, ingest_ago_h: float, mark_ago_h: float, tick_ago_h: float, now: datetime) -> None:
+def _seed(
+    store: Store, *, ingest_ago_h: float, mark_ago_h: float, tick_ago_h: float, now: datetime,
+    exec_ago_h: float | None = None,
+) -> None:
     iso = lambda h: (now - timedelta(hours=h)).isoformat()  # noqa: E731
     store.rows(
         "INSERT INTO alt_data (provider, symbol, metric, ts, available_at, value, ingested_at) "
@@ -33,12 +36,17 @@ def _seed(store: Store, *, ingest_ago_h: float, mark_ago_h: float, tick_ago_h: f
     store.append_event(actor="master", kind="autonomy_tick_started", ref_type="run", ref_id="r", payload={})
     store.append_event(actor="master", kind="autonomy_tick_completed", ref_type="run", ref_id="r", payload={})
     store.rows("UPDATE events SET ts = ? WHERE kind IN ('autonomy_tick_started', 'autonomy_tick_completed')", (iso(tick_ago_h),))
+    # The executor clock: paper_step emits `paper_stepped` every tick. Defaults to the mark cadence so an
+    # unspecified exec age never independently trips the legacy 3-signal tests.
+    exec_ago_h = mark_ago_h if exec_ago_h is None else exec_ago_h
+    store.append_event(actor="master", kind="paper_stepped", ref_type="portfolio", ref_id="aggregate", payload={})
+    store.rows("UPDATE events SET ts = ? WHERE kind = 'paper_stepped'", (iso(exec_ago_h),))
 
 
 def test_fresh_fleet_is_ok_and_silent(tmp_path):
     now = datetime(2026, 6, 16, 12, 0, tzinfo=UTC)
     store = _store(tmp_path)
-    _seed(store, ingest_ago_h=0.5, mark_ago_h=2.0, tick_ago_h=1.0, now=now)
+    _seed(store, ingest_ago_h=0.5, mark_ago_h=2.0, tick_ago_h=1.0, exec_ago_h=2.0, now=now)
     report = heartbeat.check(store, now=now)
     assert report["ok"] is True and report["stale"] == {}
     notifier, sent = _recorder()
@@ -49,11 +57,11 @@ def test_fresh_fleet_is_ok_and_silent(tmp_path):
 def test_dark_fleet_pages_once_and_returns_nonzero(tmp_path):
     now = datetime(2026, 6, 16, 12, 0, tzinfo=UTC)
     store = _store(tmp_path)
-    # ingest 30h stale (>3), mark 50h stale (>30), tick 40h stale (>9) — the real Railway-dark scenario.
-    _seed(store, ingest_ago_h=30.0, mark_ago_h=50.0, tick_ago_h=40.0, now=now)
+    # ingest 30h stale (>3), mark 50h stale (>30), tick 40h stale (>9), exec 50h stale (>30) — Railway-dark.
+    _seed(store, ingest_ago_h=30.0, mark_ago_h=50.0, tick_ago_h=40.0, exec_ago_h=50.0, now=now)
     report = heartbeat.check(store, now=now)
     assert report["ok"] is False
-    assert set(report["stale"]) == {"ingest", "tick", "mark"}
+    assert set(report["stale"]) == {"ingest", "tick", "mark", "exec"}
     notifier, sent = _recorder()
     assert heartbeat.run(store, notifier=notifier, now=now) == 1
     assert len(sent) == 1 and "Cron fleet stale" in sent[0]
@@ -64,4 +72,18 @@ def test_never_fired_signal_is_stale(tmp_path):
     now = datetime(2026, 6, 16, 12, 0, tzinfo=UTC)
     report = heartbeat.check(_store(tmp_path), now=now)
     assert report["ok"] is False
-    assert report["ages_h"] == {"ingest": None, "tick": None, "mark": None}
+    assert report["ages_h"] == {"ingest": None, "tick": None, "mark": None, "exec": None}
+
+
+def test_stalled_executor_pages_when_rest_of_fleet_is_fresh(tmp_path):
+    # The partial-fleet-death case the other three signals miss: ingest/mark/tick all fresh, but the EXECUTOR
+    # clock (paper_stepped / forward_entry) has been dark for 40h (>30) — funded tracks stop stepping forward.
+    now = datetime(2026, 6, 16, 12, 0, tzinfo=UTC)
+    store = _store(tmp_path)
+    _seed(store, ingest_ago_h=0.5, mark_ago_h=2.0, tick_ago_h=1.0, exec_ago_h=40.0, now=now)
+    report = heartbeat.check(store, now=now)
+    assert report["ok"] is False
+    assert set(report["stale"]) == {"exec"}
+    notifier, sent = _recorder()
+    assert heartbeat.run(store, notifier=notifier, now=now) == 1
+    assert len(sent) == 1 and "exec" in sent[0]
