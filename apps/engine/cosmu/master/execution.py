@@ -134,6 +134,15 @@ def execute_orders(
             data_fresh=intent.data_fresh,
             reduce_only=intent.reduce_only,
         )
+        # SANDBOX per-combo wallet (Q1): THIS track's own equity/cash, marked at the order's current price so
+        # the open leg of this symbol is valued live. starting_capital None ⇒ no wallet on file (bare-position
+        # tools/tests) → the per-combo checks skip and the aggregate gauntlet governs (today's behaviour).
+        track = portfolio.track_risk(
+            intent.strategy_version_id,
+            symbol=intent.symbol,
+            venue=intent.venue_id,
+            marks={instrument.id: intent.price},
+        )
         state = PortfolioRiskState(
             equity=portfolio.equity(),
             cash=portfolio.equity(),  # spot, no leverage: deployable cash <= equity (conservative)
@@ -141,6 +150,10 @@ def execute_orders(
             strategy_open_notional=_open_notional(portfolio, strategy_version_id=intent.strategy_version_id),
             drawdown_pct=portfolio.drawdown(),
             daily_loss=daily.daily_loss,
+            # Per-combo wallet — the SANDBOX bound (aggregate fields above stay the FINAL backstop).
+            track_starting_capital=track.starting_capital,
+            track_equity=track.equity,
+            track_cash=track.cash,
             # When live is armed, the operator's max_daily_loss governs the auto-disarm (was the hardcoded
             # Portfolio default of $250); else the Portfolio's own cap (SIM lane unchanged).
             daily_loss_cap=op_daily if (live_enabled and op_daily is not None) else daily.cap,
@@ -158,6 +171,19 @@ def execute_orders(
             per_strategy_live_max_notional=op_per_strategy if live_enabled else None,
         )
         decision = validate_order_full(order_intent, venue, instrument, risk, state)
+        # SANDBOX per-combo KILL: this track's own wallet is spent. Audit it so the executor's exit logic can
+        # liquidate the open leg (the close itself is never blocked — a reduce_only exit stays accepted). The
+        # entry path already rejected with combo_wallet_spent; this just makes the kill observable in the ledger.
+        if decision.kill_combo:
+            store.append_event(
+                actor="master",
+                kind="combo_killed",
+                ref_type="strategy_version",
+                ref_id=intent.strategy_version_id,
+                payload={"symbol": intent.symbol, "venue_id": intent.venue_id,
+                         "track_equity": str(state.track_equity),
+                         "starting_capital": str(state.track_starting_capital)},
+            )
         if not decision.accepted:
             store.append_event(
                 actor="master",

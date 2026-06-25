@@ -74,30 +74,54 @@ def _ewma_vol_from_closes(closes: list[float], warmup: int = 20) -> float | None
     return math.sqrt(max(var, 0.0))
 
 
+def _concurrency_divisor(spec: StrategySpec, open_positions: int) -> float:
+    """How much the per-position cap divides this track's slice, given how many positions are ALREADY open.
+
+    SANDBOX per-combo model: the slice is the strategy's to deploy as it chooses (an all-in mono-position spec
+    is legitimate). The `1/max_concurrent_positions` term exists ONLY so that several CONCURRENT positions don't
+    over-deploy the slice in sum — it must NOT bridle a position taken while the book is otherwise flat.
+
+    - `open_positions <= 1` (the default / a mono-position entry): divisor 1.0 — the spec sizes its slice freely,
+      bounded only by its own `max_position_pct`, never forced to 1/N.
+    - `open_positions >= 2`: divide by the number actually open (capped at `max_concurrent_positions`), so the
+      sum of concurrent legs stays within the slice. This binds only when concurrency is REAL, not hypothetical.
+    """
+    max_concurrent = max(1, int(spec.risk.max_concurrent_positions))
+    concurrent = min(max(1, int(open_positions)), max_concurrent)
+    return float(concurrent)
+
+
 def size_fraction(
     spec: StrategySpec,
     *,
     closes: list[float] | None = None,
     target_vol: float | None = None,
+    open_positions: int = 1,
 ) -> float:
     """Fraction of THIS track's capital slice to deploy on one entry signal.
 
+    `open_positions` is how many positions THIS track already holds (the entry being sized included as ≥1).
+    SANDBOX per-combo model: the `1/max_concurrent_positions` term divides the slice ONLY when several positions
+    are genuinely open at once (open_positions ≥ 2) — a MONO-position all-in spec (the default, open_positions≤1)
+    is never bridled to 1/N and deploys its whole slice if max_position_pct/conviction say so. The per-combo
+    wallet (master/risk) is what bounds loss, not a blanket fraction.
+
     T1 path — closes AND target_vol provided (track funded with T1):
         realized_vol = EWMA(λ=0.94) from trailing closes (bar-frequency)
-        cap = min(max_position_pct, 1/max_concurrent_positions, 1.0)
+        cap = min(max_position_pct, 1/concurrency_divisor, 1.0)   # divisor 1.0 unless ≥2 legs are open
         f = clamp( target_vol / max(realized_vol, VOL_FLOOR) × conviction, SIZING_FLOOR, cap )
 
     T0 path — no closes or no target_vol (track funded pre-T1, or backtest gate path):
-        f = clamp(max_position_pct) × clamp(conviction)
+        f = clamp( max_position_pct / concurrency_divisor ) × clamp(conviction)
 
     PURE by contract — no I/O, no DB, no settings, no randomness.
     """
+    divisor = _concurrency_divisor(spec, open_positions)
     if closes is not None and target_vol is not None and target_vol > 0:
         realized_vol = _ewma_vol_from_closes(closes)
         if realized_vol is not None and realized_vol > 0:
-            max_concurrent = max(1, int(spec.risk.max_concurrent_positions))
-            cap = min(_clamp01(spec.risk.max_position_pct), 1.0 / max_concurrent, 1.0)
+            cap = min(_clamp01(spec.risk.max_position_pct), 1.0 / divisor, 1.0)
             f = (target_vol / max(realized_vol, _VOL_FLOOR)) * _clamp01(spec.risk.conviction)
             return float(max(_SIZING_FLOOR, min(f, cap)))
-    # T0 fallback
-    return _clamp01(spec.risk.max_position_pct) * _clamp01(spec.risk.conviction)
+    # T0 fallback — the slice fraction, divided only when concurrency is real (divisor 1.0 for a mono position).
+    return _clamp01(spec.risk.max_position_pct / divisor) * _clamp01(spec.risk.conviction)

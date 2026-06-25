@@ -38,6 +38,22 @@ class DailyLossStatus:
     tripped: bool
 
 
+@dataclass(frozen=True)
+class TrackRiskView:
+    """The SANDBOX per-combo wallet view for ONE track (= strategy_version × symbol × venue). The track is one
+    wallet of `starting_capital` that can never lose more than that. `equity` = starting_capital + realized (ALL
+    its rows) + unrealized (open legs, marked). `cash` = the deployable headroom = starting_capital + realized −
+    own open notional (cost basis of its open legs). `open_positions` = how many distinct open legs it holds
+    (feeds size_fraction's concurrency divisor). When the track has no wallet (no starting_capital — bare
+    positions in tests/tools), `starting_capital` is None and the per-combo gauntlet checks fall back to the
+    aggregate (today's behaviour)."""
+
+    starting_capital: Decimal | None
+    equity: Decimal
+    cash: Decimal
+    open_positions: int
+
+
 class Portfolio:
     """The portfolio of record for sim, testnet, and live fills alike — the venue differs, the bookkeeping
     does not. Positions live in the `positions` table; equity/drawdown/daily-loss are derived from snapshots so
@@ -300,6 +316,75 @@ class Portfolio:
         start_equity = Decimal(str(start["equity"])) if start else self.bankroll
         loss = max(start_equity - self.equity(), Decimal("0"))
         return DailyLossStatus(daily_loss=loss, cap=self.daily_loss_cap, tripped=loss >= self.daily_loss_cap)
+
+    # --- SANDBOX per-combo wallet ------------------------------------------------------------------
+
+    def track_risk(
+        self,
+        strategy_version_id: str,
+        *,
+        symbol: str | None = None,
+        venue: str | None = None,
+        marks: dict[str, Decimal] | None = None,
+    ) -> TrackRiskView:
+        """The per-combo wallet view for ONE track — the SANDBOX bound's per-track equity/cash (Q1).
+
+        A track is one wallet of its `starting_capital` (from the tracks row) and can never lose more than that.
+        We sum P&L over ONLY this track's positions: realized over ALL its rows (a closed leg's P&L stays in the
+        wallet), unrealized over its open legs marked at `marks` (the position's avg_price when no mark — flat,
+        conservative). `cash` is the deployable headroom: starting_capital + realized − own open notional, so a
+        new entry sized against it can never deploy past the wallet → loss is bounded to starting_capital.
+
+        Scoping: when `symbol`/`venue` are given AND the tracks table carries the cell columns, the wallet is
+        the (version, symbol, venue) CELL row; otherwise the version-only tracks row (legacy / pre-migration).
+        Positions are matched on strategy_version_id (and `symbol` when supplied) — the book label (sim/live)
+        is irrelevant to the wallet. No tracks row / no starting_capital ⇒ starting_capital=None (checks skip).
+        """
+        marks = marks or {}
+        rows = self.store.rows(
+            "SELECT * FROM positions WHERE strategy_version_id = ?", (strategy_version_id,)
+        )
+        views = [self._to_view(r) for r in rows]
+        if symbol is not None:
+            views = [v for v in views if v.symbol == symbol]
+        realized = sum((v.realized_pnl for v in views), Decimal("0"))
+        open_legs = [v for v in views if v.qty != 0]
+        own_open_notional = sum((v.avg_price * abs(v.qty) for v in open_legs), Decimal("0"))
+        unrealized = sum(
+            ((marks.get(v.instrument_id, v.avg_price) - v.avg_price) * v.qty for v in open_legs),
+            Decimal("0"),
+        )
+        starting_capital = self._track_starting_capital(strategy_version_id, symbol=symbol, venue=venue)
+        if starting_capital is None:
+            # No wallet on file — equity/cash are advisory only (the gauntlet skips the per-combo checks).
+            equity = realized + unrealized
+            return TrackRiskView(None, equity, equity - own_open_notional, len(open_legs))
+        equity = starting_capital + realized + unrealized
+        cash = starting_capital + realized - own_open_notional
+        return TrackRiskView(starting_capital, equity, cash, len(open_legs))
+
+    def _track_starting_capital(
+        self, strategy_version_id: str, *, symbol: str | None = None, venue: str | None = None
+    ) -> Decimal | None:
+        """This track's wallet size from the tracks row. Cell-scoped (version, symbol, venue) when those columns
+        are live AND symbol+venue are supplied, else the version-only row (legacy / pre-migration). None when no
+        row or no starting_capital — the per-combo bound then skips and the aggregate gauntlet governs."""
+        row = None
+        if symbol is not None and venue is not None and tracks_has_cell_columns(self.store):
+            row = self.store.row(
+                "SELECT starting_capital FROM tracks WHERE strategy_version_id = ? AND symbol = ? AND venue_id = ?",
+                (strategy_version_id, symbol, venue),
+            )
+        if row is None:
+            row = self.store.row(
+                "SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (strategy_version_id,)
+            )
+        if row is None or row.get("starting_capital") is None:
+            return None
+        try:
+            return Decimal(str(row["starting_capital"]))
+        except Exception:  # noqa: BLE001 — a malformed wallet value must never crash the money path
+            return None
 
     # --- internals ---------------------------------------------------------------------------------
 

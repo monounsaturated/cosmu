@@ -409,6 +409,17 @@ def step_tracks(
         mark = bars[-1].close
 
         if m.position is not None:
+            # SANDBOX per-combo KILL (Q1): if THIS track's own wallet (starting_capital + realized + unrealized,
+            # marked at the latest close) has hit its floor, liquidate the open leg NOW — a spent wallet must
+            # never ride further. This outranks the drift defund and the spec's own exits: the combo can lose no
+            # more than its starting_capital, full stop. No wallet on file (starting_capital None) ⇒ skip, the
+            # spec's exits govern as before. A close is a reduce_only order and is never blocked by the gauntlet.
+            track_kill = portfolio.track_risk(
+                m.version_id, symbol=m.symbol, venue=m.venue_id, marks={m.position.instrument_id: mark}
+            )
+            if track_kill.starting_capital is not None and track_kill.equity <= Decimal("0"):
+                _close(m, mark, "combo_wallet_spent", bars[-1].ts.isoformat())
+                continue
             # An anticipatory drift defund outranks the spec's own exits — the edge the track was funded on
             # is measurably gone, so capital is pulled NOW rather than waiting for a bracket to trip.
             reason = "drift_defund" if m.version_id in defunded else _exit_reason(m, store, bars, features, now)
