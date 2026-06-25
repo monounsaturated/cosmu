@@ -10,11 +10,16 @@ Verified invariants (mirrors test_osint_opensky_daily.py):
   5. low_confidence=True (confidence 0.30 < 0.5).
   6. transform_version is the pinned string; kind=="osint"; name=="insider_buy_ratio".
   7. DataSource-protocol compliance + registerable.
-  8. No HTTP calls in any test (offline=True throughout).
+  8. No HTTP calls in the default run: every test is offline / monkeypatched. The one live-network test
+     (TestLiveSecEdgarIntegration) is opt-in (COSMU_LIVE_SEC_TEST=1) AND marked allow_network, so CI stays offline.
+  9. LIVE-PATH REGRESSION GUARD: the Form 4 ownership-doc URL strips EDGAR's xsl HTML-rendering prefix
+     (primaryDocument "xslF345X06/form4.xml" → raw "form4.xml"), so the parser reads structured XML and
+     extracts >0 transactions on real filings (TestLivePathXslPrefixStripped / TestParseOwnershipDocStructuredXml).
 """
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 import pytest
@@ -26,6 +31,7 @@ from cosmu.data.sources.sec_edgar import (
     TRANSFORM_VERSION,
     SecEdgarInsiderSource,
     _fetch_form4_transactions,
+    _parse_acceptance,
     net_buy_ratio,
 )
 
@@ -434,6 +440,178 @@ class TestErrorPathVsEmptyData:
         f = src.query("AAPL", _AS_OF)
         assert f.value is None  # genuine empty → None (never a fabricated 0)
         assert f.available_at is None
+
+
+class TestLivePathXslPrefixStripped:
+    """LIVE-PATH REGRESSION GUARD (deterministic, no HTTP).
+
+    For Form 4, EDGAR's primaryDocument is the XSL-TRANSFORMED HTML RENDERING path, e.g.
+    "xslF345X06/form4.xml". That rendered HTML contains NONE of the structured
+    nonDerivativeTransaction/transactionCode/transactionShares nodes the parser needs, so building the doc URL
+    from primaryDocument VERBATIM made _parse_ownership_doc return 0 transactions on every live filing —
+    insider_buy_ratio was ALWAYS None in production (the offline fixtures hid it; tests passed).
+
+    The fix strips the leading xsl directory prefix so we fetch the RAW structured XML (the bare filename).
+    These tests pin that the doc URL handed to the parser is the prefix-stripped one, NOT the xsl path.
+    """
+
+    _CIK = _CIK_BY_TICKER["AAPL"]
+
+    def _index_with_primary(self, primary_doc: str):
+        return {
+            "filings": {
+                "recent": {
+                    "form": ["4"],
+                    "accessionNumber": ["0001140361-26-025622"],
+                    "acceptanceDateTime": ["2026-06-15T12:00:00.000Z"],
+                    "primaryDocument": [primary_doc],
+                }
+            }
+        }
+
+    def test_xsl_prefix_stripped_from_doc_url(self, monkeypatch):
+        """primaryDocument="xslF345X06/form4.xml" → the parser is asked for .../form4.xml (raw XML), and the
+        URL contains NO 'xslF345X06' segment. This is the exact regression that broke the live path."""
+        seen: dict[str, str] = {}
+        monkeypatch.setattr(
+            sec_mod, "_get_json", lambda url, *, timeout: self._index_with_primary("xslF345X06/form4.xml")
+        )
+
+        def _capture(doc_url, *, timeout):
+            seen["url"] = doc_url
+            return [("P", 1_000.0)]
+
+        monkeypatch.setattr(sec_mod, "_parse_ownership_doc", _capture)
+        result = _fetch_form4_transactions(self._CIK, timeout=1.0)
+        assert "url" in seen, "the ownership doc was never fetched"
+        assert "xslF345X06" not in seen["url"], (
+            "REGRESSION: the doc URL still points at the XSL HTML rendering, which has no structured "
+            "transaction nodes — the parser will extract 0 transactions on every live filing"
+        )
+        assert seen["url"].endswith("/form4.xml"), seen["url"]
+        # un-padded CIK + de-hyphenated accession + bare filename, exactly as SEC's Archives path expects
+        assert seen["url"] == (
+            "https://www.sec.gov/Archives/edgar/data/320193/000114036126025622/form4.xml"
+        )
+        # and the (mocked) transaction is collected, so the live path yields >0 once the URL is correct
+        assert result == [
+            {"accepted": _parse_acceptance("2026-06-15T12:00:00.000Z"), "code": "P", "shares": 1_000.0}
+        ]
+
+    def test_bare_primary_document_is_unchanged(self, monkeypatch):
+        """A primaryDocument that is ALREADY a bare filename is passed through untouched (idempotent strip)."""
+        seen: dict[str, str] = {}
+        monkeypatch.setattr(
+            sec_mod, "_get_json", lambda url, *, timeout: self._index_with_primary("form4.xml")
+        )
+
+        def _capture(doc_url, *, timeout):
+            seen["url"] = doc_url
+            return []
+
+        monkeypatch.setattr(sec_mod, "_parse_ownership_doc", _capture)
+        _fetch_form4_transactions(self._CIK, timeout=1.0)
+        assert seen["url"].endswith("/form4.xml")
+        assert "xslF345X06" not in seen["url"]
+
+
+class TestParseOwnershipDocStructuredXml:
+    """The parser must extract P/S transactions from REAL structured Form 4 XML, and extract NOTHING from the
+    XSL HTML rendering (the document the broken live path used to fetch). Both are exercised offline by
+    monkeypatching urlopen to serve in-memory bytes — no HTTP."""
+
+    # A minimal but faithful Form 4 ownershipDocument with one open-market BUY (P) and one SALE (S).
+    _RAW_FORM4_XML = b"""<?xml version="1.0"?>
+    <ownershipDocument>
+      <nonDerivativeTable>
+        <nonDerivativeTransaction>
+          <transactionCoding><transactionCode>P</transactionCode></transactionCoding>
+          <transactionAmounts><transactionShares><value>1500</value></transactionShares></transactionAmounts>
+        </nonDerivativeTransaction>
+        <nonDerivativeTransaction>
+          <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+          <transactionAmounts><transactionShares><value>400</value></transactionShares></transactionAmounts>
+        </nonDerivativeTransaction>
+        <nonDerivativeTransaction>
+          <transactionCoding><transactionCode>A</transactionCode></transactionCoding>
+          <transactionAmounts><transactionShares><value>9999</value></transactionShares></transactionAmounts>
+        </nonDerivativeTransaction>
+      </nonDerivativeTable>
+    </ownershipDocument>"""
+
+    # The XSL HTML RENDERING of the same filing: real-world shape — NO structured nonDerivativeTransaction nodes.
+    _XSL_HTML = b"""<html><body><table><tr><td>Transaction Code</td><td>P</td></tr>
+      <tr><td>Shares</td><td>1500</td></tr></table></body></html>"""
+
+    def _serve(self, monkeypatch, payload: bytes):
+        import cosmu.data.sources.sec_edgar as mod
+
+        class _Resp:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+            def read(self_inner):
+                return payload
+
+        monkeypatch.setattr(mod.urllib.request, "urlopen", lambda req, *a, **k: _Resp())
+
+    def test_raw_xml_yields_open_market_ps_only(self, monkeypatch):
+        from cosmu.data.sources.sec_edgar import _parse_ownership_doc
+
+        self._serve(monkeypatch, self._RAW_FORM4_XML)
+        pairs = _parse_ownership_doc("https://www.sec.gov/.../form4.xml", timeout=1.0)
+        # the grant (A) is ignored; only the P buy and S sale survive
+        assert pairs == [("P", 1500.0), ("S", 400.0)]
+
+    def test_xsl_html_rendering_yields_zero_transactions(self, monkeypatch):
+        """Proves WHY the bug was silent: the XSL HTML rendering parses to ZERO transactions — exactly what
+        the live path produced before the prefix-strip fix."""
+        from cosmu.data.sources.sec_edgar import _parse_ownership_doc
+
+        self._serve(monkeypatch, self._XSL_HTML)
+        assert _parse_ownership_doc("https://www.sec.gov/.../xslF345X06/form4.xml", timeout=1.0) == []
+
+
+@pytest.mark.allow_network
+@pytest.mark.skipif(
+    os.environ.get("COSMU_LIVE_SEC_TEST") != "1",
+    reason="live SEC EDGAR fetch; opt in with COSMU_LIVE_SEC_TEST=1 (kept off the default/CI run)",
+)
+class TestLiveSecEdgarIntegration:
+    """OPT-IN live-path integration guard (real HTTP to SEC EDGAR). Skipped unless COSMU_LIVE_SEC_TEST=1 so the
+    default/CI run stays offline (the session-wide socket guard is opted out of via allow_network here).
+
+    Empirically verified 2026-06-21: AAPL (CIK 320193) accession 000114036126025622 is a Form 4 with
+    open-market activity whose RAW form4.xml yields real <transactionCode>/<transactionShares> nodes, while
+    the xsl-prefixed path yields none. This is the end-to-end regression guard the fix targets: with the
+    prefix-strip in place the parser MUST extract >0 transactions for this known filing."""
+
+    def test_parser_extracts_transactions_from_known_filing(self):
+        from cosmu.data.sources.sec_edgar import _parse_ownership_doc
+
+        raw_url = "https://www.sec.gov/Archives/edgar/data/320193/000114036126025622/form4.xml"
+        pairs = _parse_ownership_doc(raw_url, timeout=20.0)
+        assert len(pairs) > 0, (
+            "LIVE REGRESSION: the raw structured form4.xml must yield >0 open-market P/S transactions; "
+            "0 here means the live ownership-doc path is broken again"
+        )
+        for code, shares in pairs:
+            assert code in ("P", "S")
+            assert shares > 0.0
+
+    def test_full_live_fetch_yields_transactions_for_aapl(self):
+        """End-to-end: the live _fetch_form4_transactions for AAPL returns a real list (not the None failure
+        sentinel) and — given AAPL's recent filing history — at least one parsed transaction."""
+        cik = _CIK_BY_TICKER["AAPL"]
+        txns = _fetch_form4_transactions(cik, timeout=20.0)
+        assert txns is not None, "a successful live fetch must not return the None failure sentinel"
+        assert any(t["code"] in ("P", "S") for t in txns), (
+            "AAPL's recent Form 4 history should contain >0 open-market P/S transactions once the raw-XML "
+            "path is used"
+        )
 
 
 class TestAmendmentsExcluded:

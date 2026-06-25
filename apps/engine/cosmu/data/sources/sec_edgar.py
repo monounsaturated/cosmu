@@ -183,7 +183,8 @@ def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict] | None:
     One dead source still never crashes a query: the caller maps None → a None-valued SourceFeature.
 
     Strategy: GET the submissions index for the issuer CIK, filter form=="4", then for each recent Form 4
-    fetch its ownership primary document and parse transactionCode (P/S) + transactionShares.
+    fetch its RAW ownership XML (the bare primaryDocument filename, with EDGAR's xsl HTML-rendering directory
+    prefix stripped — see the fix below) and parse transactionCode (P/S) + transactionShares.
     """
     out: list[dict] = []
     try:
@@ -218,8 +219,17 @@ def _fetch_form4_transactions(cik: str, *, timeout: float) -> list[dict] | None:
                 continue
             if accepted is None or not primary or not primary.lower().endswith(".xml"):
                 continue
+            # LIVE-PATH BUG FIX: for Form 4, EDGAR's primaryDocument is the XSL-TRANSFORMED HTML RENDERING
+            # path, e.g. "xslF345X06/form4.xml" — that document contains NO structured
+            # nonDerivativeTransaction/transactionCode/transactionShares nodes, so _parse_ownership_doc would
+            # parse 0 transactions on EVERY live filing (and insider_buy_ratio would always be None in prod).
+            # The RAW structured XML is the SAME filename WITHOUT the xsl directory prefix, e.g.
+            #   https://www.sec.gov/Archives/edgar/data/320193/000114036126025622/form4.xml
+            # so we strip the leading path segment(s) and fetch only the bare filename. split()[-1] is a no-op
+            # for an already-bare primaryDocument (idempotent), so non-xsl forms are unaffected.
+            doc_name = primary.split("/")[-1]
             doc_url = (
-                f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{primary}"
+                f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{doc_name}"
             )
             for code, shares in _parse_ownership_doc(doc_url, timeout=timeout):
                 out.append({"accepted": accepted, "code": code, "shares": shares})
