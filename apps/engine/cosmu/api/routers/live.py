@@ -19,6 +19,8 @@ from cosmu.api.models import (
     JurisdictionsResponse,
     LaunchActivateRequest,
     LaunchActivateResponse,
+    LiquidateRequest,
+    LiquidateResponse,
     LiveCaps,
     LiveOrder,
     LiveOrdersResponse,
@@ -120,23 +122,152 @@ def live_activate(request: ActivateRequest) -> ActivateResponse:
     return ActivateResponse(armed=True, caps=caps, eligible=eligible)
 
 
+def _liquidate_open_positions(version_id: str | None) -> int:
+    """REAL exit for every OPEN position in scope: build a reduce_only IntendedOrder (opposite side, full held
+    qty) per leg and route it through the ONE order path (master.execute_orders) with the leg's RESOLVED book +
+    adapter, THEN let the caller zero/book the row. Returns how many legs an exit order was ACCEPTED for.
+
+    Routing per leg follows the BOOK the leg lives on (the same split step_tracks uses), so a reduce_only never
+    validates against the wrong book:
+      - a 'sim'/'testnet'/paper position (no live adapter armed for its venue) sim-closes via the managed path
+        (live_enabled=False, adapter=None) — degrades to today's behaviour when nothing is armed;
+      - a 'live'/'testnet' position on an ARMED venue routes a real reduce-only order to that venue's exec
+        adapter (live_enabled=True, adapter=<resolved>), which places reduce_only on the exchange.
+    SAFE + IDEMPOTENT: a reduce_only is gauntlet-EXEMPT from caps/kill/regime (it only ever closes), the
+    client_order_id is stamped per (version,instrument,book) so a re-call no-ops via execute_orders' fill guard,
+    and a venue with no armed adapter falls to the sim/managed close (never a phantom order). Offline (no live
+    mark) the order books at the position's own basis — a flat close, never a synthetic P&L."""
+    from decimal import Decimal
+
+    from cosmu.master.execution import IntendedOrder, execute_orders
+    from cosmu.orchestrator.loop import PricingRouter, _instrument_venue
+
+    pf = _portfolio()
+    cat = default_catalog()
+    open_positions = [
+        p for p in pf.positions()
+        if p.qty != 0 and (version_id is None or p.strategy_version_id == version_id)
+    ]
+    if not open_positions:
+        return 0  # idempotent: nothing open → no order routed, the SQL-zero below is a no-op
+
+    # The live adapters armed RIGHT NOW (toggle on + keys + mode). Empty unless the operator has armed live →
+    # every leg sim-closes (today's behaviour). Resolving an adapter is side-effect-free + safe by construction.
+    from cosmu.orchestrator.paper_step import _resolve_live_adapters
+
+    live_adapters = _resolve_live_adapters(store)
+    pricer = PricingRouter(cat, settings=settings)
+
+    routed = 0
+    for p in open_positions:
+        venue_id = _instrument_venue(cat, p.instrument_id)
+        if venue_id is None:
+            continue  # unknown instrument → can't price/order it honestly; the SQL-zero still books it flat
+        # A real (live/testnet) leg routes live ONLY if its venue is armed right now; otherwise (and for every
+        # sim/paper leg) it sim-closes through the same managed path. This mirrors step_tracks' sim/live split.
+        adapter = live_adapters.get(venue_id) if p.venue in ("live", "testnet") else None
+        route_live = adapter is not None
+        # Full-position market exit: opposite side, the entire held qty, reduce_only. Price = latest real mark,
+        # falling back to the position's basis when offline (the gauntlet needs price > 0; a close at basis is a
+        # flat exit, not a fabricated fill — live fills reconcile to the venue's true price out-of-band).
+        mark = pricer.last_price(p.symbol, venue_id)
+        price = mark if mark > 0 else p.avg_price
+        if price <= 0:
+            continue  # no honest price anywhere → skip the order; the SQL-zero books it flat
+        side = -1 if p.qty > 0 else 1
+        coid = f"liquidate-{p.strategy_version_id or 'pool'}-{p.instrument_id}-{p.venue}"
+        intent = IntendedOrder(
+            strategy_version_id=p.strategy_version_id or "pool",
+            symbol=p.symbol,
+            venue_id=venue_id,
+            side=side,
+            qty=abs(p.qty),
+            price=price,
+            stop_loss=None,
+            take_profit=None,
+            conviction=Decimal("0.5"),
+            gate_passed=True,  # a reduce_only close is exempt from the entry gate; this only enables live routing
+            client_order_id=coid,
+            reduce_only=True,
+        )
+        outcomes = execute_orders(
+            [intent],
+            live_enabled=route_live,
+            kill_switch=False,  # a STOP must never be trapped behind the kill-switch — closing IS the safety move
+            adapter=adapter,
+            store=store,
+            portfolio=pf,
+            risk=settings.risk,
+            catalog=cat,
+        )
+        if outcomes and outcomes[0].accepted:
+            routed += 1
+    return routed
+
+
 @router.post("/live/defund", response_model=DefundResponse)
 def live_defund(request: DefundRequest) -> DefundResponse:
+    """Defund a strategy (or the whole pool): FIRST route a real reduce_only liquidation for every open leg
+    through the exec adapter (a real reduce-only order on an ARMED venue, a sim-close otherwise), THEN zero the
+    book as the final bookkeeping. Before this, defund only zeroed the DB row and sold NOTHING — a live position
+    could not actually be exited. Degrades to the old SQL-zero behaviour when no live adapter is armed."""
     pf = _portfolio()
+    # Snapshot the defunded versions BEFORE routing — liquidation flattens the live legs it fully closes, so a
+    # post-routing read would undercount the "all" scope. (For the strategy scope it is the one version.)
     if request.scope == "strategy" and request.version_id:
-        rows = store.rows("SELECT instrument_id FROM positions WHERE strategy_version_id = ?", (request.version_id,))
-        store.rows("UPDATE positions SET qty = '0', updated_at = ? WHERE strategy_version_id = ?", (utcnow(), request.version_id))
         defunded = [request.version_id]
     else:
         rows = store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0")
-        store.rows("UPDATE positions SET qty = '0', updated_at = ?", (utcnow(),))
         defunded = [str(r["strategy_version_id"] or "pool") for r in rows]
+    # REAL EXIT FIRST: liquidate open legs on-venue (reduce_only) before the SQL-zero bookkeeping. Safe + a
+    # no-op when nothing is open / nothing is armed (then this is byte-identical to the prior behaviour).
+    liquidated = _liquidate_open_positions(request.version_id if request.scope == "strategy" else None)
+    if request.scope == "strategy" and request.version_id:
+        store.rows("UPDATE positions SET qty = '0', updated_at = ? WHERE strategy_version_id = ?", (utcnow(), request.version_id))
+    else:
+        store.rows("UPDATE positions SET qty = '0', updated_at = ?", (utcnow(),))
     pf.mark_to_market({})
-    store.append_event(actor="human", kind="live_defunded", ref_type="live_caps", ref_id="global", payload={"scope": request.scope, "defunded": defunded})
+    store.append_event(actor="human", kind="live_defunded", ref_type="live_caps", ref_id="global", payload={"scope": request.scope, "defunded": defunded, "liquidated": liquidated})
     # ADDITIVE lifecycle-trace audit mark (see master/lifecycle.py): each defunded version reached disarmed.
     for _vid in defunded:
         emit_lifecycle_event(store, _vid, "live_disarmed", {"scope": request.scope})
-    return DefundResponse(ok=True, defunded=defunded)
+    return DefundResponse(ok=True, defunded=defunded, liquidated=liquidated)
+
+
+@router.post("/live/liquidate", response_model=LiquidateResponse)
+def live_liquidate(request: LiquidateRequest) -> LiquidateResponse:
+    """Liquidate-all / per-strategy STOP — the real capital-safety exit. For every OPEN position in scope, route
+    a reduce_only liquidation (opposite side, full qty) through the ONE order path with the leg's resolved live
+    adapter: a real reduce-only order on an ARMED venue (so a LIVE position is genuinely exited on the exchange),
+    a managed sim-close on the sim/unarmed path. The SQL-zero is the FINAL backstop after the order routes, so a
+    residual (a partial venue fill / an instrument we can't price) is still booked flat. Idempotent: a second
+    call with nothing open routes 0. NEVER opens exposure — reduce_only is exempt from the entry gate but can
+    only close. Audited as `live_liquidated`."""
+    target = request.version_id if request.scope == "strategy" else None
+    # Snapshot the open versions in scope BEFORE routing — `_liquidate_open_positions` flattens the live legs it
+    # fully closes, so reading after would undercount `closed`. (Distinct over the scope's currently-open rows.)
+    if request.scope == "strategy" and request.version_id:
+        opened = store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0 AND strategy_version_id = ?", (request.version_id,))
+        version_ids = [request.version_id] if opened else []
+    else:
+        opened = store.rows("SELECT DISTINCT strategy_version_id FROM positions WHERE CAST(qty AS REAL) != 0")
+        version_ids = [str(r["strategy_version_id"] or "pool") for r in opened]
+
+    routed = _liquidate_open_positions(target)
+    # FINAL bookkeeping: zero any residual the venue exit didn't fully clear (partial fill / unpriced leg), so
+    # the book reflects flat regardless. Mirrors defund's backstop; the reduce_only routing above did the selling.
+    if request.scope == "strategy" and request.version_id:
+        store.rows("UPDATE positions SET qty = '0', updated_at = ? WHERE strategy_version_id = ?", (utcnow(), request.version_id))
+    else:
+        store.rows("UPDATE positions SET qty = '0', updated_at = ?", (utcnow(),))
+    _portfolio().mark_to_market({})
+    store.append_event(
+        actor="human", kind="live_liquidated", ref_type="live_caps", ref_id="global",
+        payload={"scope": request.scope, "version_id": request.version_id, "routed": routed, "version_ids": version_ids},
+    )
+    for _vid in version_ids:
+        emit_lifecycle_event(store, _vid, "live_disarmed", {"scope": request.scope, "via": "liquidate"})
+    return LiquidateResponse(ok=True, scope=request.scope, routed=routed, closed=len(version_ids), version_ids=version_ids)
 
 
 @router.get("/live/positions", response_model=LivePositionsResponse)
@@ -236,8 +367,8 @@ def cancel_live_order(order_id: str) -> CancelOrderResponse:
       - the order_id (client_order_id) MUST exist on the LIVE ledger (executions.is_paper=0) — a sim/paper
         order is never cancellable (it never reached a venue), and an unknown id is an honest 404;
       - it resolves the order's OWN venue adapter via the exec registry and calls its `cancel`; a venue with no
-        execution adapter (e.g. kraken/hyperliquid are data-only today) returns an honest 'not implemented'
-        instead of pretending to cancel;
+        execution adapter (e.g. hyperliquid/ibkr are data-only today — Binance, Kraken, Alpaca and Polymarket
+        all have exec adapters) returns an honest 'not implemented' instead of pretending to cancel;
       - the adapter is SAFE by construction (disabled with no keys → cancel raises), so this never fires a
         phantom request. The auth is the same x-api-key gate as every route. Audited as `order_canceled_live`.
     It NEVER places or modifies an order — only cancel. Idempotent: re-cancelling an already-cancelled id

@@ -267,6 +267,10 @@ def execute_orders(
                 limit_price=limit_price,
                 client_order_id=coid,
                 ts=datetime.now(tz=UTC),
+                # Propagate the exit flag to the VENUE order: a reduce_only intent must place a reduce-only
+                # order on the exchange so a real liquidation can only ever CLOSE the leg (never flip it short
+                # on a stale-qty assumption). Adapters that support it pass it through; the rest ignore it.
+                reduce_only=intent.reduce_only,
             )
             # Cross-restart idempotency: a venue without a native client-order-id index (Polymarket CLOB) can't
             # dedup a re-submit by itself, and the adapter's in-process cache is empty after a restart — so if a
