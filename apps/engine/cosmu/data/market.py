@@ -205,13 +205,28 @@ class RemoteBarsProvider:
         return result
 
 
+def keyless_crypto_reference() -> MarketDataProvider:
+    """The keyless crypto reference provider for the configured bars venue. `COSMU_BARS_VENUE` (default
+    'binance', BYTE-IDENTICAL to before) flips the whole keyless crypto-bar source in ONE place — e.g. to
+    'kraken' when Binance is geo-/regulatory-blocked. Both providers share the SAME symbol contract
+    ('BTCUSDT'; Kraken maps it to XBTUSD internally) and degrade identically (offline → cache → empty), so
+    the swap is transparent to every caller. An unknown value falls back to Binance (safe default)."""
+    providers = {
+        "binance": BinanceSpotOHLCVProvider,
+        "kraken": KrakenSpotOHLCVProvider,
+    }
+    venue = os.environ.get("COSMU_BARS_VENUE", "binance").strip().lower() or "binance"
+    return providers.get(venue, BinanceSpotOHLCVProvider)()
+
+
 def default_crypto_reference() -> MarketDataProvider:
     """The default crypto reference provider for the screen / paper clock. When COSMU_BARS_URL is set, bars come
-    from that HTTP engine at RUNTIME (the Binance-reachable Railway EU box) → no bundled cache, so the Modal fleet
-    is modular + account-swappable. Unset (local / tests / current deploys) → the keyless BinanceSpotOHLCVProvider,
-    BYTE-IDENTICAL to before. A single env flag flips the whole crypto-bar source; nothing else changes."""
+    from that HTTP engine at RUNTIME (the geo-unblocked Railway EU box) → no bundled cache, so the Modal fleet
+    is modular + account-swappable. Unset (local / tests / current deploys) → the keyless provider for
+    COSMU_BARS_VENUE (default Binance, BYTE-IDENTICAL to before; 'kraken' when Binance is blocked). A single
+    env flag flips the whole crypto-bar source; nothing else changes."""
     base = os.environ.get("COSMU_BARS_URL")
-    return RemoteBarsProvider(base) if base else BinanceSpotOHLCVProvider()
+    return RemoteBarsProvider(base) if base else keyless_crypto_reference()
 
 
 class UniversalOHLCVProvider:
