@@ -34,7 +34,7 @@ from cosmu.data.backtest import (
     align_asof,
     run_strategy_backtest_detailed,
 )
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, default_crypto_reference
 from cosmu.data.providers.store import PgAltDataStore, StoreBackedAltProvider
 from cosmu.knowledge.store import Store
 from cosmu.lab.finder import build_grid
@@ -477,7 +477,7 @@ def _main() -> int:
         from cosmu.data.providers.store import AltDataStore
         provider = StoreBackedAltProvider(AltDataStore())
 
-    market = _clip_to_social_window(_real_market(BinanceSpotOHLCVProvider()), provider)
+    market = _clip_to_social_window(_real_market(default_crypto_reference()), provider)
     report = run_rerun_cohort(market, provider, store)
 
     print(f"HONEST RE-RUN COHORT — {report.verdict}")

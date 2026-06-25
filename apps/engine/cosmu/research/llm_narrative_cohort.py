@@ -37,7 +37,7 @@ from decimal import Decimal
 from cosmu.config.settings import Settings
 from cosmu.data.altdata import AltDataPoint
 from cosmu.data.backtest import align_asof, run_strategy_backtest_detailed
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, default_crypto_reference
 from cosmu.knowledge.store import Store
 from cosmu.lab.finder import build_grid
 from cosmu.master.cohort import Candidate, promote_cohort
@@ -352,7 +352,7 @@ def _main() -> int:
     symbol = os.environ.get("NARRATIVE_SYMBOL", _FIRST_CUT_SYMBOL)
     days_back = int(os.environ.get("NARRATIVE_DAYS_BACK", "90"))
 
-    prov = BinanceSpotOHLCVProvider()
+    prov = default_crypto_reference()
     bars = prov.fetch_bars(symbol, "1d", limit=1000)
     market = {symbol: bars}
 

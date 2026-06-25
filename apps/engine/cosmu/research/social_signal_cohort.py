@@ -22,7 +22,7 @@ from decimal import Decimal
 
 from cosmu.data.altdata import AltDataProvider, AltDataStore, StoreBackedAltProvider
 from cosmu.data.backtest import _regime_labels, align_asof, run_strategy_backtest_detailed
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, default_crypto_reference
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
 from cosmu.master.scorer import score
@@ -310,7 +310,7 @@ def _main() -> int:
     store = Store(settings)
     specs = load_specs()
     provider = StoreBackedAltProvider(resolve_alt_store(settings, store))
-    market = _clip_to_social_window(_real_market(BinanceSpotOHLCVProvider()), provider)
+    market = _clip_to_social_window(_real_market(default_crypto_reference()), provider)
     report = run_cohort(specs, market, provider, store, persist=True)
 
     print(f"PHASE-0 SOCIAL-SIGNAL COHORT — {report.verdict}")

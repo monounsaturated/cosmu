@@ -18,7 +18,7 @@ from pathlib import Path
 from cosmu.config.settings import Settings, get_settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store, spec_alt_feature_names
 from cosmu.data.backtest import run_strategy_backtest_detailed
-from cosmu.data.market import Bar, BinanceSpotOHLCVProvider
+from cosmu.data.market import Bar, BinanceSpotOHLCVProvider, default_crypto_reference
 from cosmu.ingest.alt_summary import metric_data_health
 from cosmu.knowledge.store import Store
 from cosmu.master.cohort import Candidate, promote_cohort
@@ -117,7 +117,12 @@ def load_specs() -> list[StrategySpec]:
 
 def load_bars(asset: str, timeframe: str) -> list[Bar]:
     if asset.endswith("USDT"):
-        # spot cache first, perp cache fallback (deeper mid-cap coverage)
+        # When the bars venue is flipped off Binance (COSMU_BARS_VENUE=kraken / COSMU_BARS_URL set), defer to the
+        # configured reference (keyless Kraken / remote engine) instead of the Binance-local cache dirs.
+        ref = default_crypto_reference()
+        if not isinstance(ref, BinanceSpotOHLCVProvider):
+            return ref.fetch_bars(asset, timeframe, limit=5000)
+        # spot cache first, perp cache fallback (deeper mid-cap coverage) — Binance-local path
         _binance_base = os.environ.get("COSMU_BINANCE_CACHE", os.path.expanduser("~/.cosmu/market_data"))
         for cache in (".cosmu/market_data/binance", ".cosmu/market_data/binanceperp",
                       f"{_binance_base}/binance", f"{_binance_base}/binanceperp"):

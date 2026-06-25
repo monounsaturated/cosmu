@@ -136,9 +136,9 @@ def _market_reference_bars(asset_class: str):
 
             bars = _default_equity_provider(settings).fetch_bars("SPY", "1d", limit=240)
         else:
-            from cosmu.data.market import BinanceSpotOHLCVProvider
+            from cosmu.data.market import default_crypto_reference
 
-            bars = BinanceSpotOHLCVProvider().fetch_bars("BTCUSDT", "1d", limit=240)
+            bars = default_crypto_reference().fetch_bars("BTCUSDT", "1d", limit=240)
         if len(bars) >= 60:
             return bars
     except Exception:  # noqa: BLE001 — offline/no-network: report neutral, never fabricate a regime

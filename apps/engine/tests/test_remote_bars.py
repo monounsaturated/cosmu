@@ -17,9 +17,11 @@ import cosmu.data.market as market
 from cosmu.data.market import (
     Bar,
     BinanceSpotOHLCVProvider,
+    KrakenSpotOHLCVProvider,
     RemoteBarsProvider,
     _bars_to_rows,
     default_crypto_reference,
+    keyless_crypto_reference,
 )
 
 
@@ -44,11 +46,27 @@ def _bars(n: int) -> list[Bar]:
 
 def test_factory_is_env_gated(monkeypatch):
     monkeypatch.delenv("COSMU_BARS_URL", raising=False)
+    monkeypatch.delenv("COSMU_BARS_VENUE", raising=False)
     assert isinstance(default_crypto_reference(), BinanceSpotOHLCVProvider)  # unset → byte-identical default
     monkeypatch.setenv("COSMU_BARS_URL", "https://cosmu.up.railway.app")
     prov = default_crypto_reference()
     assert isinstance(prov, RemoteBarsProvider)
     assert prov.base_url == "https://cosmu.up.railway.app"  # trailing slash stripped is also fine
+
+
+def test_keyless_crypto_reference_venue_flag(monkeypatch):
+    """COSMU_BARS_VENUE flips the keyless crypto-bar source in one place; default + unknown → Binance (safe)."""
+    monkeypatch.delenv("COSMU_BARS_URL", raising=False)
+    monkeypatch.delenv("COSMU_BARS_VENUE", raising=False)
+    assert isinstance(keyless_crypto_reference(), BinanceSpotOHLCVProvider)  # unset → byte-identical default
+    monkeypatch.setenv("COSMU_BARS_VENUE", "kraken")
+    assert isinstance(keyless_crypto_reference(), KrakenSpotOHLCVProvider)  # flipped to the geo-unblocked venue
+    # and default_crypto_reference (no URL) inherits the flag
+    assert isinstance(default_crypto_reference(), KrakenSpotOHLCVProvider)
+    monkeypatch.setenv("COSMU_BARS_VENUE", "KRAKEN")  # case/whitespace-insensitive
+    assert isinstance(keyless_crypto_reference(), KrakenSpotOHLCVProvider)
+    monkeypatch.setenv("COSMU_BARS_VENUE", "nonsense")
+    assert isinstance(keyless_crypto_reference(), BinanceSpotOHLCVProvider)  # unknown → safe Binance fallback
 
 
 def test_remote_provider_round_trips_endpoint_rows(monkeypatch):
@@ -90,7 +108,7 @@ def test_market_bars_endpoint_shape(monkeypatch):
         def fetch_bars(self, symbol, timeframe, *, limit):  # noqa: ANN001, ARG002
             return _bars(3)
 
-    monkeypatch.setattr(market_router, "BinanceSpotOHLCVProvider", lambda: _Stub())
+    monkeypatch.setattr(market_router, "keyless_crypto_reference", lambda: _Stub())
     client = TestClient(app_mod.app)
     r = client.get("/market/bars", params={"symbol": "BTCUSDT", "timeframe": "1d", "limit": 3})
     assert r.status_code == 200

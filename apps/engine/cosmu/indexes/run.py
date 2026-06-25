@@ -45,14 +45,14 @@ def refresh_index(store: Store, spec: IndexSpec, *, settings, now: datetime | No
         chat, model_id = _chat_from_settings(settings)
         points = compute_text_point(spec, chat=chat, model_id=model_id)
     else:  # social
-        from cosmu.data.market import BinanceSpotOHLCVProvider
+        from cosmu.data.market import default_crypto_reference
         from cosmu.ingest.voices_pass import _bars_by_entity, _load_all_claims
 
         handles = set(spec.handles)
         claims = [c for c in _load_all_claims(store) if c.handle in handles]
         if claims:
             entities = set(spec.entities) or {c.entity for c in claims}
-            bars = _bars_by_entity(entities, BinanceSpotOHLCVProvider())
+            bars = _bars_by_entity(entities, default_crypto_reference())
             points = compute_social_point(spec, claims=claims, bars_by_entity=bars, now=now)
         else:
             points = {}
