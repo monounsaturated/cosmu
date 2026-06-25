@@ -67,6 +67,16 @@ def _composable_param_refs(spec: StrategySpec) -> list[str]:
             refs.extend([leg.at.param, leg.size_pct.param])
         if plan.runner_trail is not None:
             refs.append(plan.runner_trail.param)
+    # STANDALONE trailing stop + ATR-multiple stop (PR #375): their thresholds are ParamRefs too, so the same
+    # 'no magic numbers' rule applies — every one must resolve in param_space. (Until this was added these two
+    # exit knobs escaped the static check; seed_orb_fvg never used them so the corpus was unaffected, but the
+    # exit-envelope sweep does, so close the gap here.)
+    if spec.exit.trailing_stop is not None:
+        refs.append(spec.exit.trailing_stop.distance.param)
+        if spec.exit.trailing_stop.arm_after_profit is not None:
+            refs.append(spec.exit.trailing_stop.arm_after_profit.param)
+    if spec.exit.atr_mult is not None:
+        refs.append(spec.exit.atr_mult.param)
     setup = spec.setup
     if setup is not None:
         if setup.ma_trend_filter is not None:

@@ -110,6 +110,67 @@ def queue_idea(store: Store, text: str, *, name: str | None = None, inbox_dir: P
     return QueuedIdea(filename=filename, name=title, path=str(path), content_hash=chash)
 
 
+# Fanned exit-envelope variants land as content-addressed .json specs prefixed so they're easy to spot among
+# operator vibes and authored specs.
+_FAN_PREFIX = "exitfan-"
+
+
+@dataclass
+class QueuedExitFan:
+    """Result of fanning one validated entry spec into the inbox: the base spec name, how many exit variants were
+    written, and their paths. PROPOSE-ONLY — the variants sit in the inbox until the next deterministic scan routes
+    them through the Gate (scan_inbox → FarmLoop → BH-FDR). This call NEVER scores or funds anything."""
+
+    base_name: str
+    variants: int
+    paths: list[str] = field(default_factory=list)
+
+
+def queue_exit_fan(
+    base_spec: StrategySpec,
+    store: Store,
+    *,
+    n: int | None = None,
+    inbox_dir: Path | None = None,
+) -> QueuedExitFan:
+    """Fan ONE validated entry spec over the EXIT envelope (fan_exit_envelope) and drop each variant as a typed
+    `.json` StrategySpec into strategies/inbox/, so the existing deterministic scan (scan_inbox → FarmLoop →
+    BH-FDR) disposes the whole cohort. Each variant is a serialized StrategySpec — the scanner parses .json directly
+    and validates it — and is written content-addressed so a re-fan of the same base is imported exactly once
+    (the scanner's content-hash idempotency). An audited `inbox_queued` event is recorded per variant.
+
+    PROPOSE-ONLY: this is the research-to-cohort hook for 'fix one edge, fan the exit envelope'. It NEVER scores,
+    promotes, or moves money — the Gate alone funds. Raises ValueError (via fan_exit_envelope) if `base_spec` is
+    not itself validate_spec-clean."""
+    from cosmu.lab.exit_sweep import fan_exit_envelope
+
+    variants = fan_exit_envelope(base_spec, n=n)
+    directory = inbox_dir or _INBOX_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    for variant in variants:
+        contents = json.dumps(variant.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        chash = _content_hash(contents)
+        filename = f"{_FAN_PREFIX}{_slugify(variant.name)}-{chash[:8]}.json"
+        path = directory / filename
+        path.write_text(contents, encoding="utf-8")
+        paths.append(str(path))
+        store.append_event(
+            actor="master",
+            kind="inbox_queued",
+            ref_type="strategy_spec",
+            payload={
+                "path": str(path),
+                "filename": filename,
+                "name": variant.name,
+                "content_hash": chash,
+                "origin": "exit_fan",
+                "base_name": base_spec.name,
+            },
+        )
+    return QueuedExitFan(base_name=base_spec.name, variants=len(variants), paths=paths)
+
+
 def list_queued(store: Store, *, limit: int = 20) -> list[QueuedIdeaRow]:
     """The operator-queued ideas, newest first. Each stays `queued` until a scan imports its content-hash, then
     flips to `imported`. Read straight off the audited event ledger — honest, never fabricated."""
