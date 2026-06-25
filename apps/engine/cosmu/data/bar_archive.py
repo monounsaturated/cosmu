@@ -155,6 +155,144 @@ def load_archived_bars(
 
 
 # ------------------------------------------------------------------------------------------------------------------
+# The HOARD step — actively GATHER bars from the keyless-native venues into R2 from the running fleet.
+#
+# WHY a fetch loop (not just write-through): the Modal fleet is CACHELESS (data/market.RemoteBarsProvider fetches
+# bars at RUNTIME from the Railway EU endpoint, keeps no local cache to sync). So nothing ever lands on disk for
+# sync_local_cache to push. This step instead pulls each (venue, symbol) keyless window directly via
+# `keyless_venue_provider` and archive_bars()→R2 it. Run hourly from the `ingest` cron: each pass captures the
+# latest shallow ~720-bar keyless window and UNION-MERGES it into the deep R2 series, so the stored history only
+# ever GROWS — accumulating depth the keyless REST window can never serve in one call. Free + cheap.
+#
+# BOUNDED by construction (so one run can't blow the budget): the crypto universe is capped to the Tier-0/1 set
+# (the ~30 deepest names) × the keyless venues (kraken/binance/bybit) × the requested timeframes — a few hundred
+# small REST GETs, each idempotent (a re-archive of the same window is a no-op merge → one GET, no PUT). A fetch
+# error for one (venue, symbol) is logged + skipped, NEVER aborts the loop. R2 creds ABSENT → a loud no-op.
+# ------------------------------------------------------------------------------------------------------------------
+
+# The keyless-NATIVE crypto venues we hoard from (each serves ITS OWN book — never one as source-of-truth for all,
+# the per-venue directive). These are exactly the venues data/market.keyless_venue_provider resolves to a LIVE
+# keyless route; cache-only venues (hyperliquid/equity) have no live keyless fetch, so they are not hoarded here.
+HOARD_VENUES: tuple[str, ...] = ("kraken", "binance", "bybit")
+
+# Hard caps so one hoard run stays cheap and can NEVER fan out unboundedly (defence-in-depth alongside the
+# Tier-0/1 symbol cap). At the defaults: ≤30 symbols × 3 venues × 1 timeframe = ≤90 small REST GETs per pass.
+_HOARD_MAX_SYMBOLS = 30   # the Tier-0 depth (data.universe.TIER0_N) — the deepest, most-liquid names
+_HOARD_MAX_CELLS = 300    # absolute ceiling on (venue × symbol × timeframe) fetches in a single run
+
+
+def _hoard_symbols(store: Any | None, *, max_symbols: int) -> list[str]:
+    """The Tier-0/1 crypto symbols to hoard, deepest first, capped at `max_symbols`. Reads the liquidity-ranked
+    universe_pairs table when a `store` is given (Tier-0/1, crypto), else the static PERP_UNIVERSE fallback — the
+    SAME source/fallback contract the screen uses. Symbols are the canonical PERP spelling (BTCUSDT); each keyless
+    provider maps to its own venue spelling internally (Kraken → XBTUSD) and caches/keys under the symbol passed."""
+    from cosmu.data.universe import PERP_UNIVERSE, dedupe_symbols, load_universe
+
+    syms: list[str] = []
+    if store is not None:
+        try:
+            # Tier-0/1 = the deepest ~30 + next band; active crypto only (the live keyless venues serve only the
+            # currently-listed book, so a delisted name would just fetch empty). Liquidity-ordered, deepest first.
+            rows = [
+                r for r in load_universe(store, asset_class="crypto", active_only=True)
+                if r.tier in (0, 1)
+            ]
+            syms = [r.symbol for r in rows]
+        except Exception:  # noqa: BLE001 — table absent / store hiccup → fall back to the static universe
+            syms = []
+    if not syms:
+        syms = list(PERP_UNIVERSE)
+    # Dedupe (a symbol can appear under several venue rows) + cap to the deepest `max_symbols`.
+    return list(dedupe_symbols(syms))[: max(0, max_symbols)]
+
+
+def archive_universe_bars(
+    *,
+    store: Any | None = None,
+    timeframes: tuple[str, ...] = ("1d",),
+    venues: tuple[str, ...] = HOARD_VENUES,
+    max_symbols: int = _HOARD_MAX_SYMBOLS,
+    max_cells: int = _HOARD_MAX_CELLS,
+    limit: int = 1000,
+    settings: Settings | None = None,
+    s3: Any | None = None,
+    provider_for: Any | None = None,
+) -> dict:
+    """HOARD the Tier-0/1 crypto universe's bars from each keyless-native venue into R2 — the active gather step
+    the cacheless Modal fleet needs (it keeps no local cache to sync). For each (venue, symbol, timeframe): fetch
+    the keyless window via `keyless_venue_provider(venue)` and archive_bars()→R2 (idempotent union-merge, never
+    shrinks). Accumulates deep history across runs from the shallow keyless window.
+
+    BOUNDED: ≤`max_symbols` (Tier-0 depth) × `venues` × `timeframes`, hard-capped at `max_cells` total fetches.
+    BEST-EFFORT: a fetch error for one (venue, symbol, timeframe) is logged + skipped, never aborts the loop.
+    R2 creds ABSENT → a loud no-op ({'archived': 0, ...}); never crashes the caller, never touches a client.
+
+    `provider_for` is injectable (defaults to data.market.keyless_venue_provider) so tests run with stub providers
+    and no network; `s3` is injectable so tests use the fake in-memory client.
+
+    Returns a summary {archived, skipped, cells, archived_bars, venues, symbols}."""
+    settings = settings or get_settings()
+    # R2 creds absent → loud no-op BEFORE any fetch (don't even hit the venues if we can't persist).
+    if s3 is None:
+        if not _r2_ready(settings):
+            logger.warning("bar_archive: R2 creds absent — universe-bar hoard is a no-op.")
+            return {"archived": 0, "skipped": 0, "cells": 0, "archived_bars": 0, "venues": 0, "symbols": 0}
+        s3 = _r2_client(settings)
+
+    if provider_for is None:
+        # lazy import keeps the market module (and its providers) off the base import path
+        from cosmu.data.market import keyless_venue_provider
+        provider_for = keyless_venue_provider
+
+    symbols = _hoard_symbols(store, max_symbols=max_symbols)
+    archived = skipped = cells = total_bars = 0
+
+    for venue in venues:
+        provider = provider_for(venue)
+        if provider is None:  # cache-only / unknown venue → no live keyless route, skip honestly (no fabrication)
+            logger.info("bar_archive: hoard — venue %s has no keyless route, skipping.", venue)
+            continue
+        for symbol in symbols:
+            for timeframe in timeframes:
+                if cells >= max_cells:  # hard ceiling — refuse to fan out past the cost cap
+                    logger.warning(
+                        "bar_archive: hoard hit the %d-cell ceiling — stopping (archived %d, skipped %d).",
+                        max_cells, archived, skipped,
+                    )
+                    return {
+                        "archived": archived, "skipped": skipped, "cells": cells,
+                        "archived_bars": total_bars, "venues": len(venues), "symbols": len(symbols),
+                    }
+                cells += 1
+                try:
+                    bars = provider.fetch_bars(symbol, timeframe, limit=limit)
+                except Exception:  # noqa: BLE001 — one venue/symbol fetch error is logged + skipped, never aborts
+                    logger.warning("bar_archive: hoard fetch failed for %s:%s %s — skipping.", venue, symbol, timeframe)
+                    skipped += 1
+                    continue
+                if not bars:  # offline / delisted / not on this venue → nothing to archive (never fabricate)
+                    skipped += 1
+                    continue
+                try:
+                    archive_bars(venue, symbol, timeframe, bars, settings=settings, s3=s3)
+                except Exception:  # noqa: BLE001 — an R2 write hiccup on one series must not abort the hoard
+                    logger.warning("bar_archive: hoard archive failed for %s:%s %s — skipping.", venue, symbol, timeframe)
+                    skipped += 1
+                    continue
+                archived += 1
+                total_bars += len(bars)
+    logger.info(
+        "bar_archive: universe-bar hoard complete — %d series archived, %d skipped (%d cells), %d bars across "
+        "%d venues × %d symbols.",
+        archived, skipped, cells, total_bars, len(venues), len(symbols),
+    )
+    return {
+        "archived": archived, "skipped": skipped, "cells": cells,
+        "archived_bars": total_bars, "venues": len(venues), "symbols": len(symbols),
+    }
+
+
+# ------------------------------------------------------------------------------------------------------------------
 # The standalone SYNC job — push the whole local `.cosmu/market_data/<venue>/` bar cache to R2 (union-merge per file).
 # Run LOCAL or on Modal (never a Railway hot cron — R2 IO). `python -m cosmu.data.bar_archive sync [cache_root]`.
 # ------------------------------------------------------------------------------------------------------------------
@@ -231,8 +369,24 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = list(sys.argv[1:] if argv is None else argv)
     cmd = args[0] if args else "sync"
+    if cmd == "hoard":
+        # Pull the Tier-0/1 crypto universe's bars from the keyless venues into R2 (the active gather step the
+        # cacheless fleet needs). Reads the liquidity-ranked universe from the store; falls back to PERP_UNIVERSE.
+        from cosmu.knowledge.store import Store
+
+        try:
+            store: Any | None = Store(get_settings())
+        except Exception:  # noqa: BLE001 — no DB locally → hoard the static PERP_UNIVERSE fallback
+            store = None
+        result = archive_universe_bars(store=store)
+        print(
+            f"bar_archive hoard: {result['archived']} series archived, {result['skipped']} skipped "
+            f"({result['cells']} cells, {result['venues']} venues × {result['symbols']} symbols), "
+            f"{result['archived_bars']:,} bars."
+        )
+        return 0
     if cmd != "sync":
-        print(f"usage: python -m cosmu.data.bar_archive sync [cache_root]\n  (unknown command {cmd!r})")
+        print(f"usage: python -m cosmu.data.bar_archive sync [cache_root] | hoard\n  (unknown command {cmd!r})")
         return 2
     cache_root = args[1] if len(args) > 1 else _LOCAL_CACHE_ROOT
     result = sync_local_cache(cache_root=cache_root)

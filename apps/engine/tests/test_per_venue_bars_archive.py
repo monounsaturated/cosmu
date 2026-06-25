@@ -411,3 +411,181 @@ def test_parse_cache_filename_handles_symbol_and_timeframe():
     assert bar_archive._parse_cache_filename("XBTUSD_4h.json") == ("XBTUSD", "4h")
     assert bar_archive._parse_cache_filename("notes.txt") is None
     assert bar_archive._parse_cache_filename("nounderscore.json") is None
+
+
+# ====================================================================================================================
+# 5. archive_universe_bars — the HOARD step: gather Tier-0/1 crypto bars from the keyless venues into R2
+# ====================================================================================================================
+
+
+def _stub_provider_for(by_venue_symbol: dict[tuple[str, str], list[Bar]], *, raise_on=None):
+    """A `provider_for(venue)` factory: returns a _StubProvider whose bars are keyed by symbol for `venue`, or None
+    when the venue has no entry (mirrors keyless_venue_provider's cache-only/unknown → None). `raise_on` is a set of
+    (venue, symbol) pairs whose fetch RAISES — to prove one fetch error is skipped, never aborts the loop."""
+    raise_on = raise_on or set()
+
+    class _Prov:
+        def __init__(self, venue: str) -> None:
+            self._venue = venue
+
+        def fetch_bars(self, symbol: str, timeframe: str, *, limit: int):  # noqa: ARG002
+            if (self._venue, symbol) in raise_on:
+                raise RuntimeError(f"boom {self._venue}:{symbol}")
+            return by_venue_symbol.get((self._venue, symbol), [])[-limit:]
+
+    venues_present = {v for (v, _s) in by_venue_symbol} | {v for (v, _s) in raise_on}
+
+    def factory(venue: str):
+        return _Prov(venue) if venue in venues_present else None
+
+    return factory
+
+
+def test_archive_universe_bars_writes_per_venue_and_symbol():
+    """The hoard fetches each (venue, symbol) keyless window and archives it under bars/<venue>/<SYMBOL>_<tf>.json.
+    With two venues × two symbols, four R2 objects land — the deep-history seed the cacheless fleet accumulates."""
+    s3 = _FakeS3()
+    settings = _settings_with_r2()
+    bars = _bars(_walk(50, seed=1))
+    pf = _stub_provider_for({
+        ("kraken", "BTCUSDT"): bars, ("kraken", "ETHUSDT"): bars,
+        ("binance", "BTCUSDT"): bars, ("binance", "ETHUSDT"): bars,
+    })
+    result = bar_archive.archive_universe_bars(
+        store=None, venues=("kraken", "binance"), timeframes=("1d",),
+        settings=settings, s3=s3, provider_for=pf,
+        # store=None → PERP_UNIVERSE fallback; cap to the two symbols our stub serves so the assert is exact.
+        max_symbols=2,
+    )
+    assert result["archived"] == 4
+    keys = {k for (_b, k) in s3.store}
+    assert keys == {
+        "bars/kraken/BTCUSDT_1d.json", "bars/kraken/ETHUSDT_1d.json",
+        "bars/binance/BTCUSDT_1d.json", "bars/binance/ETHUSDT_1d.json",
+    }
+
+
+def test_archive_universe_bars_is_idempotent_across_runs():
+    """Two identical hoard passes leave the stored series unchanged — the SECOND pass is a pure no-op merge (one GET,
+    no PUT per series). This is what makes the hourly cron accumulate without ever re-writing settled history."""
+    s3 = _FakeS3()
+    settings = _settings_with_r2()
+    pf = _stub_provider_for({("kraken", "BTCUSDT"): _bars(_walk(40, seed=2))})
+    common = dict(store=None, venues=("kraken",), timeframes=("1d",), max_symbols=1,
+                  settings=settings, s3=s3, provider_for=pf)
+    bar_archive.archive_universe_bars(**common)
+    puts_after_first = s3.put_calls
+    assert puts_after_first == 1
+    bar_archive.archive_universe_bars(**common)  # identical second pass
+    assert s3.put_calls == puts_after_first  # no redundant write — idempotent
+
+
+def test_archive_universe_bars_accumulates_deep_history_across_runs():
+    """The CORE hoard invariant: a later pass returning a NEWER, shorter keyless window UNION-MERGES into the deep R2
+    series — it only GROWS. The shallow keyless window accumulates into history the single REST call can't serve."""
+    s3 = _FakeS3()
+    settings = _settings_with_r2()
+    early = _bars(_walk(29, seed=3), start=datetime(2024, 1, 1, tzinfo=UTC))
+    later = _bars(_walk(19, seed=4), start=datetime(2024, 1, 20, tzinfo=UTC))
+    bar_archive.archive_universe_bars(
+        store=None, venues=("kraken",), timeframes=("1d",), max_symbols=1,
+        settings=settings, s3=s3, provider_for=_stub_provider_for({("kraken", "BTCUSDT"): early}),
+    )
+    bar_archive.archive_universe_bars(
+        store=None, venues=("kraken",), timeframes=("1d",), max_symbols=1,
+        settings=settings, s3=s3, provider_for=_stub_provider_for({("kraken", "BTCUSDT"): later}),
+    )
+    stored = bar_archive.load_archived_bars("kraken", "BTCUSDT", "1d", settings=settings, s3=s3)
+    ts_union = sorted({b.ts for b in early} | {b.ts for b in later})
+    assert [b.ts for b in stored] == ts_union
+    assert len(stored) > len(later)  # strictly deeper than the latest shallow window
+
+
+def test_archive_universe_bars_r2_absent_is_no_op():
+    """R2 creds ABSENT → the hoard is a loud no-op ({'archived': 0, ...}), never touches a provider or a client."""
+    pf = _stub_provider_for({("kraken", "BTCUSDT"): _bars(_walk(10, seed=5))})
+    result = bar_archive.archive_universe_bars(
+        store=None, venues=("kraken",), timeframes=("1d",), max_symbols=1,
+        settings=_settings_no_r2(), provider_for=pf,  # no s3 + no creds → must short-circuit before any fetch
+    )
+    assert result == {"archived": 0, "skipped": 0, "cells": 0, "archived_bars": 0, "venues": 0, "symbols": 0}
+
+
+def test_archive_universe_bars_is_bounded_by_max_cells():
+    """The hard cell ceiling bounds one run: with 5 symbols × 2 venues but max_cells=3, exactly 3 fetches happen and
+    the loop stops — so a wide universe can never fan out past the cost cap in a single pass."""
+    s3 = _FakeS3()
+    settings = _settings_with_r2()
+    # store=None → the static PERP_UNIVERSE fallback (BTCUSDT, ETHUSDT, BNBUSDT, …) drives the symbol order; seed the
+    # stub for the first 5 so every fetched cell has bars and the only stop reason is the max_cells ceiling.
+    from cosmu.data.universe import PERP_UNIVERSE
+
+    syms = list(PERP_UNIVERSE[:5])
+    by = {(v, s): _bars(_walk(20, seed=hash((v, s)) % 1000)) for v in ("kraken", "binance") for s in syms}
+    result = bar_archive.archive_universe_bars(
+        store=None, venues=("kraken", "binance"), timeframes=("1d",),
+        max_symbols=5, max_cells=3, settings=settings, s3=s3, provider_for=_stub_provider_for(by),
+    )
+    assert result["cells"] == 3
+    assert result["archived"] == 3  # all three fetched cells had bars
+    assert len(s3.store) == 3  # exactly three series written — the ceiling held
+
+
+def test_archive_universe_bars_one_fetch_error_is_skipped_not_aborted():
+    """One (venue, symbol) fetch that RAISES is logged + skipped — the loop continues and the OTHER symbols still
+    archive. A flaky venue can never abort the whole hoard."""
+    s3 = _FakeS3()
+    settings = _settings_with_r2()
+    bars = _bars(_walk(30, seed=7))
+    # store=None → the first 3 PERP_UNIVERSE names (BTCUSDT, ETHUSDT, BNBUSDT); raise on the MIDDLE one.
+    pf = _stub_provider_for(
+        {("kraken", "BTCUSDT"): bars, ("kraken", "ETHUSDT"): bars, ("kraken", "BNBUSDT"): bars},
+        raise_on={("kraken", "ETHUSDT")},  # the middle symbol blows up
+    )
+    result = bar_archive.archive_universe_bars(
+        store=None, venues=("kraken",), timeframes=("1d",), max_symbols=3,
+        settings=settings, s3=s3, provider_for=pf,
+    )
+    assert result["cells"] == 3
+    assert result["archived"] == 2 and result["skipped"] == 1  # the error was skipped, the loop continued
+    keys = {k for (_b, k) in s3.store}
+    assert keys == {"bars/kraken/BTCUSDT_1d.json", "bars/kraken/BNBUSDT_1d.json"}  # ETHUSDT absent
+
+
+def test_archive_universe_bars_skips_cache_only_venue_with_no_route():
+    """A venue with no keyless route (provider_for → None, like hyperliquid/equity) is skipped honestly — never
+    fabricates bars, never crashes — while the live-route venue still hoards."""
+    s3 = _FakeS3()
+    settings = _settings_with_r2()
+    pf = _stub_provider_for({("kraken", "BTCUSDT"): _bars(_walk(20, seed=8))})  # only kraken has a route
+    result = bar_archive.archive_universe_bars(
+        store=None, venues=("kraken", "hyperliquid"), timeframes=("1d",), max_symbols=1,
+        settings=settings, s3=s3, provider_for=pf,
+    )
+    assert result["archived"] == 1  # only kraken archived; hyperliquid had no route → skipped
+    assert {k for (_b, k) in s3.store} == {"bars/kraken/BTCUSDT_1d.json"}
+
+
+def test_archive_universe_bars_reads_tier01_symbols_from_the_store(tmp_path):
+    """When a store is given, the hoard pulls the Tier-0/1 liquidity-ranked crypto symbols from universe_pairs (not
+    the static fallback). Seed two Tier-0 rows + one Tier-2 row; only the Tier-0/1 names are fetched/archived."""
+    store = _store(tmp_path)
+    store.migrate()
+    # Tier-0 (hoarded) BTC/ETH + a Tier-2 (NOT hoarded) tail name, all on binance spot.
+    with store.batch() as b:
+        for sym, tier, liq in [("BTCUSDT", 0, 9e9), ("ETHUSDT", 0, 8e9), ("TAILUSDT", 2, 1e6)]:
+            b.insert("universe_pairs", {
+                "id": f"binance:{sym}", "venue": "binance", "symbol": sym, "base": sym[:-4], "quote": "USDT",
+                "asset_class": "crypto", "instrument_type": "spot", "liquidity_usd_24h": liq,
+                "tier": tier, "rank": 0, "active": 1, "source": "live", "fetched_at": "2024-01-01T00:00:00+00:00",
+            })
+    s3 = _FakeS3()
+    bars = _bars(_walk(20, seed=9))
+    pf = _stub_provider_for({("binance", s): bars for s in ("BTCUSDT", "ETHUSDT", "TAILUSDT")})
+    result = bar_archive.archive_universe_bars(
+        store=store, venues=("binance",), timeframes=("1d",),
+        settings=_settings_with_r2(), s3=s3, provider_for=pf,
+    )
+    # Only the two Tier-0 names hoarded; the Tier-2 tail name is excluded by the Tier-0/1 filter.
+    assert result["archived"] == 2
+    assert {k for (_b, k) in s3.store} == {"bars/binance/BTCUSDT_1d.json", "bars/binance/ETHUSDT_1d.json"}
