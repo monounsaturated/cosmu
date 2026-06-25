@@ -20,7 +20,7 @@ import json
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cosmu.data.altdata import AltDataPoint, PolymarketGammaProvider, _ssl_context
@@ -233,10 +233,17 @@ class PerMarketOddsSource:
 
     The CLOB `/prices-history` endpoint is keyed by the YES-outcome clobTokenId, NOT the conditionId — so each
     fetch is two hops: Gamma `/markets?condition_ids={cid}` → `clobTokenIds[0]` (the YES token) → CLOB
-    `/prices-history?market={YES_token}&fidelity=1440&interval=max` → daily {t, p} rows where p ∈ [0,1] is the
-    implied probability. The series is stored keyed by the conditionId so the adapter can read it back without
-    re-resolving the token (the universe_pairs symbol IS the conditionId). PIT: available_at = ts (a midpoint
-    quote is known at its own bucket time; no declared release lag — same contract as `PolymarketClobSource`).
+    `/prices-history?market={YES_token}&fidelity={fidelity}&interval=max` → {t, p} rows where p ∈ [0,1] is the
+    implied probability. `fidelity` is the bucket size in MINUTES: 1440 = daily (the macro-feature cadence),
+    60 = hourly (the cadence the per-cell min-trades Gate can clear — ~24× the rows). The series is stored keyed
+    by the conditionId so the adapter can read it back without re-resolving the token (the universe_pairs symbol
+    IS the conditionId).
+
+    PIT (look-ahead fix, scout #385 Fix-C5): available_at = ts + ONE BUCKET, NOT ts. A CLOB bucket carries the
+    midpoint as of the bucket's START, so stamping it `available_at == ts` would hand a backtest the bucket's own
+    price on its entry bar — a 1-bucket look-ahead. Lagging availability by one bucket (`ts + fidelity minutes`)
+    means a backtest's per-bar as-of join can only ever see a bucket that has fully closed. Revision-safe + shared
+    `read_asof(available_at <= as_of)` contract; the lag is the only honest entry-bar timing.
 
     Offline-testable via injected `_gamma_fetcher(url)->list|dict` and `_clob_fetcher(url)->dict`.
     """
@@ -275,24 +282,27 @@ class PerMarketOddsSource:
                 return token
         return None
 
-    def fetch_odds(self, condition_id: str, *, limit: int = 100_000) -> list[AltDataPoint]:
-        """Full daily YES-odds history for one conditionId, ascending by ts. Empty on any failure (unresolvable
-        token, dead CLOB fetch, no history) — the ingest treats it as 0 rows for that market, never an abort."""
+    def fetch_odds(self, condition_id: str, *, fidelity: int = 1440, limit: int = 100_000) -> list[AltDataPoint]:
+        """Full YES-odds history for one conditionId at `fidelity`-minute buckets (1440 = daily, 60 = hourly),
+        ascending by ts. Empty on any failure (unresolvable token, dead CLOB fetch, no history) — the ingest
+        treats it as 0 rows for that market, never an abort. PIT: `available_at = ts + one bucket` (the look-ahead
+        fix), so a backtest only sees a bucket after it has fully closed."""
         token = self.yes_token_for(condition_id)
         if not token:
             return []
-        query = urllib.parse.urlencode({"market": token, "fidelity": 1440, "interval": "max"})
+        query = urllib.parse.urlencode({"market": token, "fidelity": int(fidelity), "interval": "max"})
         url = f"{self.CLOB_BASE}/prices-history?{query}"
         try:
             payload = self._clob_fetcher(url)
         except Exception:  # noqa: BLE001 — network/timeout/404 → skip, never abort
             return []
         rows = payload.get("history", []) if isinstance(payload, dict) else []
+        bucket = timedelta(minutes=int(fidelity))  # +1-bucket PIT lag: a closed bucket is knowable only at its end
         out: list[AltDataPoint] = []
         for row in rows:
             try:
                 ts = datetime.fromtimestamp(int(row["t"]), tz=UTC)
-                out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["p"])))
+                out.append(AltDataPoint(ts=ts, available_at=ts + bucket, value=float(row["p"])))
             except (KeyError, TypeError, ValueError, OSError):
                 continue
         return sorted(out, key=lambda p: p.ts)[-limit:]

@@ -24,6 +24,17 @@ logger = logging.getLogger("cosmu.ingest.polymarket_odds")
 _PROVIDER = "polymarket"
 _METRIC = "odds"
 
+# Hourly variant: the SAME per-market YES-odds, but at fidelity=60 (hourly buckets). Stored under a DISTINCT
+# metric ("odds_60") so the two cadences never co-mingle in one (provider,symbol,metric) series — mixing daily
+# and hourly ts in one keyspace would corrupt the ts-keyed dedup and the adapter's bar read. The daily series is
+# correctly refused by the per-cell min-trades Gate (~1 trade/market); the hourly series is ~24× the rows, which
+# lets a cell clear MIN_TRADES/_BRUT_MIN_TRADES HONESTLY (the fix is denser bars, never a looser Gate).
+_METRIC_HOURLY = "odds_60"
+
+# CLOB `fidelity` is the bucket size in MINUTES. 1440 = daily (the macro-feature cadence), 60 = hourly.
+_FIDELITY_DAILY = 1440
+_FIDELITY_HOURLY = 60
+
 # Default breadth: the top ~30 most-liquid open polymarket markets. Matches the venue-universe HL/PERP width —
 # enough to test the prediction lane wide without hammering the public CLOB. Override per call.
 DEFAULT_MAX_MARKETS = 30
@@ -57,30 +68,53 @@ def ingest_per_market_odds(
     *,
     source: PerMarketOddsSource | None = None,
     max_markets: int = DEFAULT_MAX_MARKETS,
+    fidelity: int = _FIDELITY_DAILY,
+    metric: str = _METRIC,
     limit: int = 100_000,
 ) -> list[PerMarketIngestResult]:
     """Ingest the per-MARKET YES-odds series for the top-`max_markets` liquid open polymarket conditionIds into
-    `alt_store`, keyed by conditionId under (provider="polymarket", metric="odds"). Idempotent (append_dedup,
-    ts-keyed). `store` is the knowledge Store that backs universe_pairs (the conditionId source). Per-market
-    failure (unresolvable token, dead CLOB fetch, empty history) is isolated — that market contributes 0 rows and
-    the batch continues. Returns one result per conditionId attempted."""
+    `alt_store`, keyed by conditionId under (provider="polymarket", metric). Idempotent (append_dedup, ts-keyed).
+    `store` is the knowledge Store that backs universe_pairs (the conditionId source). `fidelity` is the CLOB
+    bucket size in MINUTES (1440 = daily → metric="odds"; 60 = hourly → metric="odds_60"); the caller pairs the
+    cadence with the matching metric so the two never co-mingle in one series. Per-market failure (unresolvable
+    token, dead CLOB fetch, empty history) is isolated — that market contributes 0 rows and the batch continues.
+    Returns one result per conditionId attempted."""
     src = source or PerMarketOddsSource()
     condition_ids = top_liquid_condition_ids(store, max_markets=max_markets)
     results: list[PerMarketIngestResult] = []
     for cid in condition_ids:
         try:
-            points = src.fetch_odds(cid, limit=limit)
+            points = src.fetch_odds(cid, fidelity=fidelity, limit=limit)
         except Exception:  # noqa: BLE001 — one market's failure never aborts the batch
             logger.warning("polymarket per-market odds fetch failed for %s", cid, exc_info=True)
             points = []
-        written = append_dedup(alt_store, _PROVIDER, cid, _METRIC, points)
+        written = append_dedup(alt_store, _PROVIDER, cid, metric, points)
         results.append(PerMarketIngestResult(condition_id=cid, written=written, total=len(points)))
     return results
+
+
+def ingest_per_market_odds_hourly(
+    alt_store: AltDataStore,
+    store: object,
+    *,
+    source: PerMarketOddsSource | None = None,
+    max_markets: int = DEFAULT_MAX_MARKETS,
+    limit: int = 100_000,
+) -> list[PerMarketIngestResult]:
+    """The HOURLY (fidelity=60) per-market odds variant, stored under metric="odds_60". Hourly is ~24× the daily
+    rows, so a per-market cell can clear the per-cell min-trades Gate (MIN_TRADES/_BRUT_MIN_TRADES) honestly —
+    daily odds (~1 trade/market) is correctly refused. Same idempotent, per-market-isolated contract as the daily
+    `ingest_per_market_odds`; differs only in the cadence + the destination metric."""
+    return ingest_per_market_odds(
+        alt_store, store, source=source, max_markets=max_markets,
+        fidelity=_FIDELITY_HOURLY, metric=_METRIC_HOURLY, limit=limit,
+    )
 
 
 __all__ = [
     "DEFAULT_MAX_MARKETS",
     "PerMarketIngestResult",
     "ingest_per_market_odds",
+    "ingest_per_market_odds_hourly",
     "top_liquid_condition_ids",
 ]

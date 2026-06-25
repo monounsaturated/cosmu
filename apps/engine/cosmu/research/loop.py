@@ -41,6 +41,39 @@ def _hoard_universe_bars(store: Store) -> None:
         logger.exception("bar hoard step failed; ingest step (already persisted) is unaffected")
 
 
+# Bound the per-pass odds fetch: the top-N most-liquid open polymarket markets × two cadences (daily + hourly).
+# Small + cheap (keyless public CLOB); a hard cap so one cron pass can never hammer the endpoint. Daily is the
+# macro-feature cadence; hourly is the ~24×-denser series the per-cell min-trades Gate can clear honestly.
+_ODDS_MAX_MARKETS = 30
+
+
+def _hoard_per_market_odds(store: Store, alt_store) -> None:  # noqa: ANN001
+    """Best-effort per-MARKET Polymarket odds ingest, folded into the hourly ingest cron (scout #385 Fix-A) — the
+    wiring that makes the orphaned `ingest_per_market_odds` actually run in prod, so the prediction-contract lane
+    (finder._prediction_bars, metric="odds") finally has data to screen. DATA-GATHERING ONLY: it accumulates the
+    per-conditionId YES-odds HISTORY point-in-time (available_at = ts + one bucket) so it's ready IF the operator
+    picks the prediction lane — no Gate change, no money, no arming. Runs BOTH cadences: daily (metric="odds",
+    the macro-feature cadence) and hourly (metric="odds_60", the ~24×-denser series the per-cell min-trades Gate
+    can eventually clear). BOUNDED (top-`_ODDS_MAX_MARKETS` liquid markets) + idempotent (ts-keyed append_dedup) +
+    per-market-isolated. WRAPPED so any failure (CLOB hiccup, a market that won't resolve, a DB-absent universe)
+    is logged + swallowed and can NEVER abort the already-persisted ingest pass — same discipline as the bar
+    hoard above. R2/DB-absent universe → top_liquid_condition_ids returns [] → a clean no-op."""
+    try:
+        from cosmu.ingest.polymarket_odds import (
+            ingest_per_market_odds,
+            ingest_per_market_odds_hourly,
+        )
+
+        daily = ingest_per_market_odds(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
+        hourly = ingest_per_market_odds_hourly(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
+        logger.info(
+            "per-market odds hoard: %s markets, %s daily + %s hourly new odds points (metric=odds / odds_60).",
+            len(daily), sum(r.written for r in daily), sum(r.written for r in hourly),
+        )
+    except Exception:  # noqa: BLE001 — the odds hoard is a free bonus; its failure must never touch the ingest result
+        logger.exception("per-market odds hoard step failed; ingest step (already persisted) is unaffected")
+
+
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
     """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) are
     ingested — exactly what arm (3) needs to differ from price-only. Same predicate the API uses."""
@@ -149,6 +182,12 @@ def auto_research_pass(
         # one call. BOUNDED (Tier-0 depth × venues × 1d, hard cell ceiling) + idempotent + R2-absent no-op.
         # BEST-EFFORT: wrapped so an R2/fetch hiccup can NEVER abort the already-persisted ingest pass.
         _hoard_universe_bars(store)
+        # HOARD per-market Polymarket odds (scout #385 Fix-A: the orphaned ingest lane). Accumulate each liquid
+        # open market's YES-odds HISTORY point-in-time (daily metric="odds" + hourly metric="odds_60") so the
+        # prediction-contract lane has data the moment the operator picks it — DATA-GATHERING ONLY (no Gate
+        # change, no money). BOUNDED + idempotent + best-effort: a CLOB hiccup or DB-absent universe is a no-op
+        # and can NEVER abort the already-persisted ingest pass.
+        _hoard_per_market_odds(store, alt_store)
 
     if not cross_asset_gate:
         return None
