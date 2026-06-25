@@ -23,9 +23,12 @@ from cosmu.data.backtest import (
     _entry_signal,
     _exit_signal,
     _feature_matrix,
+    _funding_series,
+    _resolved_tp_legs,
     _setup_entry_gate,
     _warmup_bars,
 )
+from cosmu.orchestrator import exit_state as _exit_state
 from cosmu.data.market import _cache_is_fresh, _equity_cache_is_fresh
 from cosmu.knowledge.lifecycle_status import ALIVE_STATUSES
 from cosmu.knowledge.store import Store, tracks_has_cell_columns, tracks_has_exposure_factor
@@ -189,6 +192,106 @@ def _exit_reason(
     if _exit_signal(m.spec, m.params, features, len(bars) - 1):
         return "signal_exit"
     return None
+
+
+def _live_book_of(portfolio: Portfolio, version_id: str, instrument_id: str) -> str:
+    """The venue BOOK an open leg currently lives on (sim / testnet / live) — the key the exit-state row uses, so
+    it matches the held-leg read. Prefers an open (qty != 0) row; falls back to 'sim' when none is found yet."""
+    rows = portfolio.store.rows(
+        "SELECT venue, qty FROM positions WHERE strategy_version_id = ? AND instrument_id = ?",
+        (version_id, instrument_id),
+    )
+    for r in rows:
+        try:
+            if float(r.get("qty") or 0) != 0:
+                return str(r["venue"])
+        except (TypeError, ValueError):
+            continue
+    return str(rows[0]["venue"]) if rows else "sim"
+
+
+def _accrue_position_funding(store: Store, m: _Managed, bars: list, alt: dict | None, mark: Decimal) -> None:  # noqa: ANN001
+    """Accrue ONE bar of funding cash-flow on a held LONG perp/funding leg, mirroring backtest's _accrue_funding:
+    a long PAYS funding when the rate is positive (flow = −rate × qty × close). The carry is booked onto the
+    position's realized P&L (so equity reflects it, exactly as the backtest folds it into cash) AND journaled +
+    folded into the exit-state's funding_accrued (audit). Spot specs (no funding_feature) and a missing rate at
+    this bar accrue nothing — the spot path is byte-identical to before. Idempotent per (version, instrument,
+    bar ts): a re-run on the same closed bar never double-charges."""
+    if m.spec is None or m.position is None or not getattr(m.spec, "funding_feature", None):
+        return
+    funding = _funding_series(m.spec, bars, alt)  # prefers the per-bar SUMMED carry (FUNDING_ACCRUAL_KEY)
+    if funding is None:
+        return
+    rate = funding[-1]  # the latest CLOSED bar
+    if rate is None:
+        return
+    bar_ts = bars[-1].ts.isoformat()
+    coid = f"funding-{m.version_id}-{m.position.instrument_id}-{bar_ts}"
+    # Idempotency: one funding accrual per leg per closed bar (the journal row is the guard).
+    if store.row("SELECT id FROM events WHERE kind = 'paper_funding_accrued' AND payload LIKE ? LIMIT 1",
+                 (f'%"coid": "{coid}"%',)) is not None:
+        return
+    qty = float(m.position.qty)
+    flow = -float(rate) * qty * float(mark)  # long pays positive funding (cost); receives when negative
+    if flow == 0.0:
+        return
+    # Book the carry as realized P&L on the position row (cash P&L on the open leg, like the backtest).
+    new_realized = m.position.realized_pnl + Decimal(str(flow))
+    store.rows(
+        "UPDATE positions SET realized_pnl = ? WHERE strategy_version_id = ? AND instrument_id = ? AND venue = ?",
+        (str(new_realized.quantize(Decimal("0.00000001"))), m.version_id, m.position.instrument_id, m.position.venue),
+    )
+    store.append_event(
+        actor="master", kind="paper_funding_accrued", ref_type="strategy_version", ref_id=m.version_id,
+        payload={"coid": coid, "symbol": m.symbol, "rate": str(rate), "flow": str(Decimal(str(flow)).quantize(Decimal("0.00000001")))},
+    )
+    # Mirror into the exit-state running total when the engine manages this leg (audit parity with the backtest).
+    if _exit_state.manages_exit(store, m.spec):
+        st = _exit_state.load_state(store, m.version_id, m.position.instrument_id, m.position.venue)
+        if st is not None:
+            st.funding_accrued += flow
+            _exit_state.save_state(store, m.version_id, m.position.instrument_id, m.position.venue, st)
+
+
+def _step_planned_exit(store: Store, m: _Managed, bars: list, features: dict, now: datetime, close_fn) -> None:  # noqa: ANN001
+    """Drive a held LONG leg through the multi-leg exit plan for ONE closed bar (parity #5). Loads (or, for a
+    leg opened before this engine, reconstructs) the per-position exit state, computes the time-stop / signal-exit
+    flags the backtest uses, steps the plan, and emits each partial/full reduce-only close through `close_fn`.
+    The stop-side fill is the worst of the stop LEVEL and the observed close (honestly pessimistic on a gap); the
+    TP legs fill AT their level (a real OCO never fills past the limit). State is persisted, and cleared when the
+    leg is fully closed so the next entry starts fresh."""
+    pos = m.position
+    assert pos is not None and m.spec is not None
+    bar = bars[-1]
+    stamp = bar.ts.isoformat()
+    entry_price = float(pos.avg_price)
+    state = _exit_state.load_state(store, m.version_id, pos.instrument_id, pos.venue)
+    if state is None:
+        # A leg opened before the exit-state engine (or its state was lost): seed from the position basis so it is
+        # managed from here on, with the fixed/ATR stop the spec would have set at entry.
+        stop_pct = _exit_state.initial_stop_pct(m.spec, m.params, bars)
+        state = _exit_state.ExitState(
+            entry_ts=None,
+            entry_qty=float(pos.qty),
+            stop_price=entry_price * (1.0 - stop_pct) if stop_pct is not None else None,
+            extreme=float(bar.high),
+        )
+    # Time-stop + signal-exit flags (the same the legacy _exit_reason computes).
+    entry_ts = _entry_ts(store, m.version_id, pos.instrument_id)
+    time_stop_hit = entry_ts is not None and (now - entry_ts).days >= m.spec.horizon.max_hold_days
+    signal_exit_hit = _exit_signal(m.spec, m.params, features, len(bars) - 1)
+
+    closes, state, remaining = _exit_state.step_exit_plan(
+        m.spec, m.params, bar=bar, state=state, position_qty=float(pos.qty), entry_price=entry_price,
+        time_stop_hit=time_stop_hit, signal_exit_hit=signal_exit_hit,
+    )
+    for pc in closes:
+        leg = f"tp{pc.leg_index}" if pc.leg_index is not None else pc.reason
+        close_fn(m, Decimal(str(pc.fill_price)), pc.reason, stamp, qty=Decimal(str(pc.qty)), leg=leg)
+    if remaining <= 0.0:
+        _exit_state.clear_state(store, m.version_id, pos.instrument_id, pos.venue)
+    else:
+        _exit_state.save_state(store, m.version_id, pos.instrument_id, pos.venue, state)
 
 
 def _managed_tracks(
@@ -358,8 +461,12 @@ def step_tracks(
     # DECISION BAR, so re-running the executor on the same bars is a true no-op (no double fills, no churn).
     pending: list[tuple[IntendedOrder, str, dict, str]] = []
 
-    def _close(m: _Managed, fill: Decimal, reason: str, stamp: str) -> None:
-        coid = f"fstep-{m.version_id}-close-{stamp}"
+    def _close(m: _Managed, fill: Decimal, reason: str, stamp: str, *, qty: Decimal | None = None, leg: str = "") -> None:
+        # `qty` defaults to the WHOLE position (a full close); a partial multi-TP leg passes its own size. `leg`
+        # disambiguates the coid so several reduce-only legs on the SAME bar (e.g. tp1 + a later full close) are
+        # each idempotent rather than colliding on one client_order_id.
+        close_qty = qty if qty is not None else m.position.qty
+        coid = f"fstep-{m.version_id}-close-{stamp}" + (f"-{leg}" if leg else "")
         if _already_filled(store, coid):
             return
         pending.append(
@@ -369,7 +476,7 @@ def step_tracks(
                     symbol=m.symbol,
                     venue_id=m.venue_id,
                     side=-1,
-                    qty=m.position.qty,
+                    qty=close_qty,
                     price=fill,
                     stop_loss=None,
                     take_profit=None,
@@ -380,7 +487,7 @@ def step_tracks(
                 ),
                 "exit",
                 {"version_id": m.version_id, "symbol": m.symbol, "reason": reason,
-                 "price": str(fill), "qty": str(m.position.qty)},
+                 "price": str(fill), "qty": str(close_qty)},
                 m.routing,
             )
         )
@@ -419,20 +526,40 @@ def step_tracks(
             )
             if track_kill.starting_capital is not None and track_kill.equity <= Decimal("0"):
                 _close(m, mark, "combo_wallet_spent", bars[-1].ts.isoformat())
+                _exit_state.clear_state(store, m.version_id, m.position.instrument_id, m.position.venue)
                 continue
+            # FUNDING PARITY: a held perp/funding leg accrues one bar of funding as cash P&L (mirrors backtest's
+            # _accrue_funding) — booked onto the position's realized P&L + journaled, so equity reflects the carry
+            # the screen charged. Spot (no funding_feature) accrues nothing. direction==-1 shorts never reach here
+            # (the executor skips them in _managed_tracks), so the long-pays sign is the only case — same as today.
+            _accrue_position_funding(store, m, bars, alt, mark)
+
             # An anticipatory drift defund outranks the spec's own exits — the edge the track was funded on
             # is measurably gone, so capital is pulled NOW rather than waiting for a bracket to trip.
-            reason = "drift_defund" if m.version_id in defunded else _exit_reason(m, store, bars, features, now)
-            if reason is None:
+            if m.version_id in defunded:
+                _close(m, mark, "drift_defund", bars[-1].ts.isoformat())
+                _exit_state.clear_state(store, m.version_id, m.position.instrument_id, m.position.venue)
                 continue
-            fill = mark
-            if reason == "take_profit":
-                # A real OCO fills AT the take limit, never beyond it — booking the close's overshoot would
-                # flatter the paper run vs the screen that funded it. The stop side stays at the observed
-                # close (worse than the stop level when price gapped through — honestly pessimistic).
-                _, take_f = _bracket_fractions(m.spec, m.params)
-                fill = min(mark, m.position.avg_price * (Decimal("1") + Decimal(str(take_f))))
-            _close(m, fill, reason, bars[-1].ts.isoformat())
+
+            # MULTI-LEG EXIT PLAN (parity #5): when the spec carries a layered exit tool (multi-TP / break-even /
+            # runner-trail / standalone trailing / ATR stop) AND the exit-state table is live, drive the leg
+            # through the SAME physics the backtest screened with — partial scale-out legs, a stop that the first
+            # TP raises to break-even and the trail ratchets up, all from per-position state persisted across
+            # ticks. Otherwise the legacy single stop/take/time/signal close governs (byte-identical to before).
+            if _exit_state.manages_exit(store, m.spec):
+                _step_planned_exit(store, m, bars, features, now, _close)
+            else:
+                reason = _exit_reason(m, store, bars, features, now)
+                if reason is None:
+                    continue
+                fill = mark
+                if reason == "take_profit":
+                    # A real OCO fills AT the take limit, never beyond it — booking the close's overshoot would
+                    # flatter the paper run vs the screen that funded it. The stop side stays at the observed
+                    # close (worse than the stop level when price gapped through — honestly pessimistic).
+                    _, take_f = _bracket_fractions(m.spec, m.params)
+                    fill = min(mark, m.position.avg_price * (Decimal("1") + Decimal(str(take_f))))
+                _close(m, fill, reason, bars[-1].ts.isoformat())
         else:
             if m.version_id in defunded:
                 continue
@@ -496,8 +623,18 @@ def step_tracks(
             if _already_filled(store, coid):
                 continue
             stop_f, take_f = _bracket_fractions(m.spec, m.params)
-            stop = mark * (Decimal("1") - Decimal(str(stop_f))) if stop_f is not None else mark * _FALLBACK_STOP
-            take = mark * (Decimal("1") + Decimal(str(take_f))) if take_f is not None else mark * _FALLBACK_TAKE
+            # ATR-multiple stop (parity #11): the initial stop distance is `atr_mult × ATR` at the signal bar when
+            # the spec uses it (else the fixed stop fraction). `initial_stop_pct` mirrors the backtest's choice.
+            _init_stop_pct = _exit_state.initial_stop_pct(m.spec, m.params, bars) if m.spec is not None else stop_f
+            stop = mark * (Decimal("1") - Decimal(str(_init_stop_pct))) if _init_stop_pct is not None else mark * _FALLBACK_STOP
+            # The OCO TP represents the FIRST scale-out: when the spec has a multi-TP plan, the bracket's TP is the
+            # nearest leg's level (the managed close path governs the later legs + the trailing runner — see the
+            # live-OCO note in master/execution.py). Otherwise the single fitted take fraction, as before.
+            _first_leg = _resolved_tp_legs(m.spec, m.params)[:1] if m.spec is not None else []
+            if _first_leg:
+                take = mark * (Decimal("1") + Decimal(str(_first_leg[0][0])))
+            else:
+                take = mark * (Decimal("1") + Decimal(str(take_f))) if take_f is not None else mark * _FALLBACK_TAKE
             # Quantize brackets to the instrument's REAL tick_size, not a hardcoded $0.01 (which is coarser
             # than a cheap asset's true tick — e.g. XRP ticks at 0.0001 — distorting/invalidating the level).
             # Stop rounds DOWN, take rounds UP — always AWAY from entry, so tick rounding can never invert a
@@ -520,7 +657,15 @@ def step_tracks(
                         data_fresh=data_fresh,
                     ),
                     "entry",
-                    {"version_id": m.version_id, "symbol": m.symbol, "price": str(mark), "qty": str(qty)},
+                    # Carry what the exit-state engine needs to seed the new leg's runner state once the fill is
+                    # CONFIRMED below: the instrument + venue book it lands on, the entry bar's high (the
+                    # favourable extreme at entry), the entry bar ts (ties the state to THIS leg), and the
+                    # ATR/fixed initial stop level. Only consumed when the spec carries a managed exit plan.
+                    {"version_id": m.version_id, "symbol": m.symbol, "price": str(mark), "qty": str(qty),
+                     "_instrument_id": _instr.id if _instr is not None else m.symbol,
+                     "_venue_book": "sim" if m.routing == "sim" else m.venue_id,
+                     "_entry_high": str(bars[-1].high), "_entry_ts": bars[-1].ts.isoformat(),
+                     "_init_stop": str(stop.quantize(_tick, rounding=ROUND_DOWN)), "_manage": _exit_state.manages_exit(store, m.spec)},
                     m.routing,
                 )
             )
@@ -573,8 +718,28 @@ def step_tracks(
             else:
                 report.opened += 1
                 report.entries.append({k: payload[k] for k in ("version_id", "symbol", "price")})
+                # Persist only the public entry fields in the ledger — the underscore-prefixed keys are transient
+                # seed data for the exit-state write below, not part of the forward record.
+                public = {k: v for k, v in payload.items() if not k.startswith("_")}
                 store.append_event(actor="master", kind="forward_entry", ref_type="strategy_version",
-                                   ref_id=payload["version_id"], payload=payload)
+                                   ref_id=payload["version_id"], payload=public)
+                # EXIT-STATE SEED (parity #5/#11): for a managed-plan spec, persist the new leg's runner state so
+                # the next tick's exit engine carries the trailing stop / legs-filled / extreme forward. Read the
+                # ACTUAL position book the fill landed on (sim/testnet/live) so the state key matches the held-leg
+                # read. Best-effort: a seed failure never fails the tick (the next tick reconstructs from basis).
+                if payload.get("_manage"):
+                    try:
+                        instr_id = payload["_instrument_id"]
+                        book = _live_book_of(portfolio, payload["version_id"], instr_id)
+                        st = _exit_state.ExitState(
+                            entry_ts=payload["_entry_ts"],
+                            entry_qty=float(payload["qty"]),
+                            stop_price=float(payload["_init_stop"]) if payload.get("_init_stop") else None,
+                            extreme=float(payload["_entry_high"]),
+                        )
+                        _exit_state.save_state(store, payload["version_id"], instr_id, book, st)
+                    except Exception:  # noqa: BLE001 — a seed failure must never crash the paper tick
+                        pass
     store.append_event(
         actor="master",
         kind="paper_stepped",

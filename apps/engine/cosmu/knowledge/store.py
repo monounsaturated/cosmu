@@ -562,3 +562,52 @@ def reset_tracks_exposure_cache() -> None:
     never needed in prod (the schema is fixed per process)."""
     with _TRACKS_EXPOSURE_LOCK:
         _TRACKS_EXPOSURE_COLUMN.clear()
+
+
+# --- schema probe: is the `position_exit_state` table live? ------------------------------------------
+# Same out-of-band-migration reality as the columns above: `position_exit_state` (the 2026-06-25 migration)
+# persists the paper executor's per-position runner state (trailing stop level, tp1_filled, legs_filled, the
+# favourable extreme, funding accrued) across ticks so paper can mirror the backtest's multi-TP / break-even /
+# runner-trail / standalone-trailing exit physics. Until prod is migrated the table is absent; the executor must
+# PROBE and only read/write it when present — querying a missing table raises and would crash the paper-clock
+# cron. Absent → the executor degrades to the legacy single stop/take/time/signal close (byte-identical to before
+# this change). Memoized per DSN (a migration is an out-of-band, restart-bounded event).
+_POSITION_EXIT_STATE_TABLE: dict[str, bool] = {}
+_POSITION_EXIT_STATE_LOCK = threading.Lock()
+
+
+def positions_has_exit_state(store: Store) -> bool:
+    """True when the live schema carries the `position_exit_state` table (the paper executor's per-position
+    runner-state store for multi-TP / break-even / trailing / funding parity with the backtest).
+
+    Present → the executor reads/writes per-position exit state and applies the full multi-leg exit plan; absent
+    (pre-migration prod) → it falls back to the legacy single stop/take/time/signal close, byte-identical to
+    before. Memoized per database_url; tests that ALTER a store's schema in-process call
+    `reset_position_exit_state_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _POSITION_EXIT_STATE_TABLE.get(key)
+    if cached is not None:
+        return cached
+    with _POSITION_EXIT_STATE_LOCK:
+        cached = _POSITION_EXIT_STATE_TABLE.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT table_name FROM information_schema.tables WHERE table_name = 'position_exit_state'"
+            )
+            present = len(rows) > 0
+        else:
+            rows = store.rows(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'position_exit_state'"
+            )
+            present = len(rows) > 0
+        _POSITION_EXIT_STATE_TABLE[key] = present
+        return present
+
+
+def reset_position_exit_state_cache() -> None:
+    """Clear the per-DSN `position_exit_state` table memo (for tests that create/drop it in-process); never needed
+    in prod (the schema is fixed per process)."""
+    with _POSITION_EXIT_STATE_LOCK:
+        _POSITION_EXIT_STATE_TABLE.clear()

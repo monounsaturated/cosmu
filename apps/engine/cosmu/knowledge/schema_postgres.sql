@@ -238,6 +238,24 @@ create table if not exists positions (
   updated_at text not null
 );
 
+-- Per-position EXIT STATE: the runner state the paper executor carries across ticks to mirror the backtest's
+-- multi-TP / break-even / runner-trail / standalone-trailing / funding exit physics (orchestrator/paper_step.py).
+-- See migrations/2026-06-25_position_exit_state.sql for the full rationale.
+create table if not exists position_exit_state (
+  strategy_version_id text not null,
+  instrument_id text not null,
+  venue text not null,
+  entry_ts text,
+  entry_qty numeric not null default 0,
+  stop_price numeric,
+  tp1_filled integer not null default 0,
+  legs_filled text not null default '[]',
+  extreme numeric,
+  funding_accrued numeric not null default 0,
+  updated_at text not null,
+  primary key (strategy_version_id, instrument_id, venue)
+);
+
 -- A track is one BRUT cell's forward-proof: a tradeable triple (strategy_version × symbol × venue), each judged
 -- and forward-tested on its OWN data. symbol/venue_id are nullable for legacy version-wide tracks; the cell
 -- UNIQUE index lets one version hold one track per passing cell (the old UNIQUE(strategy_version_id) is dropped).

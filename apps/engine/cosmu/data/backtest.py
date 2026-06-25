@@ -627,6 +627,15 @@ def _run_symbol(
     highs = [float(bar.high) for bar in bars]
     lows = [float(bar.low) for bar in bars]
     features = _feature_matrix(spec, params, bars, alt)
+    # ATR-multiple stop (ExitRules.atr_mult): the entry-bar stop distance is `atr_mult × ATR` (ATR as a fraction
+    # of price). Compute the ATR series here when the spec uses it, with the same default-14 lookback as the
+    # registry feature; None on a bar (warm-up / no data) → the entry falls back to the fixed stop fraction.
+    atr_mult = (
+        max(0.0, float(params[spec.exit.atr_mult.param])) if spec.exit.atr_mult is not None else None
+    )
+    atr_series = (
+        _atr(highs, lows, closes, _lookback_for("atr", spec, params)) if atr_mult is not None else None
+    )
     # Point-in-time funding-rate series (perp carry), looked up per bar. None => spot, no funding leg.
     funding = _funding_series(spec, bars, alt)
     regimes = _regime_labels(closes)
@@ -656,6 +665,17 @@ def _run_symbol(
         max(0.0, float(params[plan.runner_trail.param])) if plan and plan.runner_trail is not None else None
     )
     break_even = bool(plan and plan.break_even_after_tp1)
+    # STANDALONE trailing stop (ExitRules.trailing_stop) — armed at entry (or after `arm_after_profit` of profit),
+    # independent of the multi-TP runner. `trail_dist` is the trail fraction; `trail_arm` is the profit cushion
+    # required before it starts trailing (None → arm immediately). Both None when the spec has no trailing_stop,
+    # so every existing spec is byte-identical.
+    ts_rule = spec.exit.trailing_stop
+    trail_dist = max(0.0, float(params[ts_rule.distance.param])) if ts_rule is not None else None
+    trail_arm = (
+        max(0.0, float(params[ts_rule.arm_after_profit.param]))
+        if ts_rule is not None and ts_rule.arm_after_profit is not None
+        else None
+    )
     # Precompute the entry-setup gates (MA filter / ORB breakout / FVG retest). These remain long/upside-only;
     # a short spec without setups is unaffected (the gate is all-True when no setup is present).
     setup_ok = _setup_entry_gate(spec, params, highs, lows, closes)
@@ -733,6 +753,14 @@ def _run_symbol(
                 # Trail the stop behind the favourable extreme: below it for a long, above it for a short.
                 trail = extreme_since_entry * (1 - d * runner_trail)
                 stop_price = max(stop_price, trail) if d == 1 else min(stop_price, trail)
+            if trail_dist is not None:
+                # STANDALONE trailing stop: arm once profit (favourable move from entry) clears `trail_arm`
+                # (or immediately when trail_arm is None), then trail behind the favourable extreme. It only ever
+                # RAISES the stop (max for a long, min for a short) — never loosens it past the fixed stop.
+                profit = d * (extreme_since_entry - entry_price) / entry_price if entry_price else 0.0
+                if trail_arm is None or profit >= trail_arm:
+                    trail = extreme_since_entry * (1 - d * trail_dist)
+                    stop_price = max(stop_price, trail) if d == 1 else min(stop_price, trail)
             # 1) stop / runner-trail first (worst-case priority): long stops when low <= stop; short when high >= stop.
             stop_hit = adverse <= stop_price if d == 1 else adverse >= stop_price
             if stop_hit and position > 0:
@@ -795,8 +823,17 @@ def _run_symbol(
                 entry_qty = position
                 entry_price = fill
                 entry_idx = idx
+                # The initial stop DISTANCE (fraction of entry): `atr_mult × ATR` when the spec uses an
+                # ATR-multiple stop AND the ATR is available at the SIGNAL bar (idx-1, point-in-time — the same
+                # bar the entry decision reads), else the fixed `stop_pct`. ATR is already a fraction of price,
+                # so `atr_mult × atr` is directly a stop fraction. Warm-up / no ATR → fixed stop (never unprotected).
+                entry_stop_pct = stop_pct
+                if atr_mult is not None and atr_series is not None:
+                    atr_at = atr_series[idx - 1] if 0 <= idx - 1 < len(atr_series) else None
+                    if atr_at is not None and atr_at > 0:
+                        entry_stop_pct = atr_mult * float(atr_at)
                 # Stop sits the adverse side of entry: below for a long, above for a short.
-                stop_price = entry_price * (1 - d * stop_pct)
+                stop_price = entry_price * (1 - d * entry_stop_pct)
                 tp1_filled = False
                 legs_filled = set()
                 extreme_since_entry = float(bar.high) if d == 1 else float(bar.low)
@@ -1258,6 +1295,10 @@ def _warmup_bars(spec: StrategySpec, params: dict[str, float]) -> int:
             lookbacks.append(int(round(params.get(setup.ma_trend_filter.ma_lookback.param, 20))))
         if setup.orb is not None:
             lookbacks.append(int(round(params.get(setup.orb.range_bars.param, 20))))
+    # ATR-multiple stop needs the ATR series warm before the first entry so the entry-bar stop is real (not the
+    # fixed fallback). Add its lookback so the warm-up band covers it. No atr_mult → unchanged.
+    if spec.exit.atr_mult is not None:
+        lookbacks.append(_lookback_for("atr", spec, params))
     return max([20, *lookbacks]) + 2
 
 

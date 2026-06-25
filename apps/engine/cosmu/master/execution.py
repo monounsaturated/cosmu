@@ -436,8 +436,29 @@ def _already_submitted_live(store: Store, coid: str) -> bool:
 
 
 def _try_oco_bracket(adapter, intent: IntendedOrder, coid: str, store: Store) -> None:
-    """Best-effort OCO bracket after a live BUY. Failure is logged, never fails the parent."""
+    """Best-effort OCO bracket after a live BUY — the venue-native half of the layered exit plan. Failure is
+    logged, never fails the parent.
+
+    VENUE EXPRESSIVENESS (live OCO #3): a Binance/Alpaca OCO natively expresses exactly ONE take-profit limit +
+    ONE stop — no venue here (Binance, Alpaca, Kraken, Polymarket) has a server-side MULTI-TP or TRAILING-stop
+    order primitive. So for a spec with a multi-TP plan / break-even / runner-trail / standalone-trailing / ATR
+    stop, this OCO represents the FIRST scale-out leg + the initial stop (the executor already passes the nearest
+    leg's TP and the ATR/fixed stop in `intent`). The REMAINING legs and the trailing ratchet are governed by the
+    paper_step-managed reduce_only close path — the SAME path that already drives the live time-stop and
+    signal-exit closes through `execute_orders`. Venues WITHOUT `place_oco_bracket` (Kraken Futures, Polymarket
+    CLOB) express NEITHER leg natively: their full exit (stop, every TP leg, trailing, time/signal) is the
+    managed reduce_only path. The `managed_tail` flag records this so the ledger says whether the venue covered
+    only the first leg (managed_tail True) or the whole single-TP bracket (False)."""
     if not hasattr(adapter, "place_oco_bracket"):
+        # Venue cannot express even a single OCO natively → the entire exit is the managed reduce_only path.
+        store.append_event(
+            actor="master",
+            kind="oco_bracket_unsupported",
+            ref_type="strategy_version",
+            ref_id=intent.strategy_version_id,
+            payload={"symbol": intent.symbol, "client_order_id": coid, "managed_tail": True,
+                     "note": "venue has no native OCO; full exit governed by managed reduce_only path"},
+        )
         return
     result = adapter.place_oco_bracket(
         intent.symbol, intent.qty, intent.take_profit, intent.stop_loss, client_order_id_prefix=coid
@@ -448,7 +469,12 @@ def _try_oco_bracket(adapter, intent: IntendedOrder, coid: str, store: Store) ->
         kind=kind,
         ref_type="strategy_version",
         ref_id=intent.strategy_version_id,
-        payload={"symbol": intent.symbol, "client_order_id": coid, "take_profit": str(intent.take_profit), "stop_loss": str(intent.stop_loss)},
+        payload={"symbol": intent.symbol, "client_order_id": coid,
+                 "take_profit": str(intent.take_profit), "stop_loss": str(intent.stop_loss),
+                 # The native OCO covers the first TP + initial stop; later multi-TP legs and the trailing ratchet
+                 # (if the spec has them) are the managed reduce_only tail. The executor encodes the first leg into
+                 # take_profit, so a single-TP spec has no tail and a multi-TP spec's tail is managed.
+                 "managed_tail": True},
     )
 
 
