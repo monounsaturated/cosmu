@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>H7 stablecoin chain-rotation → native token — KILL (offline event-study, 2026-06-25)</title>
+<style>
+  :root { --bg:#0d1117; --fg:#e6edf3; --muted:#9da7b3; --line:#2b3340; --kill:#ff6b6b; --ok:#3fb950; --warn:#d29922; --accent:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; padding:28px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:26px 0 8px; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:4px; }
+  .sub { color:var(--muted); margin:0 0 18px; }
+  .verdict { display:inline-block; padding:4px 12px; border-radius:6px; font-weight:700; letter-spacing:.04em; }
+  .verdict.kill { background:rgba(255,107,107,.14); color:var(--kill); border:1px solid var(--kill); }
+  table { border-collapse:collapse; width:100%; margin:6px 0 4px; font-variant-numeric:tabular-nums; }
+  th,td { border:1px solid var(--line); padding:6px 9px; text-align:right; }
+  th { background:#161b22; color:var(--muted); font-weight:600; text-align:right; }
+  td.l,th.l { text-align:left; }
+  tr:nth-child(even) td { background:rgba(255,255,255,.015); }
+  .pos { color:var(--ok); } .neg { color:var(--kill); } .mut { color:var(--muted); }
+  .fail { color:var(--kill); font-weight:700; } .pass { color:var(--ok); font-weight:700; }
+  .note { color:var(--muted); font-size:12.5px; margin:6px 0 0; }
+  code { background:#161b22; padding:1px 5px; border-radius:4px; color:#c9d1d9; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:780px){ .grid2{grid-template-columns:1fr;} }
+  .kicker { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+</style>
+</head>
+<body>
+  <div class="kicker">COSMU edge-hunt · slate #3 · EXPERIMENT ONLY · zero production impact</div>
+  <h1>H7 — stablecoin chain-rotation → native token</h1>
+  <p class="sub">
+    Thesis: stablecoin float <b>share</b> rotating <b>onto</b> a chain pre-positions on-chain demand before the
+    under-covered native token reprices; the <b>share-CHANGE</b> derivative (not level) is the carrier.
+    Offline event-study, real PIT data (DefiLlama keyless + Bybit keyless spot), ~2.7yr. Pre-registered, no sweep.
+  </p>
+  <p><span class="verdict kill">VERDICT — KILL</span>
+     &nbsp;<span class="mut">cleared a/b/c &amp; the naive placebo, but dies on the decisive
+     <b>unconditional-drift</b> disconfirmer; the Gate independently kills on PBO.</span></p>
+
+  <h2>Pre-registered config (locked before any result)</h2>
+  <table>
+    <tr><th class="l">knob</th><th class="l">value</th><th class="l">rationale</th></tr>
+    <tr><td class="l">horizon</td><td class="l">5 days</td><td class="l">forward return on the matched native token</td></tr>
+    <tr><td class="l">share-change window</td><td class="l">14 days</td><td class="l">the CHANGE (derivative) — dodges the prior on-chain-LEVEL cycle-artifact failure</td></tr>
+    <tr><td class="l">event</td><td class="l">top-tercile dshare INFLOW</td><td class="l">trailing 180-day, point-in-time cut (strictly before T)</td></tr>
+    <tr><td class="l">PIT lag</td><td class="l">available_at = ts + 1d</td><td class="l">mirrors the wired <code>stablecoin_eth_share</code> source; enter on T+1 close</td></tr>
+    <tr><td class="l">matched chains</td><td class="l">Tron→TRX, Solana→SOL</td><td class="l">Base has no clean keyless native spot token (denominator-only)</td></tr>
+    <tr><td class="l">reference price / fees</td><td class="l">Bybit keyless spot · 30 bps round-trip all-in</td><td class="l">10 bps taker ×2 + 5 bps slippage ×2; hurdle = 2× = 60 bps</td></tr>
+  </table>
+
+  <h2>Data coverage (real, point-in-time)</h2>
+  <table>
+    <tr><th class="l">series</th><th>days</th><th class="l">from</th><th class="l">to</th><th class="l">last value</th></tr>
+    <tr><td class="l">stablecoin float — ALL chains</td><td>3131</td><td class="l">2017-11-29</td><td class="l">2026-06-25</td><td class="l">$314B</td></tr>
+    <tr><td class="l">Tron share / 14d-change</td><td>2628 / 2614</td><td class="l">2019-04-16</td><td class="l">2026-06-25</td><td class="l">28.54%</td></tr>
+    <tr><td class="l">Solana share / 14d-change</td><td>1507 / 1492</td><td class="l">2021-09-10</td><td class="l">2026-06-25</td><td class="l">4.91%</td></tr>
+    <tr><td class="l">Base share / 14d-change</td><td>1046 / 1032</td><td class="l">2023-08-15</td><td class="l">2026-06-25</td><td class="l">1.54%</td></tr>
+    <tr><td class="l">Bybit spot (TRX / SOL / BTC)</td><td>999 ea.</td><td class="l">2023-09-30</td><td class="l">2026-06-24</td><td class="l">—</td></tr>
+  </table>
+  <p class="note">Token spot binds the testable window to ~2.7yr (2023-09-30 → 2026-06-24). Stablecoin share history is deeper.</p>
+
+  <h2>The three honest checks (all PASS — necessary, not sufficient)</h2>
+  <table>
+    <tr><th class="l">check</th><th class="l">value</th><th>result</th></tr>
+    <tr><td class="l">a — N ≥ 30 pooled events</td><td class="l">724 events (but only <b>177 non-overlapping</b> ≥5d apart)</td><td class="pass">PASS</td></tr>
+    <tr><td class="l">b — reversion/sign &gt; 0</td><td class="l">pooled matched mean = +115.2 bps net</td><td class="pass">PASS</td></tr>
+    <tr><td class="l">c — gross edge &gt; 2× round-trip fee (60 bps)</td><td class="l">115.2 bps &gt; 60 bps</td><td class="pass">PASS</td></tr>
+  </table>
+  <p class="note">724 events with overlapping 5-day windows are <b>not independent</b> — top-tercile fires ~1/3 of days, so the windows overlap ~4×. This inflates the per-obs Sharpe (and is exactly why the Gate's PBO catches it).</p>
+
+  <h2>The disconfirmers — this is where it dies</h2>
+  <div class="grid2">
+    <div>
+      <table>
+        <tr><th class="l">placebo (naive) — survives, but weakly</th><th>net mean</th></tr>
+        <tr><td class="l">matched token (TRX/SOL)</td><td class="pos">+115.2 bps</td></tr>
+        <tr><td class="l">mismatched token (cross-chain)</td><td>+47.6 bps</td></tr>
+        <tr><td class="l">BTC (market beta)</td><td>+24.0 bps</td></tr>
+      </table>
+      <p class="note">Matched &gt; placebo &gt; BTC — but only because both TRX &amp; SOL <b>out-drifted</b> BTC over 2023–26. The naive placebo can't tell a chain signal from per-token beta when the matched tokens are the window's momentum winners.</p>
+    </div>
+    <div>
+      <table>
+        <tr><th class="l">share-CHANGE carrier check</th><th>net mean</th></tr>
+        <tr><td class="l">share-CHANGE event-set (the thesis)</td><td class="pos">+115.2 bps</td></tr>
+        <tr><td class="l">share-LEVEL event-set (prior failed axis)</td><td>+63.9 bps</td></tr>
+      </table>
+      <p class="note">Change &gt; level, so the derivative isn't strictly subsumed by the level. Passes — but this becomes moot once the drift test fires.</p>
+    </div>
+  </div>
+
+  <h2 class="fail" style="color:var(--kill)">DECISIVE — unconditional-drift disconfirmer (per matched chain)</h2>
+  <table>
+    <tr><th class="l">chain → token</th><th>n</th><th>event-conditional gross</th><th>token unconditional drift</th><th>LIFT</th><th>net mean (incl. fee)</th></tr>
+    <tr>
+      <td class="l">Tron → TRX</td><td>360</td><td>72.6 bps</td><td>83.6 bps</td>
+      <td class="neg"><b>−11.0 bps</b></td><td class="mut">+42.6 bps</td>
+    </tr>
+    <tr>
+      <td class="l">Solana → SOL</td><td>364</td><td>216.9 bps</td><td>104.3 bps</td>
+      <td class="pos">+112.7 bps</td><td class="mut">+186.9 bps</td>
+    </tr>
+    <tr style="border-top:2px solid var(--line)">
+      <td class="l"><b>pooled</b></td><td>724</td><td>—</td><td>—</td>
+      <td class="warn"><b>+51.2 bps</b></td><td class="mut">+115.2 bps</td>
+    </tr>
+  </table>
+  <p class="note">
+    A real chain-rotation edge must beat <b>simply being long the token unconditionally</b>, and must <b>generalize</b>
+    across matched chains. On <b>Tron</b> — the strongest test (28.5% of all stablecoin float lives on Tron) — the
+    signal predicts TRX <b>worse</b> than its baseline drift (lift −11 bps). The entire pooled "edge" is one chain
+    (Solana), and SOL was the window's highest-beta momentum name whose stablecoin-inflow days coincide reflexively
+    with its own bull phases — not a predictive rotation signal. <b>Fails generalization → KILL.</b>
+  </p>
+
+  <h2>BRUT Gate (run anyway, for the record)</h2>
+  <table>
+    <tr><th class="l">stat</th><th>value</th><th class="l">gate</th><th>result</th></tr>
+    <tr><td class="l">Deflated Sharpe prob</td><td>0.9996</td><td class="l">≥ 0.95</td><td class="pass">pass*</td></tr>
+    <tr><td class="l">PBO (CSCV)</td><td>0.571</td><td class="l">≤ 0.50</td><td class="fail">FAIL</td></tr>
+    <tr><td class="l">folds positive</td><td>0.80</td><td class="l">≥ 0.60</td><td class="pass">pass</td></tr>
+    <tr><td class="l">min trades</td><td>724</td><td class="l">≥ 30</td><td class="pass">pass</td></tr>
+    <tr><td class="l"><b>Gate verdict</b></td><td colspan="2" class="l">killed_by = [<b>pbo</b>]</td><td class="fail">FAIL</td></tr>
+  </table>
+  <p class="note">*The DSR of 0.9996 is an artifact of the inflated, overlapping N (724 vs 177 independent). The PBO correctly flags the over-fit; and even if the Gate passed, the drift disconfirmer is the binding KILL.</p>
+
+  <h2>Bottom line</h2>
+  <p class="sub" style="margin-top:6px">
+    <b>KILL.</b> N = 724 (177 independent), sign +, edge &gt; fee — but the 115 bps "edge" is per-token beta, not a
+    chain-rotation signal: it does <b>not</b> beat the matched token's own unconditional drift on Tron (−11 bps), is
+    carried entirely by drift-confounded Solana, and the Gate independently kills it on PBO. The placebo survived only
+    because TRX/SOL out-drifted BTC over the window — a weakness the unconditional-drift test exposes. No production
+    change; docs-only.
+  </p>
+</body>
+</html>
