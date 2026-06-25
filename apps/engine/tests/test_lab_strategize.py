@@ -112,9 +112,11 @@ def test_batch_authors_n_distinct_specs(tmp_path):
 
 
 def test_batch_clamps_runaway_count(tmp_path):
+    from cosmu.lab.strategize import _MAX_BATCH
+
     store = _store(tmp_path)
     route = strategize("spin up specs", store=store, n=999, theme="vol", inbox_dir=tmp_path / "inbox")
-    assert route.count == 64  # _MAX_BATCH (raised 16→64 in 30be000; this pin tracks the constant)
+    assert route.count == _MAX_BATCH  # the pin tracks the constant (widened over time), never a literal
     assert any("clamp" in n.lower() for n in route.notes)
 
 

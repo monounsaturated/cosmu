@@ -69,7 +69,22 @@ _WORD_COUNTS: dict[str, int] = {"a couple": 2, "a few": 3, "some": 3, "several":
 _THEME_LEAD_RE = re.compile(r"\b(?:on|about|around|from|for|using|with|themed?(?: on| around)?)\s+(.+)$", re.IGNORECASE)
 # Default batch size when phrasing says "a batch / some" with no explicit number.
 _DEFAULT_BATCH = 3
-_MAX_BATCH = 64  # hard cap so a runaway "generate 1000" can't flood the inbox; surfaced in notes when clamped.
+# Hard cap so a runaway "generate 1000" can't flood the inbox; surfaced in notes when clamped. RAISED + env-tunable
+# 2026-06-25 (widest-honest universe pivot): 64→128 to author a deeper hypothesis batch per theme. Throughput only
+# — every authored spec still flows through the SAME deterministic gate + BH-FDR, so more ideas never loosen the
+# bar. Override with COSMU_MAX_BATCH.
+def _env_max_batch(default: int = 128) -> int:
+    import os
+
+    raw = os.environ.get("COSMU_MAX_BATCH", "").strip()
+    try:
+        val = int(raw) if raw else default
+    except ValueError:
+        return default
+    return val if val > 0 else default
+
+
+_MAX_BATCH = _env_max_batch()
 
 
 @dataclass
