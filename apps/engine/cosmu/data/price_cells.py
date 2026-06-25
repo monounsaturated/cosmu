@@ -12,6 +12,13 @@
 # cell's `bars` are the venue's own series and `reuses_reference` is False, so a backtest can never silently score
 # a FALLBACK venue on the reference.
 #
+# PER-VENUE NATIVE BARS (flag COSMU_PER_VENUE_BARS, DEFAULT OFF): the operator directive is "each bar per venue —
+# don't take Kraken as source of truth for Hyperliquid". OFF → today's single-reference behaviour, BYTE-IDENTICAL
+# (UNIFY collapses a corr~1 venue onto the shared reference series). ON → each non-reference cell is SCORED on its
+# venue's OWN keyless-native bars (kraken→Kraken, bybit→Bybit, via market.keyless_venue_provider), with the
+# reference used only as a FALLBACK when a venue's native series is missing/too-sparse. Because this changes a
+# Gate INPUT (the bars a backtest scores), it is flag-gated so the default can never silently move existing results.
+#
 # invariants: BINANCE-ONLY / EMPTY-TABLE PATH IS BYTE-IDENTICAL TO BEFORE — when universe_pairs has no rows (or
 # only the Binance venue is enabled) the builder returns plain symbol-keyed cells over PERP_UNIVERSE with the bare
 # symbol as the key and venue 'binance', so the finder's existing crypto path is unchanged. Deterministic for a
@@ -20,6 +27,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -29,15 +37,17 @@ from cosmu.data.market import (
     MarketDataProvider,
     UniversalOHLCVProvider,
     default_crypto_reference,
+    keyless_venue_provider,
 )
-from cosmu.data.reference import AlignmentDecision as _AlignmentDecision
 from cosmu.data.reference import (
+    UNIFY_MIN_OVERLAP,
     CanonicalPair,
     cross_venue_alignment,
     decide,
     pair_for,
     persist_decision,
 )
+from cosmu.data.reference import AlignmentDecision as _AlignmentDecision
 from cosmu.data.universe import PERP_UNIVERSE, UniverseRow, load_universe
 from cosmu.data.universe_calendar import Listing, UniverseCalendar
 
@@ -152,10 +162,30 @@ def alt_ingest_symbol(symbol: str) -> str:
     return symbol.replace("/", "")
 
 
+# ------------------------------------------------------------------------------------------------------------------
+# PER-VENUE NATIVE BARS — flag-gated (COSMU_PER_VENUE_BARS). DEFAULT OFF → today's single-reference behaviour, so a
+# Gate-input change can never SILENTLY move existing backtest results. The operator directive: "each bar per venue —
+# don't take Kraken as source of truth for Hyperliquid"; i.e. a cell tagged venue=kraken should be SCORED on Kraken's
+# OWN keyless bars, a venue=bybit cell on Bybit's, never one reference book proxying for all. When ON, each
+# non-reference cell prefers its venue's NATIVE bars (reuses_reference False); only when those native bars are
+# MISSING / too-sparse does it fall back to the reference via the existing corr-check/UNIFY path (so a real native
+# series is never silently collapsed onto the reference, but a thin/absent venue still degrades safely).
+# ------------------------------------------------------------------------------------------------------------------
+def per_venue_bars_enabled() -> bool:
+    """True iff COSMU_PER_VENUE_BARS is set truthy. DEFAULT OFF → the byte-identical single-reference path."""
+    return os.environ.get("COSMU_PER_VENUE_BARS", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 # Keyless OHLCV providers per crypto venue, for FALLBACK bars (a venue whose prices diverge from the reference is
 # screened on its OWN series). Only keyless venues are wired in Stage 1 (crypto, FREE). A venue absent here has no
 # keyless data route → its non-reference cells can't FALLBACK to real bars, so they are SKIPPED (never fabricated).
+#
+# OFF (default): the byte-identical set — kraken + binance only (today's behaviour, unchanged).
+# ON  (COSMU_PER_VENUE_BARS): the full keyless-NATIVE resolver (market.keyless_venue_provider) so bybit (+ any future
+# keyless venue) reads ITS OWN bars too — never one reference book as the source of truth for every venue.
 def _fallback_provider(venue_id: str) -> MarketDataProvider | None:
+    if per_venue_bars_enabled():
+        return keyless_venue_provider(venue_id)
     if venue_id == "kraken":
         return KrakenSpotOHLCVProvider()
     if venue_id == "binance":
@@ -279,6 +309,9 @@ def build_crypto_cells(
         for p_id, vr in by_pair.items()
     }
 
+    # PER-VENUE NATIVE BARS flag, read ONCE per build (not per cell) so a build is internally consistent.
+    per_venue = per_venue_bars_enabled()
+
     cells: list[PriceCell] = []
     for pair_id, venue_rows in by_pair.items():
         pair = venue_rows[0][2]
@@ -304,6 +337,34 @@ def build_crypto_cells(
             # Gate this venue's OWN series by ITS OWN row symbol's PIT window before the alignment check, so a venue
             # that delisted earlier than the reference is screened only over the bars it actually traded.
             venue_bars = eligible_bars(venue_bars, calendar, row_symbol)
+
+            # PER-VENUE NATIVE BARS (flag ON): a SELF-CONTAINED per-venue decision — "each bar per venue, don't take
+            # one book as source of truth for all". The cell is scored on its venue's OWN native series whenever that
+            # series is adequate (>= the trustable-overlap floor); a MISSING or too-SPARSE native series FALLS BACK to
+            # the reference. This branch never touches the OFF path below, which stays byte-identical.
+            if per_venue:
+                native_ok = len(venue_bars) >= UNIFY_MIN_OVERLAP
+                if native_ok and reference_bars:
+                    # Score on the venue's OWN bars (reuses_reference False, the leakage-safe per-venue path). The
+                    # alignment verdict is still computed + persisted for inspectability (price_alignment).
+                    stats = cross_venue_alignment(reference_bars, venue_bars)
+                    dec = _AlignmentDecision(pair=pair.id, venue=venue, verdict=decide(stats), stats=stats)
+                    if persist and store is not None:
+                        persist_decision(store, dec)
+                    cells.append(PriceCell(
+                        key=cell_key(pair.id, venue), symbol=pair.id, venue_id=venue,
+                        bars=venue_bars, reuses_reference=False, decision=dec,
+                    ))
+                elif reference_bars:
+                    # Native bars missing / too-sparse → fall back to the reference series so the cell can still
+                    # screen (explicit reference reuse; reuses_reference True). No native series with no reference
+                    # series → nothing to score → skip honestly (handled by falling through without appending).
+                    cells.append(PriceCell(
+                        key=cell_key(pair.id, venue), symbol=pair.id, venue_id=venue,
+                        bars=reference_bars, reuses_reference=True,
+                    ))
+                continue
+
             if not venue_bars or not reference_bars:
                 continue  # BIAS TO FALLBACK is moot with no bars at all → the cell can't be scored; skip
             stats = cross_venue_alignment(reference_bars, venue_bars)
