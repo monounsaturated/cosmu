@@ -36,6 +36,11 @@ class OrderIntent(BaseModel):
 class RiskDecision(BaseModel):
     accepted: bool
     issues: list[str]
+    # SANDBOX per-combo: True when THIS track's own equity has fallen to/below its kill floor — the wallet is
+    # spent. The order path turns this into a reduce_only CLOSE of the track's open leg (and never opens a new
+    # entry for it). A close that genuinely reduces is itself always accepted, so the kill flag never traps an
+    # exit. Default False ⇒ no per-combo kill (every order today), so callers that ignore it are unaffected.
+    kill_combo: bool = False
 
 
 class PortfolioRiskState(BaseModel):
@@ -69,6 +74,22 @@ class PortfolioRiskState(BaseModel):
     global_live_max_notional: Decimal | None = None        # operator's global pool cap (the headline "$ blocker")
     strategy_live_open_notional: Decimal = Decimal("0")    # this strategy's gross notional on live books
     per_strategy_live_max_notional: Decimal | None = None  # operator's per-strategy live cap
+    # --- SANDBOX per-combo wallet (operator decision Q1 = "sandbox + global backstop") ----------------
+    # 1 track (= strategy_version × symbol × venue) is 1 wallet of its allocated `starting_capital` and can
+    # NEVER lose more than that. These describe THIS order's OWN track (NOT the aggregate pool — the aggregate
+    # equity/cash/drawdown/daily-loss checks remain the FINAL backstop, never removed). All three are evaluated
+    # on the per-TRACK portfolio view (Portfolio.track_risk). Gated like the live caps: when the caller cannot
+    # resolve a track wallet (no tracks row — bare-position tests/tools), it leaves `track_starting_capital`
+    # None and the per-combo checks are SKIPPED (today's behaviour exactly), so the aggregate gauntlet still
+    # governs. The caller sets them for every executor-managed paper/live track (which always has a wallet).
+    track_starting_capital: Decimal | None = None  # the wallet size — the hard loss floor. None ⇒ checks skipped.
+    track_equity: Decimal = Decimal("0")           # this track's own equity = starting_capital + realized + unrealized
+    track_cash: Decimal = Decimal("0")             # this track's own deployable cash = starting_capital + realized − own open notional
+    # The per-combo KILL floor as a FRACTION of the wallet: when this track's own equity falls to/below
+    # starting_capital × this fraction, the track is killed (the executor emits a reduce_only close). 0.0 = kill
+    # only at a fully-drained wallet; a small positive fraction kills slightly early so the wallet is never
+    # actually breached by the next adverse mark. Per-combo, NOT the aggregate drawdown kill-switch (which stays).
+    track_kill_floor_pct: Decimal = Decimal("0")
 
 
 def validate_order(order: OrderIntent, venue: Venue, instrument: Instrument, risk: RiskSettings) -> RiskDecision:
@@ -102,11 +123,23 @@ def validate_order_full(
     state: PortfolioRiskState,
 ) -> RiskDecision:
     """The full gauntlet every order (paper OR live) must clear before any fill. Runs the base deterministic
-    checks, then the portfolio-aware ones: global cap, min cash reserve, drawdown kill-switch, daily-loss
-    auto-disarm, and the martingale/averaging-down ban. Memoryless: position size is never a function of past
-    losses — a prior loss can only BLOCK a trade (no averaging down), never enlarge the next one."""
+    checks, then the SANDBOX per-combo wallet bound (a track can never deploy past its own starting_capital —
+    so its loss is bounded to its wallet), then the portfolio-aware AGGREGATE backstop: global cap, min cash
+    reserve, drawdown kill-switch, daily-loss auto-disarm, and the martingale/averaging-down ban. Per Q1
+    ("sandbox + global backstop") BOTH layers run — the per-combo bound is the sandbox, the aggregate checks
+    are the final filet. Memoryless: position size is never a function of past losses — a prior loss can only
+    BLOCK a trade (no averaging down), never enlarge the next one. The returned decision also carries
+    `kill_combo` (True when this track's own equity hit its wallet floor) so the order path can liquidate it."""
     base = validate_order(order, venue, instrument, risk)
     issues = list(base.issues)
+
+    # SANDBOX per-combo KILL signal: this track's own equity has reached its wallet floor. Computed for BOTH a
+    # close and an entry so the order path can liquidate the spent wallet's open leg. It is a SIGNAL, never a
+    # blocker of a close — a reduce_only exit stays accepted (closing the leg is exactly what the kill wants).
+    kill_combo = (
+        state.track_starting_capital is not None
+        and state.track_equity <= state.track_starting_capital * state.track_kill_floor_pct
+    )
 
     if order.reduce_only:
         # A reduce-only order must GENUINELY reduce: an opposite-side fill against an existing position, no
@@ -119,9 +152,23 @@ def validate_order_full(
         if not reduces:
             issues.append("reduce_only_not_reducing")
         # Exposure-adding checks are SKIPPED for a genuine close: blocking an exit behind caps, the
-        # kill-switch, or the daily-loss disarm would trap losing positions open — the opposite of safety.
-        return RiskDecision(accepted=not issues, issues=issues)
+        # kill-switch, the daily-loss disarm, OR the per-combo bound would trap losing positions open — the
+        # opposite of safety. The per-combo kill flag is carried so the caller closes a spent wallet's leg.
+        return RiskDecision(accepted=not issues, issues=issues, kill_combo=kill_combo)
 
+    # SANDBOX per-combo HARD BOUND (operator decision Q1): a track is one wallet of its `starting_capital` and
+    # can NEVER lose more than that. Evaluated on the PER-TRACK view (NOT the aggregate pool): a new BUY can
+    # deploy no more than THIS track's own deployable cash (starting_capital + own realized P&L − own open
+    # notional), so the most this combo can ever lose is bounded by its wallet. A spent/over-drawn wallet
+    # (track_kill_floor reached) takes no new entry at all. Gated on a resolved wallet (track_starting_capital
+    # set) — None ⇒ skipped (bare-position tests/tools fall back to the aggregate gauntlet, today's behaviour).
+    # This is the SANDBOX; the aggregate global_cap / drawdown_killswitch / daily_loss below remain the FINAL
+    # backstop (Q1 = "sandbox + filet global") and are NOT removed.
+    if state.track_starting_capital is not None and order.side == "buy":
+        if kill_combo:
+            issues.append("combo_wallet_spent")
+        elif order.notional > state.track_cash:
+            issues.append("combo_capital_exceeded")
     if state.open_notional + order.notional > risk.global_max_notional:
         issues.append("global_cap")
     if state.strategy_open_notional + order.notional > risk.per_strategy_cap:
@@ -151,5 +198,5 @@ def validate_order_full(
             issues.append("martingale_after_loss")
         if state.avg_entry_price is not None and order.price < state.avg_entry_price:
             issues.append("averaging_down")
-    return RiskDecision(accepted=not issues, issues=issues)
+    return RiskDecision(accepted=not issues, issues=issues, kill_combo=kill_combo)
 

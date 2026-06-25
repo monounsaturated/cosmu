@@ -73,9 +73,18 @@ class Horizon(BaseModel):
 
 
 class RiskRules(BaseModel):
+    # SANDBOX per-combo model (operator decision Q1 = "sandbox + global backstop"): a track is one wallet of
+    # its allocated starting_capital and can NEVER lose more than that (master/risk enforces the per-combo
+    # hard bound + kill). Sizing is the STRATEGY's own choice WITHIN its slice — an all-in mono-position spec
+    # with a defined stop is legitimate — so the defaults are NEUTRAL (deploy the whole slice), NOT a stupid
+    # blanket %. `max_position_pct` is a FRACTION OF THIS TRACK'S SLICE (1.0 = the whole slice), and
+    # `max_concurrent_positions` only divides the slice when several positions are actually open at once
+    # (see master/sizing.size_fraction — it never bridles a mono-position all-in spec). The old 0.05/0.5
+    # defaults pre-date the sandbox model and bridled every spec to 2.5%; the per-combo wallet now caps loss,
+    # so the spec sizes freely inside it.
     max_concurrent_positions: int = 3
-    max_position_pct: float = 0.05
-    conviction: float = 0.5
+    max_position_pct: float = 1.0
+    conviction: float = 1.0
 
 
 class MaTrendFilter(BaseModel):

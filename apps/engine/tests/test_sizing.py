@@ -140,3 +140,60 @@ def test_t1_falls_back_to_t0_when_closes_too_short():
     # Should fall back to T0 since realized_vol can't be computed
     f = size_fraction(spec, closes=short_closes, target_vol=0.01)
     assert f == t0
+
+
+# ── SANDBOX per-combo: neutral defaults + mono-position all-in not clamped to 1/N ─────────────────
+
+
+def test_schema_defaults_are_neutral_full_slice():
+    """The REAL RiskRules schema defaults are now neutral (max_position_pct=1.0, conviction=1.0) — a spec that
+    sets nothing deploys its WHOLE slice, not a blanket 2.5%. The per-combo wallet bounds loss, not a fraction."""
+    from cosmu.strategy.spec import RiskRules
+
+    r = RiskRules()
+    assert r.max_position_pct == 1.0
+    assert r.conviction == 1.0
+    # The neutral defaults size the full slice on a mono-position entry.
+    assert size_fraction(_spec(r.max_position_pct, r.conviction)) == 1.0
+
+
+def test_mono_position_all_in_not_clamped_to_one_over_n():
+    """A MONO-position all-in spec (max_concurrent_positions=3 but only ONE position open) sizes ~100% — the
+    forced 1/max_concurrent term must NOT bridle it. This is the sandbox model: the slice is the strategy's."""
+    spec = _spec(1.0, 1.0, max_concurrent=3)
+    # T0, default open_positions=1 (a single entry) → full slice, NOT 1/3.
+    assert size_fraction(spec) == 1.0
+    assert size_fraction(spec, open_positions=1) == 1.0
+
+
+def test_concurrency_divisor_binds_only_when_multiple_legs_open():
+    """The 1/max_concurrent term divides the slice ONLY when ≥2 positions are genuinely open at once, capped at
+    max_concurrent_positions — so concurrent legs never over-deploy the slice in sum, but a lone leg is free."""
+    spec = _spec(1.0, 1.0, max_concurrent=3)
+    assert size_fraction(spec, open_positions=1) == 1.0          # lone leg → whole slice
+    assert size_fraction(spec, open_positions=2) == 0.5          # 2 open → half each
+    assert abs(size_fraction(spec, open_positions=3) - (1.0 / 3.0)) < 1e-12  # 3 open → third each
+    assert abs(size_fraction(spec, open_positions=9) - (1.0 / 3.0)) < 1e-12  # capped at max_concurrent=3
+
+
+def test_all_in_spec_backtest_paper_live_parity():
+    """Parity holds for the all-in (neutral-default) spec: backtest _entry_notional and the forward
+    cash×size_fraction compute the identical notional — the audit #7 invariant survives the new defaults."""
+    spec = _spec(1.0, 1.0, max_concurrent=3)
+    cash = 1000.0
+    bt_notional = _entry_notional(cash, spec, 1.0)
+    fwd_notional = cash * size_fraction(spec)
+    assert bt_notional == fwd_notional == 1000.0  # the whole slice, both paths
+
+
+def test_t1_cap_unbridled_for_mono_position():
+    """T1 vol-target: a mono-position all-in spec in LOW vol is capped at max_position_pct (1.0), NOT 1/N — the
+    concurrency divisor is 1.0 for a lone leg, so the vol-target envelope can deploy the full slice."""
+    spec = _spec(1.0, 1.0, max_concurrent=3)
+    target_vol = 0.05  # large target vs a flat series → formula wants to deploy hugely
+    closes = [1000.0 + i * 0.0001 for i in range(50)]  # near-zero realized vol
+    f = size_fraction(spec, closes=closes, target_vol=target_vol, open_positions=1)
+    assert abs(f - 1.0) < 1e-9, f"mono-position T1 cap must be max_position_pct (1.0), not 1/3; got {f}"
+    # With 3 legs open the cap drops to 1/3.
+    f3 = size_fraction(spec, closes=closes, target_vol=target_vol, open_positions=3)
+    assert f3 <= 1.0 / 3.0 + 1e-9
