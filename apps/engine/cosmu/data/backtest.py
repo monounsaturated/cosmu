@@ -39,6 +39,38 @@ _REGIMES = ("bull", "bear", "chop")
 DEFAULT_SLIPPAGE_BPS = Decimal("5")
 DEFAULT_IMPACT_BPS = Decimal("50")
 
+# LIQUIDITY-TIERED HALF-SPREAD FLOOR (widest-honest universe pivot 2026-06-25). The per-venue `slippage_bps`
+# (spine/venue.Venue.slippage_bps) is a SCALAR half-spread floor — fine when the screen was 5 deep majors, but
+# OPTIMISTIC once the universe widens into the thinner small-cap tail (a $1M/day coin does NOT fill at a deep
+# book's 5 bps half-spread). So the effective floor is now the MAX of the venue scalar and a liquidity term that
+# rises as a bar's traded $-volume falls:
+#
+#     floor_bps = clamp( max(venue_floor_bps, LIQ_FLOOR_K / sqrt(ADV_$M)),  upper = LIQ_FLOOR_MAX_BPS )
+#
+# where ADV_$M is the bar's OWN quote-volume (bar.volume × bar.close) in $millions — the same intrinsic bar
+# property both simulators already read, so making the floor depend on it CANNOT break Gate↔backtest parity:
+# `research/gate.py::_simulate` and `_run_symbol` pass the SAME bar through the SAME `_slippage`, so they compute
+# the SAME floor. The existing square-root market-impact term (`impact * sqrt(participation)`) is UNCHANGED and
+# still added on top — this only raises the FIXED-spread floor for the thin tail.
+#
+# Calibration (continuous, monotone, deep-name-neutral): with K=15 the liquidity floor crosses the typical 5 bps
+# venue scalar at ~$9M/day — so every name in the wide Kraken majors set (all > ~$10M/day) keeps its venue floor
+# unchanged, while a genuinely thin coin pays more: $1M/day → 15 bps, $250k/day → 30 bps, capped at 50 bps so a
+# near-zero-volume degenerate bar can't produce an absurd floor. This is a COST-REALISM tightening, never a gate
+# change: it can only make a thin-tail edge look WORSE (harder to pass), never bless one the deep-book floor missed.
+LIQ_FLOOR_K: float = 15.0          # bps at $1M/day ADV; floor = K / sqrt(ADV_$M)
+LIQ_FLOOR_MAX_BPS: float = 50.0    # hard upper clamp on the liquidity floor (degenerate thin-bar guard)
+
+
+def _liquidity_floor_bps(quote_volume_usd: float) -> float:
+    """The liquidity-tiered half-spread floor in BPS for a bar whose traded $-volume is `quote_volume_usd`.
+    Rises as volume falls (K / sqrt(ADV_$M)), clamped to LIQ_FLOOR_MAX_BPS. 0 for a non-positive volume bar
+    (the caller already returns base_slip there). Pure + deterministic, so both simulators agree per bar."""
+    if quote_volume_usd <= 0:
+        return 0.0
+    adv_m = quote_volume_usd / 1_000_000.0
+    return min(LIQ_FLOOR_MAX_BPS, LIQ_FLOOR_K / math.sqrt(adv_m))
+
 
 @dataclass(frozen=True)
 class Trade:
@@ -987,12 +1019,21 @@ def _entry_notional(
 
 
 def _slippage(base_slip: float, impact: float, notional: float, bar: Bar) -> float:
-    """Half-spread plus square-root market impact on participation = notional / bar quote-volume."""
+    """Liquidity-tiered half-spread floor plus square-root market impact on participation = notional / bar
+    quote-volume.
+
+    The fixed half-spread is `max(base_slip, liquidity_floor(bar quote-volume))` — the venue's scalar floor
+    raised by a thin-book term (LIQ_FLOOR_K / sqrt(ADV_$M), capped) when the bar's traded $-volume is small, so
+    the wide small-cap tail isn't priced at a deep book's spread. On top sits the UNCHANGED square-root market
+    impact. Both terms read only `base_slip`, `impact`, `notional`, and the bar — all identical between the Gate's
+    `_simulate` and `_run_symbol` — so the two simulators charge the SAME slippage on every fill (parity).
+    A non-positive quote-volume or notional bar can't be priced for impact → the venue scalar floor only."""
     quote_volume = float(bar.volume) * float(bar.close)
+    floor = max(base_slip, _liquidity_floor_bps(quote_volume) / 10000.0)
     if quote_volume <= 0 or notional <= 0:
-        return base_slip
+        return floor
     participation = min(1.0, notional / quote_volume)
-    return base_slip + impact * math.sqrt(participation)
+    return floor + impact * math.sqrt(participation)
 
 
 def _regime_labels(closes: list[float], lookback: int = 30, band: float = 0.05) -> list[str]:

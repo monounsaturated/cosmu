@@ -20,6 +20,7 @@ from cosmu.data.backtest import (
 )
 from cosmu.data.market import MarketDataProvider, UniversalOHLCVProvider
 from cosmu.data.price_cells import alt_ingest_symbol, build_crypto_cells
+from cosmu.data.universe import PERP_UNIVERSE, perp_universe
 from cosmu.evolution import mutator
 from cosmu.evolution.seeder import seed_population
 from cosmu.knowledge.block_registry import blocks_available, find_duplicate, record_version_blocks
@@ -934,9 +935,33 @@ class FarmLoop:
         return out or None
 
 
-# THE crypto screen universe — the symbols every Binance gate-lane candidate is screened against. The funder
+# THE crypto screen universe — the symbols every crypto gate-lane candidate is screened against. The funder
 # reads this too (orchestrator/loop.py): a survivor paper-trades ONLY on a symbol its gate evidence covered.
-CRYPTO_SCREEN_UNIVERSE: tuple[str, ...] = ("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT")
+#
+# WIDENED 2026-06-25 (operator pivot Binance → Kraken, widest-honest universe): was the 5-symbol core
+# (BTC/ETH/BNB/SOL/XRP). It is now the canonical ~30-name liquid set from data/universe.PERP_UNIVERSE — ONE
+# source of truth shared with the carry/xsec research layer. Every name is verified LISTED on Kraken's keyless
+# USD spot book (the active bars venue now: build_crypto_cells FALLBACK uses KrakenSpotOHLCVProvider, which maps
+# BTCUSDT→XBTUSD / DOGEUSDT→XDGUSD etc. via _kraken_pair), so widening the screen does NOT outrun the data.
+#
+# This is a RESOURCE/THROUGHPUT widening, NOT a gate loosening: every extra symbol is one more (strategy×symbol)
+# cell the BH-FDR cohort cutoff must absorb, so a wider funnel can only find MORE real edges, never manufacture a
+# false one (the gate constants — DSR/PBO/folds/min-trades/FDR-q/beat-B&H/holdout floors — are untouched).
+#
+# Env override (COSMU_CRYPTO_SCREEN_N): truncate to the N deepest names for a cheaper smoke run; unset = the full
+# wide set. The list is liquidity-ordered, so N=5 reproduces the legacy core exactly.
+def _crypto_screen_universe() -> tuple[str, ...]:
+    import os
+
+    raw = os.environ.get("COSMU_CRYPTO_SCREEN_N", "").strip()
+    try:
+        n = int(raw) if raw else None
+    except ValueError:
+        n = None
+    return tuple(perp_universe(n)) if n and n > 0 else PERP_UNIVERSE
+
+
+CRYPTO_SCREEN_UNIVERSE: tuple[str, ...] = _crypto_screen_universe()
 
 
 def _oos_window_from_runs(runs: dict) -> tuple[str | None, str | None]:

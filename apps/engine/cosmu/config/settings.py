@@ -68,10 +68,15 @@ class GateSettings(BaseModel):
 
 
 class EvolutionSettings(BaseModel):
-    cohort_size: int = 64
+    # Throughput knobs (NOT gate constants — these are env-overridable via EVOLUTION__COHORT_SIZE etc.).
+    # WIDENED 2026-06-25 (widest-honest universe pivot, Binance→Kraken): cohort_size 64→128, survive_top 6→12.
+    # A bigger population + wider survivor band is pure throughput: every extra candidate is one more test the
+    # cohort's Benjamini-Hochberg FDR cutoff (gates.fdr_q, UNTOUCHED) must absorb, so a wider funnel finds more
+    # REAL edges without ever manufacturing a false one. max_cohort_size (400) stays the hard ceiling above this.
+    cohort_size: int = 128
     explore_pct: Decimal = Decimal("0.30")
     seed_lane_count: int = 6
-    survive_top: int = 6
+    survive_top: int = 12
     max_cohort_size: int = 400
     default_seed: int = 7
 

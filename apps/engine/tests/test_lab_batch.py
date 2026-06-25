@@ -112,7 +112,7 @@ def test_batch_structural_diversity(tmp_path):
 
 
 def test_batch_clamps_to_max(tmp_path):
-    """Requesting more than _MAX_BATCH (64) is silently clamped."""
+    """Requesting more than _MAX_BATCH is silently clamped (the pin tracks the constant, not a literal)."""
     from cosmu.lab.strategize import _MAX_BATCH
 
     store = _store(tmp_path)
