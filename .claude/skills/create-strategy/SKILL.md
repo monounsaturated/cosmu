@@ -18,7 +18,7 @@ Every spec MUST clear `validate_spec` (`cosmu/strategy/static_check.py`) — it 
 |------|------|-----|
 | `rationale` | **non-empty** — the disconfirmable WHY ("signal X predicts return Y because …") | the thesis the Gate tests + the summary is written from; empty ⇒ rejected (`empty_rationale`) |
 | `entry` | **≥1 Condition**, every threshold a `ParamRef` into `param_space` | a spec with no entry never fires; a literal threshold ⇒ rejected (`literal_threshold`) |
-| features | reference registry names **only** (`cosmu/config/feature_registry.py`) | unknown feature ⇒ rejected (`unknown_feature`); keeps spec ↔ data bound |
+| features | reference registry names **only** (`cosmu/config/feature_registry.py`; the full enabled list + the spec field/param reference is dumped from code into `docs/AUTHORING.md` via `python3 -m cosmu.docs.authoring_fiche`) | unknown feature ⇒ rejected (`unknown_feature`); keeps spec ↔ data bound |
 | `param_space` | every `ParamRef` resolves here; **no magic numbers** | the Finder fits them — never hardcode an entry/exit number |
 | `universe` | `venues` + `asset_classes`; `min_instruments ≥ 5` | this is what fees are priced against (`catalog.venue_for`) |
 | `horizon` | `bar_size` ∈ {1h,4h,1d}; `1 ≤ min_hold ≤ max_hold` | — |
@@ -26,6 +26,30 @@ Every spec MUST clear `validate_spec` (`cosmu/strategy/static_check.py`) — it 
 | `catalyst` | set it for `event`/`carry` edges (advisory) | what makes the trade fire |
 | `direction` | `1` long/spot · `-1` short/perp · `0` signal-decides | a `-1`/perp leg needs a funding/borrow cost — don't leave carry unmodelled |
 | `funding_feature` | set when the perp funding leg matters | accrues PIT funding P&L (long pays, short receives) |
+
+## Exit & Entry toolbox — the wiring matrix (what actually RUNS, per lane)
+
+> ⚠️ Specs using multi-TP/trailing/break-even/meta-label/funding are screened on richer physics than paper/live execute today — see backlog P1.5/B.11.
+
+A spec can *declare* a rich exit/entry, but only some of it runs forward. The Gate screens on the BACKTEST physics (`cosmu/data/backtest.py`); paper (`cosmu/orchestrator/paper_step.py`) and live (`step_tracks` → exec adapters) trade a **plain single stop/take + time-stop + signal-exit** today. Author honestly: a survivor whose edge *depends* on a backtest-only mechanism will not reproduce forward.
+
+| tool | in_spec | backtest | paper | live | param fields |
+|------|---------|----------|-------|------|--------------|
+| stop-loss (%) | `exit.stop_loss` | ✅ | ✅ | ✅ | `stop_loss` (ParamRef) |
+| take-profit (%) | `exit.take_profit` | ✅ | ✅ | ✅ | `take_profit` (ParamRef) |
+| time-stop | `exit.time_stop_days` | ✅ | ✅ | ✅ | `time_stop_days` (ParamRef) |
+| signal-exit | `exit.signal_exits[]` | ✅ | ✅ | ✅ | each `Condition.threshold` (ParamRef) |
+| multi-TP (scale-out) | `exit.plan.multi_tp[]` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `TakeProfitLeg.at`, `.size_pct` (ParamRef) |
+| break-even-after-TP1 | `exit.plan.break_even_after_tp1` | ✅ | ⛔ backtest-only | ⛔ backtest-only | (bool flag — no param) |
+| trailing / runner-trail | `exit.plan.runner_trail` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `runner_trail` (ParamRef) |
+| ATR / vol stop | — | ⛔ **does not exist** | ⛔ | ⛔ | — (no field — do not reference) |
+| MA-trend filter (entry) | `setup.ma_trend_filter` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `ma_lookback` (ParamRef) |
+| ORB setup (entry) | `setup.orb` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `range_bars`, `buffer` (ParamRef) |
+| FVG setup (entry) | `setup.fvg` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `max_retests`, `gap_min` (ParamRef) |
+| meta-label | `meta_label` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `prob_threshold` (ParamRef), `features[]` |
+| funding accrual | `funding_feature` | ✅ | ⛔ backtest-only | ⛔ backtest-only | `funding_feature` (registry feature name) |
+
+**Backtest-only TODAY (truthful):** `multi_tp`, `break_even_after_tp1`, `runner_trail` (trailing), `meta_label`, and `funding_feature` accrual are wired in the BACKTEST physics only — paper/live execute a plain single stop/take (+ time-stop, + signal-exit). The `setup` entry modules (`ma_trend_filter`/`orb`/`fvg`) likewise only shape the backtest's entries, not the forward executor's. **ATR/vol stop does not exist** — there is no spec field for it; do not invent one.
 
 **Use the standard words** — facets (`signal_family`, `edge_type`, `lane`, `direction`, `asset_class`, `timeframe`) are *derived* from the spec, never hand-tagged; their closed value sets are in `docs/GLOSSARY.md` → "Taxonomy facets". Author so the facets come out right; don't invent new vocabulary.
 
