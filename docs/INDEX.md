@@ -88,18 +88,18 @@
 ## Historical / archive
 
 These are dated snapshots, superseded plans, or one-off checkpoints. Kept for the record — **do not act on them
-as current**. **Recommendation (not performed here):** move the dated `CHECKPOINT_*` / `REVIEW_*` / superseded
-`HANDOFF_*` files into `docs/archive/` to keep the top level lean.
+as current**. The dated `CHECKPOINT_*` / `REVIEW_*` / superseded `HANDOFF_*` files now live under
+[`docs/archive/`](archive/) to keep the top level lean.
 
 | Doc | What it is | Status |
 |---|---|---|
 | [archive/BUILD_PLAN.md](archive/BUILD_PLAN.md), [archive/PLAN.md](archive/PLAN.md) | The historical deep build plans (refined by VISION/PRODUCT/IMPLEMENTATION). | Historical |
 | [archive/HANDOFF.md](archive/HANDOFF.md), [archive/HANDOFF_MIND.md](archive/HANDOFF_MIND.md) | Archived handoffs. | Historical |
-| [HANDOFF_NEXT.md](HANDOFF_NEXT.md) | The 2026-06-07 master handoff — **self-declared superseded** at the top. | Historical (→ archive candidate) |
-| [HANDOFF_OSINT_SOURCES.md](HANDOFF_OSINT_SOURCES.md) | 2026-06-16 handoff for the OSINT sources wiring (now merged). | Historical (→ archive candidate) |
+| [archive/HANDOFF_NEXT.md](archive/HANDOFF_NEXT.md) | The 2026-06-07 master handoff — **self-declared superseded** at the top. | Historical (archived) |
+| [archive/HANDOFF_OSINT_SOURCES.md](archive/HANDOFF_OSINT_SOURCES.md) | 2026-06-16 handoff for the OSINT sources wiring (now merged). | Historical (archived) |
+| [archive/CHECKPOINT_2026-06-16_rho-bar-merge.md](archive/CHECKPOINT_2026-06-16_rho-bar-merge.md) | Dated merge checkpoint. | Historical (archived) |
+| [archive/REVIEW_2026-06-15.md](archive/REVIEW_2026-06-15.md) | Dated app-review snapshot. | Historical (archived) |
 | [handoff/](handoff/) | Dated session checkpoints (`CHECKPOINT_2026-06-16_bb-width-squeeze.md`, `local-session-2026-06-13.md`). | Historical |
-| [CHECKPOINT_2026-06-16_rho-bar-merge.md](CHECKPOINT_2026-06-16_rho-bar-merge.md) | Dated merge checkpoint. | Historical (→ archive candidate) |
-| [REVIEW_2026-06-15.md](REVIEW_2026-06-15.md) | Dated app-review snapshot. | Historical (→ archive candidate) |
 | [OPEN_THREADS.md](OPEN_THREADS.md) | 2026-06-07 open-threads/ideas registry. | Historical-leaning (dated; cross-check against current state) |
 | [DERIVATIVES_PLAN.md](DERIVATIVES_PLAN.md) | The perp-carry derivatives plan — MASTER_PLAN flags it as **a historical reference, not the current priority**. | Historical reference |
 | [runs/](runs/) | Raw run artifacts (`llm_narrative_verdict_deep.{json,log}`). | Historical (artifacts) |
