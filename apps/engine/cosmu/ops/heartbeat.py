@@ -8,6 +8,12 @@
 #   ingest → MAX(alt_data.ingested_at)            (Modal ingest hourly)
 #   tick   → autonomy_status().last_tick_at        (Modal gate_sweep every 4h)
 #   mark   → MAX(events.ts WHERE kind=tracks_marked) (Modal paper_mark daily)
+#   exec   → MAX(events.ts WHERE kind IN (paper_stepped, forward_entry)) (Modal paper-exec — the EXECUTOR clock)
+#
+# `exec` is the executor-liveness probe: paper_step.step_tracks emits `paper_stepped` EVERY tick (even a tick
+# that opens/closes nothing) and `forward_entry` when a track actually trades. A stalled executor (the paper
+# clock dark) means funded tracks stop being stepped forward — survivors freeze on a stale mark and never trade
+# — so this pages even when ingest/mark are healthy (a partial fleet death the other three signals miss).
 #
 # CAVEAT: this probe runs ON the same Modal app it watches, so it catches "a job ran but wrote nothing" and
 # "one job died" — not a total Modal outage (Modal's own run-failure alerts cover that). Far better than the
@@ -25,7 +31,9 @@ from cosmu.master.scheduler import autonomy_status
 from cosmu.notify.slack import SlackNotifier
 
 # Staleness ceilings in HOURS. None of these gate money; they only decide when to page.
-DEFAULT_THRESHOLDS_H: dict[str, float] = {"ingest": 3.0, "tick": 9.0, "mark": 30.0}
+# `exec` shares the daily paper-clock cadence (paper_step runs alongside paper_mark), so 30h ~= 2x a daily run —
+# a single missed run won't page, a dark executor will.
+DEFAULT_THRESHOLDS_H: dict[str, float] = {"ingest": 3.0, "tick": 9.0, "mark": 30.0, "exec": 30.0}
 
 
 def _age_hours(ts: Any, now: datetime) -> float | None:
@@ -47,10 +55,14 @@ def check(store: Store, *, now: datetime | None = None, thresholds: dict[str, fl
     th = {**DEFAULT_THRESHOLDS_H, **(thresholds or {})}
     canary = store.row("SELECT MAX(ingested_at) AS t FROM alt_data")
     marked = store.row("SELECT MAX(ts) AS t FROM events WHERE kind = 'tracks_marked'")
+    stepped = store.row(
+        "SELECT MAX(ts) AS t FROM events WHERE kind IN ('paper_stepped', 'forward_entry')"
+    )
     ages: dict[str, float | None] = {
         "ingest": _age_hours(canary.get("t") if canary else None, now),
         "tick": _age_hours(autonomy_status(store).last_tick_at, now),
         "mark": _age_hours(marked.get("t") if marked else None, now),
+        "exec": _age_hours(stepped.get("t") if stepped else None, now),
     }
     # A signal is stale if it has NEVER fired (None) or exceeds its ceiling.
     stale = {k: ages[k] for k in ages if ages[k] is None or ages[k] > th[k]}
