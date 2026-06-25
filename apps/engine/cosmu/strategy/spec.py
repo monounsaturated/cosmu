@@ -51,12 +51,38 @@ class ExitPlan(BaseModel):
     runner_trail: ParamRef | None = None
 
 
+class TrailingStop(BaseModel):
+    """A STANDALONE top-level trailing stop — distinct from `ExitPlan.runner_trail` (which only arms AFTER the
+    first multi-TP leg fills). This one trails the stop behind the favourable extreme from the moment it is
+    armed: immediately at entry by default, or only once the trade is `arm_after_profit` in the money (a
+    ParamRef profit fraction) so a fresh entry is not stopped out by ordinary noise before it has earned a
+    cushion. `distance` is the trail distance as a fraction of the favourable extreme (a ParamRef — fit, never
+    magic). It RAISES the fixed stop_loss only (max() for a long, min() for a short) — it never loosens it, so
+    the worst-case stop is always the tighter of the fixed stop and the trail. None on ExitRules => off
+    (byte-identical to specs without it). Composes with multi_tp/runner_trail: whichever stop is tighter in the
+    favourable direction wins."""
+
+    distance: ParamRef
+    # Only start trailing once the position is this fraction in profit (favourable move from entry). None =>
+    # arm immediately at entry. A ParamRef so the arm threshold is fit from the space like every other knob.
+    arm_after_profit: ParamRef | None = None
+
+
 class ExitRules(BaseModel):
     stop_loss: ParamRef
     take_profit: ParamRef
     signal_exits: list[Condition] = Field(default_factory=list)
     time_stop_days: ParamRef | None = None
     plan: ExitPlan | None = None
+    # STANDALONE trailing stop (see TrailingStop) — armed at entry / after a profit cushion, independent of the
+    # multi-TP runner. None => no top-level trailing stop (every existing spec is unchanged).
+    trailing_stop: TrailingStop | None = None
+    # ATR-multiple stop: when set, the initial stop distance is `atr_mult × ATR` (ATR as a fraction of price —
+    # the `atr` registry feature) at the entry bar, INSTEAD of the fixed `stop_loss` fraction. A ParamRef so the
+    # multiple is fit. None => the fixed `stop_loss` fraction is used (byte-identical to existing specs). When the
+    # ATR feature is unavailable at the entry bar (warm-up / no data) the stop falls back to the fixed stop_loss
+    # fraction — never an unprotected position.
+    atr_mult: ParamRef | None = None
 
 
 class UniverseSelector(BaseModel):
