@@ -24,6 +24,23 @@ def _default_alt_store():  # noqa: ANN202 - AltDataStore | PgAltDataStore
     return hot_alt_store(get_settings())
 
 
+def _hoard_universe_bars(store: Store) -> None:
+    """Best-effort R2 bar hoard, folded into the hourly ingest cron. Pulls the Tier-0/1 crypto universe's keyless
+    windows per venue and union-merges each into its deep R2 series (data/bar_archive.archive_universe_bars).
+    WRAPPED so any failure (R2 hiccup, a venue refusing the connection) is logged + swallowed and can NEVER abort
+    the already-persisted ingest pass — the same best-effort discipline as the cross-asset gate step below."""
+    try:
+        from cosmu.data.bar_archive import archive_universe_bars
+
+        result = archive_universe_bars(store=store)
+        logger.info(
+            "bar hoard: %s series archived, %s skipped (%s cells) — %s bars on R2.",
+            result.get("archived"), result.get("skipped"), result.get("cells"), result.get("archived_bars"),
+        )
+    except Exception:  # noqa: BLE001 — the hoard is a free bonus; its failure must never touch the ingest result
+        logger.exception("bar hoard step failed; ingest step (already persisted) is unaffected")
+
+
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
     """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) are
     ingested — exactly what arm (3) needs to differ from price-only. Same predicate the API uses."""
@@ -126,6 +143,12 @@ def auto_research_pass(
         # for days, pages Slack ONCE per cooldown window — silent data death no longer needs someone to look.
         # Best-effort by invariant: a health-check failure never touches the ingest result.
         check_ingest_health(store, counts, notifier=SlackNotifier.from_env())
+        # HOARD bars on R2 (the "gather data that could help later" step): pull the Tier-0/1 crypto universe's
+        # keyless-native windows (kraken/binance/bybit) and union-merge each into its deep R2 series — so the
+        # cacheless Modal fleet accumulates deep history the shallow ~720-bar keyless REST window can't serve in
+        # one call. BOUNDED (Tier-0 depth × venues × 1d, hard cell ceiling) + idempotent + R2-absent no-op.
+        # BEST-EFFORT: wrapped so an R2/fetch hiccup can NEVER abort the already-persisted ingest pass.
+        _hoard_universe_bars(store)
 
     if not cross_asset_gate:
         return None

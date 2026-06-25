@@ -147,8 +147,12 @@ def gate_sweep() -> int:
 @app.function(schedule=modal.Cron("0 * * * *"), **_LIGHT)
 def ingest() -> int:
     """Free-data INGEST ONLY (hourly — replaces the dead Railway */15 cron; the canary the heartbeat watches).
-    The leaky cross-asset gate is DEFAULT OFF;
-    pass --cross-asset-gate to opt in. Honest BH-FDR gate path (promote_cohort) runs via gate_sweep."""
+    The leaky cross-asset gate is DEFAULT OFF; pass --cross-asset-gate to opt in. Honest BH-FDR gate path
+    (promote_cohort) runs via gate_sweep. ALSO HOARDS bars: the --ingest pass folds in a bounded, best-effort R2
+    bar hoard (data/bar_archive.archive_universe_bars) — the cacheless fleet pulls the Tier-0/1 crypto universe's
+    keyless windows per venue and union-merges each into its deep R2 series, accumulating history the shallow
+    ~720-bar keyless REST window can't serve in one call. No 6th schedule (Modal Free caps at 5); it rides the
+    hourly ingest cadence, which is exactly the keyless-window refresh rate."""
     return _run(["cosmu.research.loop", "--ingest"])
 
 
