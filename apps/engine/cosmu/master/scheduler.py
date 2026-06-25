@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -28,8 +29,22 @@ _RESUMED = "autonomy_resumed"
 # REPLICATE step bounds: how many of a tick's gate-passed survivors get their winning logic replicated, and the
 # per-survivor cohort cap. Bounded so the flywheel COMPOUNDS proven edges without ballooning compute — and volume
 # still can't manufacture a winner because each cohort runs the SAME Benjamini-Hochberg FDR brake.
-_EVOLVE_MAX_PARENTS = 3
-_EVOLVE_MAX_SPECS = 12
+#
+# RAISED + env-tunable 2026-06-25 (widest-honest universe pivot): 3→6 parents, 12→24 specs. This widens the
+# REPLICATION funnel only — it is throughput, NOT a gate change: every replicated spec is one more candidate the
+# cohort's BH-FDR cutoff absorbs, so a wider replication can find more real edges but never fund a false one.
+# Override with COSMU_EVOLVE_MAX_PARENTS / COSMU_EVOLVE_MAX_SPECS for a cheaper or wider run.
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    try:
+        val = int(raw) if raw else default
+    except ValueError:
+        return default
+    return val if val > 0 else default
+
+
+_EVOLVE_MAX_PARENTS = _env_int("COSMU_EVOLVE_MAX_PARENTS", 6)
+_EVOLVE_MAX_SPECS = _env_int("COSMU_EVOLVE_MAX_SPECS", 24)
 
 
 @dataclass

@@ -147,8 +147,9 @@ def test_guard_sweep_cost_refuses_over_ceiling_and_prints_projection(capsys):
     out = capsys.readouterr().out
     assert "projected ~$" in out and "6 cells" in out
 
-    # Over the ceiling: refuses before any compute, with the projected $ in the message.
-    with pytest.raises(AssertionError, match="exceeds the 60-cell cost ceiling"):
+    # Over the ceiling: refuses before any compute, with the projected $ in the message. Derive the expected
+    # ceiling from the constant (it's env-tunable / widened, so don't hard-code the literal).
+    with pytest.raises(AssertionError, match=f"exceeds the {app._MAX_SWEEP_CELLS}-cell cost ceiling"):
         app._guard_sweep_cost(app._MAX_SWEEP_CELLS + 1, n_assets=app._MAX_SWEEP_CELLS + 1, n_timeframes=1)
 
 

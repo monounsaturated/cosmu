@@ -113,7 +113,12 @@ _LIGHT = dict(image=image, secrets=[engine_secret], timeout=20 * 60, cpu=1.0, me
 _MATRIX = dict(image=image, secrets=[engine_secret], timeout=8 * 60, cpu=4.0, memory=8192)
 
 # B4 cost guard constants for the sweep entrypoint: the hard cell ceiling + the per-cell cost estimate.
-_MAX_SWEEP_CELLS = 60                 # refuse a fan-out wider than this without an explicit re-think
+# RAISED 2026-06-25 (widest-honest universe pivot): 60 → 300 to match the ~30-name wide Kraken crypto screen
+# (data/universe.PERP_UNIVERSE) × the timeframe/strategy fan-out. Still a HARD $ guard, not a removal — the
+# assert below stays and the projected-cost line still prints, so a runaway fan-out is refused before any Modal
+# compute spends. Override deliberately with COSMU_MAX_SWEEP_CELLS for a one-off wider sweep. At 300 cells the
+# projection is ~300 × 90s × $0.945/hr ≈ $7 — well inside the $22 hard compute cap.
+_MAX_SWEEP_CELLS = int(os.environ.get("COSMU_MAX_SWEEP_CELLS", "300"))  # refuse a fan-out wider than this
 _EST_SECONDS_PER_CELL = 90.0         # rough mean wall-time of one matrix cell (well under the 8min cap)
 _MODAL_USD_PER_HOUR = 0.945          # the _MATRIX profile's blended $/hr (4 CPU + 8GB), for the $ projection
 

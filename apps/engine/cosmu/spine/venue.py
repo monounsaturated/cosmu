@@ -318,12 +318,42 @@ def default_catalog() -> VenueCatalog:
         instruments=[
             Instrument(id="btc-usdt-binance", venue_id="binance", symbol="BTCUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.00001"), min_notional=Decimal("10")),
             Instrument(id="eth-usdt-binance", venue_id="binance", symbol="ETHUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.0001"), min_notional=Decimal("10")),
-            # The rest of the crypto SCREEN universe (evolution/loop.py CRYPTO_SCREEN_UNIVERSE) — real Binance
-            # spot filters. Without these a survivor screened on BNB/SOL/XRP could only paper on BTC/ETH,
-            # i.e. on an instrument its gate evidence never covered.
+            # The rest of the crypto SCREEN universe (evolution/loop.py CRYPTO_SCREEN_UNIVERSE == the wide
+            # data/universe.PERP_UNIVERSE) — real Binance spot filters. Without these a survivor screened on a
+            # wide-set name could only paper on BTC/ETH, i.e. on an instrument its gate evidence never covered (the
+            # funder SKIPS any symbol with no catalog instrument at the funding venue — orchestrator/loop.py). So
+            # this list MUST track CRYPTO_SCREEN_UNIVERSE: widened 2026-06-25 (Binance→Kraken pivot) from 5 to the
+            # full ~30-name liquid set, every name verified listed on both Binance spot and Kraken USD spot, so a
+            # wide-set survivor actually opens a paper track instead of being silently skipped. tick/lot are
+            # conservative real-ish Binance spot filters; min_notional=10 like the majors.
             Instrument(id="bnb-usdt-binance", venue_id="binance", symbol="BNBUSDT", asset_class="crypto", tick_size=Decimal("0.1"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
             Instrument(id="sol-usdt-binance", venue_id="binance", symbol="SOLUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
             Instrument(id="xrp-usdt-binance", venue_id="binance", symbol="XRPUSDT", asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("1"), min_notional=Decimal("10")),
+            Instrument(id="doge-usdt-binance", venue_id="binance", symbol="DOGEUSDT", asset_class="crypto", tick_size=Decimal("0.00001"), lot_size=Decimal("1"), min_notional=Decimal("10")),
+            Instrument(id="ada-usdt-binance", venue_id="binance", symbol="ADAUSDT", asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="avax-usdt-binance", venue_id="binance", symbol="AVAXUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="link-usdt-binance", venue_id="binance", symbol="LINKUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="dot-usdt-binance", venue_id="binance", symbol="DOTUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="trx-usdt-binance", venue_id="binance", symbol="TRXUSDT", asset_class="crypto", tick_size=Decimal("0.00001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="ltc-usdt-binance", venue_id="binance", symbol="LTCUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
+            Instrument(id="bch-usdt-binance", venue_id="binance", symbol="BCHUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
+            Instrument(id="near-usdt-binance", venue_id="binance", symbol="NEARUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="uni-usdt-binance", venue_id="binance", symbol="UNIUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="atom-usdt-binance", venue_id="binance", symbol="ATOMUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="apt-usdt-binance", venue_id="binance", symbol="APTUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="arb-usdt-binance", venue_id="binance", symbol="ARBUSDT", asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="op-usdt-binance", venue_id="binance", symbol="OPUSDT", asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="fil-usdt-binance", venue_id="binance", symbol="FILUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="inj-usdt-binance", venue_id="binance", symbol="INJUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="sui-usdt-binance", venue_id="binance", symbol="SUIUSDT", asset_class="crypto", tick_size=Decimal("0.0001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="sei-usdt-binance", venue_id="binance", symbol="SEIUSDT", asset_class="crypto", tick_size=Decimal("0.00001"), lot_size=Decimal("1"), min_notional=Decimal("10")),
+            Instrument(id="tia-usdt-binance", venue_id="binance", symbol="TIAUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="aave-usdt-binance", venue_id="binance", symbol="AAVEUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.001"), min_notional=Decimal("10")),
+            Instrument(id="etc-usdt-binance", venue_id="binance", symbol="ETCUSDT", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="xlm-usdt-binance", venue_id="binance", symbol="XLMUSDT", asset_class="crypto", tick_size=Decimal("0.00001"), lot_size=Decimal("1"), min_notional=Decimal("10")),
+            Instrument(id="icp-usdt-binance", venue_id="binance", symbol="ICPUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.01"), min_notional=Decimal("10")),
+            Instrument(id="rune-usdt-binance", venue_id="binance", symbol="RUNEUSDT", asset_class="crypto", tick_size=Decimal("0.001"), lot_size=Decimal("0.1"), min_notional=Decimal("10")),
+            Instrument(id="gala-usdt-binance", venue_id="binance", symbol="GALAUSDT", asset_class="crypto", tick_size=Decimal("0.00001"), lot_size=Decimal("1"), min_notional=Decimal("10")),
             Instrument(id="btc-usd-kraken", venue_id="kraken", symbol="BTC/USD", asset_class="crypto", tick_size=Decimal("0.1"), lot_size=Decimal("0.00001"), min_notional=Decimal("10")),
             Instrument(id="btc-usd-coinbase", venue_id="coinbase", symbol="BTC-USD", asset_class="crypto", tick_size=Decimal("0.01"), lot_size=Decimal("0.000001"), min_notional=Decimal("1")),
             Instrument(id="spy-ibkr", venue_id="ibkr", symbol="SPY", asset_class="equity", tick_size=Decimal("0.01"), lot_size=Decimal("1"), min_notional=Decimal("1")),
