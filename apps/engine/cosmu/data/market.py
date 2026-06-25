@@ -229,6 +229,34 @@ def default_crypto_reference() -> MarketDataProvider:
     return RemoteBarsProvider(base) if base else keyless_crypto_reference()
 
 
+# Each crypto venue's KEYLESS-NATIVE OHLCV provider — so a cell tagged venue=kraken reads KRAKEN's own bars, a
+# venue=bybit cell reads BYBIT's, instead of taking one reference book as the source of truth for every venue
+# (the operator directive: "each bar per venue — don't take Kraken as source of truth for Hyperliquid"). Only
+# venues with a LIVE keyless route are mapped here; the spelling per venue (Kraken XBTUSD, Bybit BTCUSDT) is the
+# provider's own job (KrakenSpotOHLCVProvider maps internally via _kraken_pair). Hyperliquid + equity are
+# CACHE-ONLY (their providers read a pre-populated cache; no live keyless fetch), so they are NOT here — a
+# caller wanting their bars uses the cache provider directly (the finder already does). A venue with no entry
+# returns None → the caller keeps its existing behaviour (reference fallback), never fabricates bars.
+def keyless_venue_provider(venue_id: str) -> MarketDataProvider | None:
+    """The keyless-NATIVE crypto OHLCV provider for `venue_id`, or None when the venue has no live keyless route.
+
+    Native-keyless (each serves ITS OWN venue's bars):
+      - 'binance'  → the configured reference provider (Binance spot, or the COSMU_BARS_URL remote / COSMU_BARS_VENUE).
+      - 'kraken'   → KrakenSpotOHLCVProvider (maps BTCUSDT→XBTUSD internally).
+      - 'bybit'    → BybitSpotOHLCVProvider.
+    Cache-only / unknown → None (Hyperliquid + equity read a pre-populated cache, NOT a live keyless fetch; their
+    cells keep the reference/cache path the caller already wires). The map is the ONE place a new keyless venue is
+    added; spelling normalization stays each provider's own responsibility."""
+    venue = (venue_id or "").strip().lower()
+    if venue == "binance":
+        return default_crypto_reference()
+    if venue == "kraken":
+        return KrakenSpotOHLCVProvider()
+    if venue == "bybit":
+        return BybitSpotOHLCVProvider()
+    return None
+
+
 class UniversalOHLCVProvider:
     """The UNIVERSAL PRICE LAYER reference provider: fetch a canonical PAIR's REFERENCE OHLCV ONCE and serve it to
     EVERY venue that UNIFIES onto it (data/reference.decision). Composes the keyless `BinanceSpotOHLCVProvider`
