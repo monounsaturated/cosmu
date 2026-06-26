@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Point(BaseModel):
@@ -359,6 +359,31 @@ class LiquidateResponse(BaseModel):
     routed: int
     closed: int
     version_ids: list[str]
+
+
+class KillswitchRequest(BaseModel):
+    """The manual capital-guard kill-switch trigger (POST /ops/killswitch). `confirm` must be true (two-click
+    safety — a fat-finger GET/POST never flattens the book). `scope='all'` is the GLOBAL mass-kill (close every
+    funded holding); `scope='combo'` closes ONLY the one cell named by `version_id` (the combo/track id)."""
+
+    scope: Literal["all", "combo"] = "all"
+    version_id: str | None = None
+    confirm: bool = False
+
+
+class KillswitchResponse(BaseModel):
+    """The honest result of a manual kill-switch pass. `triggered` is False (with a `reason`) when confirm was
+    omitted — nothing was touched. `evaluated` = funded holdings in scope a forced close was built for; `closed`
+    = those an accepted reduce-only close actually flattened/booked this pass (real reduce-only order on an ARMED
+    venue, sim-close otherwise). A no-op (nothing funded in scope) returns triggered=true, closed=0."""
+
+    triggered: bool
+    scope: Literal["all", "combo"]
+    version_id: str | None = None
+    evaluated: int = 0
+    closed: int = 0
+    actions: list[dict] = Field(default_factory=list)
+    reason: str | None = None
 
 
 class LivePosition(BaseModel):

@@ -169,3 +169,83 @@ def test_floor_disabled_is_respected(tmp_path):
         store, catalog=CATALOG, router=_StubRouter(Decimal("20000")), config=cfg
     )
     assert report.protected == 0
+
+
+# ---------------------------------------------------------------------------
+# The MANUAL operator kill-switch (capital_guard.kill): a threshold-FREE forced full close of funded holdings in
+# scope — GLOBAL (scope='all') or one combo (scope='combo' + version_id). Same reduce-only order path + audit as
+# the automatic supervisor; a clean no-op with nothing funded in scope.
+# ---------------------------------------------------------------------------
+
+def test_kill_global_closes_a_healthy_track(tmp_path):
+    # A perfectly HEALTHY track (above floor, no give-back) is NOT touched by run_capital_guard — but the manual
+    # global kill flattens it unconditionally (the operator "stop now" backstop).
+    store = _store(tmp_path)
+    _fund_track(store, version_id="sv-kill", qty=Decimal("0.02"), avg_price=Decimal("50000"),
+                starting_capital=Decimal("1000"))
+    _snapshot(store, version_id="sv-kill", equity=Decimal("1100"), ts=utcnow())  # healthy, +10%
+    # the automatic pass leaves a healthy track alone
+    auto = capital_guard.run_capital_guard(store, catalog=CATALOG, router=_StubRouter(Decimal("55000")))
+    assert auto.protected == 0
+    # the manual kill closes it regardless
+    report = capital_guard.kill(store, scope="all", catalog=CATALOG, router=_StubRouter(Decimal("55000")))
+    assert report.evaluated == 1 and report.protected == 1
+    action = report.actions[0]
+    assert action["kind"] == "liquidate" and action["reason"] == "manual_kill"
+    # the whole position is flat + audited as a human action
+    pf = Portfolio(store, bankroll=Decimal("100000"))
+    pos = pf.position(_INSTRUMENT, "sim", strategy_version_id="sv-kill")
+    assert pos is not None and pos.qty == Decimal("0")
+    ev = store.row("SELECT actor FROM events WHERE kind = 'capital_guard_action'")
+    assert ev is not None and ev["actor"] == "human"
+
+
+def test_kill_combo_only_targets_that_version(tmp_path):
+    # scope='combo' closes ONLY the named cell; a sibling funded track is left alone.
+    store = _store(tmp_path)
+    _fund_track(store, version_id="sv-a", qty=Decimal("0.02"), avg_price=Decimal("50000"),
+                starting_capital=Decimal("1000"))
+    _snapshot(store, version_id="sv-a", equity=Decimal("1100"), ts=utcnow())
+    # a second funded track on a distinct version (reuse the same strategy row already inserted)
+    store.rows(
+        "INSERT INTO strategy_versions "
+        "(id, strategy_id, spec, generated_code, code_hash, params, origin, status, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("sv-b", "strat1", "{}", "", "h2", "{}", "test", "paper", utcnow()),
+    )
+    store.insert("tracks", {"strategy_version_id": "sv-b", "symbol": _SYMBOL, "venue_id": _VENUE,
+                            "starting_capital": "1000", "equity": "1000", "return_pct": "0.00",
+                            "updated_at": utcnow()})
+    pf = Portfolio(store, bankroll=Decimal("100000"))
+    pf.apply_fill(instrument_id=_INSTRUMENT, symbol=_SYMBOL, venue="sim", side=1,
+                  qty=Decimal("0.02"), price=Decimal("50000"), fee=Decimal("0"), strategy_version_id="sv-b")
+    _snapshot(store, version_id="sv-b", equity=Decimal("1100"), ts=utcnow())
+
+    report = capital_guard.kill(store, scope="combo", version_id="sv-a",
+                                catalog=CATALOG, router=_StubRouter(Decimal("55000")))
+    assert report.evaluated == 1 and report.protected == 1
+    pf2 = Portfolio(store, bankroll=Decimal("100000"))
+    assert pf2.position(_INSTRUMENT, "sim", strategy_version_id="sv-a").qty == Decimal("0")  # closed
+    assert pf2.position(_INSTRUMENT, "sim", strategy_version_id="sv-b").qty == Decimal("0.02")  # untouched
+
+
+def test_kill_is_noop_with_nothing_funded(tmp_path):
+    # No funded/held track in scope → a clean no-op (no order path touched, no audit event).
+    store = _store(tmp_path)
+    report = capital_guard.kill(store, scope="all", catalog=CATALOG, router=_StubRouter(Decimal("55000")))
+    assert report.evaluated == 0 and report.protected == 0 and report.actions == []
+    assert store.row("SELECT id FROM events WHERE kind = 'capital_guard_action'") is None
+    assert store.row("SELECT id FROM executions") is None
+
+
+def test_kill_combo_without_version_id_is_noop(tmp_path):
+    # scope='combo' with no version_id → never guess a target; clean no-op even with a funded track present.
+    store = _store(tmp_path)
+    _fund_track(store, version_id="sv-x", qty=Decimal("0.02"), avg_price=Decimal("50000"),
+                starting_capital=Decimal("1000"))
+    _snapshot(store, version_id="sv-x", equity=Decimal("1100"), ts=utcnow())
+    report = capital_guard.kill(store, scope="combo", version_id=None,
+                                catalog=CATALOG, router=_StubRouter(Decimal("55000")))
+    assert report.evaluated == 0 and report.protected == 0
+    pf = Portfolio(store, bankroll=Decimal("100000"))
+    assert pf.position(_INSTRUMENT, "sim", strategy_version_id="sv-x").qty == Decimal("0.02")  # untouched
