@@ -239,11 +239,20 @@ class OkxFundingRateProvider:
 class KrakenFuturesFundingRateProvider:
     """Kraken Futures historical funding rates (public REST, no key required).
 
-    Fetches /api/v3/historicalfundingrates for PF_-prefixed linear perpetuals.
-    `available_at == ts` (Kraken publishes the realized premium at its effective
-    time — no look-ahead).  Kraken Futures settles funding on an hourly basis via
-    a premium index; rates are expressed per-interval (convert to 8h-equivalent
-    in the dispersion strategy if comparing cross-venue).
+    Fetches /derivatives/api/v3/historical-funding-rates for PF_-prefixed linear
+    perpetuals (symbol uses XBT not BTC, e.g. PF_XBTUSD). `available_at == ts`
+    (Kraken publishes the realized premium at its effective time — no look-ahead).
+    Kraken Futures settles funding HOURLY via a premium index, so cross-venue use
+    aggregates 8x1h into an 8h-equivalent bucket downstream.
+
+    The live response rows are
+        {"timestamp": "<ISO-8601 e.g. 2025-06-25T17:00:00Z>",
+         "fundingRate": <absolute USD premium>,
+         "relativeFundingRate": <per-interval rate>}
+    We emit `relativeFundingRate` (the PER-INTERVAL rate, directly comparable to
+    Binance/OKX `fundingRate`) — NOT `fundingRate` (an absolute USD premium that is
+    NOT cross-venue comparable). `timestamp` is ISO-8601, parsed with
+    `datetime.fromisoformat` (NOT an int-ms epoch).
 
     Offline-testable via the injected `_fetcher(url) -> list[dict]` callable.
     Falls back to [] on any network / parse error.
@@ -264,7 +273,9 @@ class KrakenFuturesFundingRateProvider:
         self._fetcher = _fetcher or self._fetch
 
     def _fetch(self, url: str) -> list:
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
+        # Kraken serves the JSON API only with a browser-like UA; a bare client UA 301-redirects to
+        # an HTML page (parsed as JSON → empty). Use a Mozilla UA to hit the data endpoint.
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (cosmu-engine/0.1)"})
         try:
             with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
                 payload = json.loads(resp.read().decode("utf-8"))
@@ -272,16 +283,22 @@ class KrakenFuturesFundingRateProvider:
         except Exception:  # noqa: BLE001
             return []
 
+    @staticmethod
+    def _parse_ts(raw: str) -> datetime:
+        """Parse Kraken's ISO-8601 funding ts ('2025-06-25T17:00:00Z') to an aware UTC datetime."""
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+
     def fetch_history(self, symbol: str, *, start_ms: int, end_ms: int | None = None) -> list[AltDataPoint]:
         """Fetch all funding rate entries for `symbol` from `start_ms` to now (or `end_ms`).
 
-        Kraken returns the full history in one request (no pagination cursor needed
-        for most symbols).  Filter to [start_ms, end_ms] and deduplicate.
+        Kraken returns the full history (~1yr hourly) in one request (no pagination
+        cursor needed). Filter to [start_ms, end_ms] and deduplicate by timestamp.
         """
         import time as _time
 
-        end = int(end_ms) if end_ms is not None else int(_time.time() * 1000)
-        url = f"{self.base_url}/api/v3/historicalfundingrates?symbol={urllib.parse.quote(symbol)}"
+        end_ms_v = int(end_ms) if end_ms is not None else int(_time.time() * 1000)
+        _sym = urllib.parse.quote(symbol)
+        url = f"{self.base_url}/derivatives/api/v3/historical-funding-rates?symbol={_sym}"
         try:
             rows = self._fetcher(url)
         except Exception:  # noqa: BLE001
@@ -289,13 +306,18 @@ class KrakenFuturesFundingRateProvider:
         seen: set[int] = set()
         out: list[AltDataPoint] = []
         for row in rows:
-            # Kraken returns effectiveTime as a millisecond Unix epoch integer
-            ft = int(row["timestamp"])
-            if ft in seen or ft < start_ms or ft > end:
+            try:
+                ts = self._parse_ts(row["timestamp"])
+                # relativeFundingRate = per-interval rate (cross-venue comparable); NOT the
+                # absolute USD-premium `fundingRate`.
+                value = float(row["relativeFundingRate"])
+            except (KeyError, TypeError, ValueError):
+                continue  # skip a malformed row, never crash the whole pass
+            ft_ms = int(ts.timestamp() * 1000)
+            if ft_ms in seen or ft_ms < start_ms or ft_ms > end_ms_v:
                 continue
-            seen.add(ft)
-            ts = datetime.fromtimestamp(ft / 1000, tz=UTC)
-            out.append(AltDataPoint(ts=ts, available_at=ts, value=float(row["fundingRate"])))
+            seen.add(ft_ms)
+            out.append(AltDataPoint(ts=ts, available_at=ts, value=value))
         out.sort(key=lambda p: p.ts)
         return out
 
