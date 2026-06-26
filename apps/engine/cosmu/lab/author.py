@@ -210,7 +210,7 @@ def draft_from_brief(
     # 5) feature picks: explicit list (from UI) wins; else the LLM's proposed named features; else detected from
     # the brief. All are validated to the asset class — the LLM cannot pick a feature it isn't allowed to use.
     valid_feats = {f.name for f in features_for(spec.universe.asset_classes)}
-    base_wanted = features or llm_features or _detect_features(text)
+    base_wanted = features or llm_features or _detect_features(text, asset_class)
     # Fold in PRIOR-ART features the research bus surfaced (rag_read) as additional candidates — they still pass
     # validation + memory below (a prior-art feature memory has killed is still pruned), so research INFORMS but
     # never overrides the deterministic judgement. Explicit UI/LLM features stay the core; prior-art augments.
@@ -386,11 +386,32 @@ def _pick_asset(text: str) -> tuple[str, str | None]:
     return "crypto", None
 
 
-def _detect_features(text: str) -> list[str]:
+# For a PREDICTION-asset brief, the per-conditionId odds bar (the finder feeds the cell's OWN odds as the bars)
+# is what a "this contract over-extended" thesis should read — NOT the pm_* MACRO composite (a market-wide
+# aggregate under symbol="MARKET"). So when the asset class is prediction we remap the macro pm_* hints to the
+# per-cell self-features (readiness 2026-06-26 finding / Fix item 6). pm_book_depth has no per-cell analogue, so
+# it is dropped for prediction (capacity is a sizing constraint, not an entry feature on the cell's own odds).
+_PREDICTION_FEATURE_REMAP: dict[str, str | None] = {
+    "pm_implied_prob": "odds",
+    "pm_prob_velocity": "odds_velocity",
+    "pm_risk_on": "odds",
+    "pm_book_depth": None,  # no per-cell analogue → drop for a prediction-contract spec
+}
+
+
+def _detect_features(text: str, asset_class: str = "crypto") -> list[str]:
     out: list[str] = []
     for key, feature in _FEATURE_HINTS.items():
         if key in text and feature not in out:
             out.append(feature)
+    if asset_class == "prediction":
+        # Trade the CONTRACT ITSELF: read the cell's own per-market odds, not the macro aggregate.
+        remapped: list[str] = []
+        for f in out:
+            mapped = _PREDICTION_FEATURE_REMAP.get(f, f)
+            if mapped is not None and mapped not in remapped:
+                remapped.append(mapped)
+        return remapped
     return out
 
 

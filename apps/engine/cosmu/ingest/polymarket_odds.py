@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 
 from cosmu.data.altdata import AltDataStore
-from cosmu.data.sources.polymarket import PerMarketOddsSource
+from cosmu.data.sources.polymarket import PerMarketOddsSource, PolymarketResolutionSource
 from cosmu.ingest.pipeline import append_dedup
 
 logger = logging.getLogger("cosmu.ingest.polymarket_odds")
@@ -23,6 +23,13 @@ logger = logging.getLogger("cosmu.ingest.polymarket_odds")
 # read_asof(provider="polymarket", symbol=conditionId, metric="odds", as_of).
 _PROVIDER = "polymarket"
 _METRIC = "odds"
+
+# The authoritative UMA/CTF resolution outcome per conditionId — the $1/$0 YES payout, stamped at the REAL
+# resolution time (available_at = resolution ts, never the scheduled endDate). Stored under a DISTINCT metric so
+# it never co-mingles with the odds series; the PredictionDataAdapter reads it back to SETTLE a held-to-resolution
+# position at its true payout instead of the last odds quote. This is the join that makes the favorite-longshot
+# edge testable at all (scout #385 Fix-B).
+_METRIC_RESOLUTION = "resolution"
 
 # Hourly variant: the SAME per-market YES-odds, but at fidelity=60 (hourly buckets). Stored under a DISTINCT
 # metric ("odds_60") so the two cadences never co-mingle in one (provider,symbol,metric) series — mixing daily
@@ -111,10 +118,44 @@ def ingest_per_market_odds_hourly(
     )
 
 
+def ingest_per_market_resolutions(
+    alt_store: AltDataStore,
+    store: object,
+    *,
+    source: PolymarketResolutionSource | None = None,
+    condition_ids: list[str] | None = None,
+    max_markets: int = DEFAULT_MAX_MARKETS,
+) -> list[PerMarketIngestResult]:
+    """Ingest the authoritative UMA/CTF RESOLUTION outcome per conditionId into `alt_store` under
+    (provider="polymarket", symbol=conditionId, metric="resolution") — the settlement join (scout #385 Fix-B). For
+    each market the source fetches the YES payout ∈ {1.0, 0.0} from `payoutNumerators`/resolved `outcomePrices`,
+    stamped at the REAL resolution time (available_at = resolution ts, NEVER the scheduled endDate), so a backtest
+    can settle a held-to-resolution position at $1/$0 only once the chain actually resolved it.
+
+    `condition_ids` lets the caller resolve a SPECIFIC set (e.g. the markets it just ingested odds for, including
+    now-CLOSED ones the liquid-OPEN screen omits — a resolved market is, by definition, no longer open). When None
+    it falls back to the top-`max_markets` liquid OPEN markets (which are mostly UNresolved → a clean near-no-op
+    that simply finds nothing to settle yet). Idempotent (append_dedup, ts-keyed) + per-market isolated (one dead
+    resolution is 0 rows for that market, never aborts the batch). Returns one result per conditionId attempted."""
+    src = source or PolymarketResolutionSource()
+    cids = condition_ids if condition_ids is not None else top_liquid_condition_ids(store, max_markets=max_markets)
+    results: list[PerMarketIngestResult] = []
+    for cid in cids:
+        try:
+            points = src.fetch_resolution(cid)
+        except Exception:  # noqa: BLE001 — one market's failure never aborts the batch
+            logger.warning("polymarket resolution fetch failed for %s", cid, exc_info=True)
+            points = []
+        written = append_dedup(alt_store, _PROVIDER, cid, _METRIC_RESOLUTION, points)
+        results.append(PerMarketIngestResult(condition_id=cid, written=written, total=len(points)))
+    return results
+
+
 __all__ = [
     "DEFAULT_MAX_MARKETS",
     "PerMarketIngestResult",
     "ingest_per_market_odds",
     "ingest_per_market_odds_hourly",
+    "ingest_per_market_resolutions",
     "top_liquid_condition_ids",
 ]

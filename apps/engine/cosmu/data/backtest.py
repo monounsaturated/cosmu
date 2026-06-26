@@ -167,6 +167,7 @@ def run_strategy_backtest(
     include_holdout: bool = True,
     asset_class_by_symbol: dict[str, str] | None = None,
     vol_target_sizing: bool = True,
+    resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
     wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
@@ -185,6 +186,7 @@ def run_strategy_backtest(
         include_holdout=include_holdout,
         asset_class_by_symbol=asset_class_by_symbol,
         vol_target_sizing=vol_target_sizing,
+        resolution_by_symbol=resolution_by_symbol,
     ).metrics
 
 
@@ -204,8 +206,18 @@ def run_strategy_backtest_detailed(
     include_holdout: bool = True,
     asset_class_by_symbol: dict[str, str] | None = None,
     vol_target_sizing: bool = True,
+    resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
 ) -> BacktestResult:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
+
+    `resolution_by_symbol` maps symbol → (resolution_ts, payout) for PREDICTION-market cells: the authoritative
+    UMA/CTF settlement (payout ∈ {1.0, 0.0} in odds/price units) and the REAL resolution time. When the spec sets
+    `exit.settle_at_resolution=True`, a position still open at/after a symbol's resolution_ts is SETTLED at the
+    payout (the YES share's true $1/$0) instead of marking at the last odds quote — the join that makes the
+    favorite-longshot edge testable. PIT-safe: the caller (finder) reads each resolution point as-of through the
+    PredictionDataAdapter, so a resolution_ts is only ever a real, knowable settlement (available_at <= now); the
+    backtest additionally only settles bars whose ts >= resolution_ts. None / a symbol absent from the map / the
+    flag False → the position marks at the last bar like every other asset, so every existing spec is byte-identical.
 
     `vol_target_sizing` (default True) sizes each symbol's equity curve with the SAME T1 vol-target envelope the
     paper/live executor runs (master/sizing.size_fraction), so the brut per-combo gate scores the physics the
@@ -291,7 +303,12 @@ def run_strategy_backtest_detailed(
         # pooled/sibling value. None disables T1 for this symbol (too few bars) → it sizes T0, as before. With
         # vol_target_sizing off, sym_tv stays None and every cell's curve is the legacy static-fraction physics.
         sym_tv = compute_target_vol(sym_val_returns) if vol_target_sizing else None
-        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv)
+        # Prediction-market settlement (None for every non-prediction symbol → byte-identical). The flag gates it:
+        # only a spec that opts into hold-to-resolution settlement applies the authoritative $1/$0 payout.
+        sym_resolution = (
+            (resolution_by_symbol or {}).get(symbol) if spec.exit.settle_at_resolution else None
+        )
+        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv, resolution=sym_resolution)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
@@ -308,7 +325,7 @@ def run_strategy_backtest_detailed(
         if holdout_bars and include_holdout:
             # The holdout's T1 anchor is the SAME validation-window vol (frozen at funding, never re-fit on the
             # exam) — mirroring the live track, whose target_vol is fixed from validation and never recomputed.
-            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv)
+            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv, resolution=sym_resolution)
             holdout_runs.append(h_run)
             per_symbol_holdout_runs[symbol] = h_run  # this cell's OWN holdout (brut champion confirmation)
 
@@ -613,6 +630,7 @@ def _run_symbol(
     *,
     periods_per_year: float | None = None,
     target_vol: float | None = None,
+    resolution: tuple[datetime, float] | None = None,
 ) -> SymbolRun:
     # `periods_per_year` annualizes this symbol's Sharpe/Sortino on its OWN calendar (set by the caller from the
     # symbol's asset class). None → the 365-session crypto default for `bar_size`, so a direct caller (or any
@@ -700,14 +718,19 @@ def _run_symbol(
         trailing = closes[: idx_now + 1] if target_vol is not None else None
         return _entry_notional(cash, spec, _size_at(idx_now), closes=trailing, target_vol=target_vol)
 
-    def _book(exit_qty: float, exit_px: float, idx_now: int) -> None:
+    def _book(exit_qty: float, exit_px: float, idx_now: int, *, exit_fee: float | None = None) -> None:
         nonlocal cash, position
         # `cash` settles the exit leg: a long SELLS (cash += proceeds net of fee); a short BUYS BACK
         # (cash -= cost gross of fee). The `d` sign and the (1 - d*fee) factor make this reduce to the EXACT
         # original spot expression `cash += exit_qty*exit_px*(1-fee)` when d == +1. pnl_pct mirrors it: a long
         # profits as exit rises, a short as exit falls; entry/exit fees apply symmetrically either way.
-        cash += d * exit_qty * exit_px * (1 - d * fee)
-        pnl_pct = d * (exit_px * (1 - d * fee) - entry_price * (1 + d * fee)) / entry_price
+        # `exit_fee` overrides the per-bar exit fee for THIS leg only — used by binary-contract SETTLEMENT, which
+        # redeems at the authoritative $1/$0 payout with NO venue fee (Polymarket redemption is fee-free; the
+        # binding cost is the spread already paid at entry). Defaults to the venue `fee`, so every other exit is
+        # byte-identical. The ENTRY fee stays charged either way (it was a real fill).
+        ef = fee if exit_fee is None else exit_fee
+        cash += d * exit_qty * exit_px * (1 - d * ef)
+        pnl_pct = d * (exit_px * (1 - d * ef) - entry_price * (1 + d * fee)) / entry_price
         trades.append(Trade(entry=entry_price, exit=exit_px, pnl_pct=pnl_pct, regime=regimes[entry_idx]))
         position -= exit_qty
 
@@ -737,9 +760,37 @@ def _run_symbol(
     )
     meta_threshold = max(0.0, min(1.0, float(params[meta.prob_threshold.param]))) if meta is not None else 0.0
     meta_proportional = bool(meta is not None and meta.sizing == "proportional")
+    # BINARY-CONTRACT SETTLEMENT (prediction markets). `resolution` = (resolution_ts, payout) with payout the
+    # authoritative YES value in odds/price units ($1 → 1.0, $0 → 0.0). When set, a position still open at the
+    # FIRST bar whose ts >= resolution_ts is closed at the payout (NO slippage — settlement is the chain's
+    # authoritative payout, not a market fill) instead of riding the exit ladder / marking at the last odds. The
+    # caller only passes this for a prediction cell whose spec opted into exit.settle_at_resolution, so every
+    # non-prediction symbol gets None here and the loop is byte-identical. resolution_ts is already PIT-vetted by
+    # the caller (read as-of the resolution point's own availability), so reaching it on a bar is honest.
+    resolution_ts = resolution[0] if resolution is not None else None
+    resolution_payout = resolution[1] if resolution is not None else None
+    settled = False  # once a market settles, no further entry is taken (the contract no longer exists)
     for idx in range(start, len(bars)):
         bar = bars[idx]
         slip = _slippage(base_slip, impact, _notional_at(idx), bar)
+        # The contract has resolved by this bar: settle any open position at the authoritative payout, then stop
+        # trading this market for the rest of the series (a resolved binary market is terminal). Checked BEFORE
+        # the exit ladder so the payout — not a stop/tp at the last odds — books the real P&L.
+        if resolution_ts is not None and bar.ts >= resolution_ts:
+            if position > 0:
+                # Exact $1/$0 payout: no slippage (it's the chain's authoritative settlement, not a market fill)
+                # and no redemption fee (Polymarket redemption is free — the spread was already paid at entry).
+                _book(position, float(resolution_payout), idx, exit_fee=0.0)
+            if position <= 1e-12:
+                position = 0.0
+                entry_price = 0.0
+                funding_accrued = 0.0
+            settled = True
+            equity = cash + d * position * closes[idx]
+            high_water = max(high_water, equity)
+            equity_points.append(equity)
+            equity_ts.append(bar.ts.isoformat())
+            continue
         if position > 0:
             _accrue_funding(idx)
             # Side-aware adverse/favourable extremes: a long's worst case is the bar low and best the high;
@@ -795,7 +846,7 @@ def _run_symbol(
                 entry_price = 0.0
                 funding_accrued = 0.0
 
-        if position == 0 and setup_ok[idx - 1] and _entry_signal(spec, params, features, idx - 1):
+        if position == 0 and not settled and setup_ok[idx - 1] and _entry_signal(spec, params, features, idx - 1):
             # Secondary meta-label gate: SIZE/SKIP only (direction is untouched). meta_gate is None for the
             # primary book, so take stays True and the multiplier stays 1.0 — the notional is unchanged.
             take, meta_mult = True, 1.0
@@ -1168,7 +1219,15 @@ def sum_funding_per_bar(points: list[AltDataPoint], bars: list[Bar]) -> dict[str
 
 
 # TA features computed directly, per-symbol, from the bar series in `_feature_matrix` below.
-_BAR_TA_FEATURES = frozenset({"ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx", "bb_width", "range_position"})
+# `odds` / `odds_velocity` are the PREDICTION-cell self-features: for a Polymarket cell the bar close IS the
+# YES implied probability in [0,1], so `odds` is that close and `odds_velocity` its N-bar change. They are
+# bar-computed (the cell's OWN per-conditionId odds bar), NOT the `pm_implied_prob` MACRO composite stored under
+# symbol="MARKET" — that mismatch is the readiness-report finding (the flagship spec keyed entries on the macro
+# aggregate while the finder fed per-market odds as the bars). Binding the spec to `odds`/`odds_velocity` makes
+# the entry read the cell's OWN over-extension, which is what its rationale claims.
+_BAR_TA_FEATURES = frozenset({
+    "ret_Nd", "rsi", "bb_z", "vol_realized", "atr", "adx", "bb_width", "range_position", "odds", "odds_velocity",
+})
 
 # COHORT-COMPUTED features: real, point-in-time features that are NOT ingested into the alt store and NOT
 # bar-TA either — they are COMPUTED by a research cohort and handed to the backtest via the caller's `alt`
@@ -1225,6 +1284,14 @@ def _feature_matrix(
             out[name] = _adx(highs, lows, closes, lookback)
         elif name == "range_position":
             out[name] = _range_position(highs, lows, closes, lookback)
+        elif name == "odds":
+            # PREDICTION self-feature: the bar's OWN YES implied probability (the close, which is the odds in
+            # [0,1] for a Polymarket cell) — read the cell's own over-extension, not the macro composite.
+            out[name] = [c for c in closes]
+        elif name == "odds_velocity":
+            # The N-bar change in the cell's own odds (close[t] - close[t-N]) — the repricing speed the spec's
+            # velocity-rollover arm reads. None during warm-up (no prior bar N back), exactly like ret_Nd.
+            out[name] = _odds_velocity(closes, lookback)
         else:
             # Alt-data feature (funding_rate, etc.): read the point-in-time series joined by the caller,
             # looked up per bar timestamp. Absent series → None (the condition then can't fire — honest).
@@ -1492,6 +1559,18 @@ def _returns(values: list[float], lookback: int) -> list[float | None]:
     for idx in range(lookback, len(values)):
         base = values[idx - lookback]
         out[idx] = values[idx] / base - 1.0 if base else None
+    return out
+
+
+def _odds_velocity(values: list[float], lookback: int) -> list[float | None]:
+    """The ABSOLUTE N-bar change in a prediction cell's own odds: odds[t] - odds[t-N] (a probability delta in
+    [-1, 1]), the repricing-speed signal the over-extension spec's velocity arm reads. Absolute (not a ratio)
+    because odds are already a probability — a move from 0.50 to 0.55 is a +0.05 repricing, not a +10% return.
+    None during warm-up (no bar N back), mirroring _returns. Computed from the cell's OWN odds bar, never a
+    macro composite."""
+    out: list[float | None] = [None] * len(values)
+    for idx in range(lookback, len(values)):
+        out[idx] = values[idx] - values[idx - lookback]
     return out
 
 

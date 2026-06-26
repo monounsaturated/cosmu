@@ -1,7 +1,7 @@
 {
   "name": "Prediction-market probability over-extension fade (short the over-priced contract)",
-  "rationale": "PREDICTION SEGMENT (asset_classes=[prediction], polymarket) — a distinct asset class no inbox spec trades directly (existing polymarket specs use pm_* as CRYPTO features; this trades the prediction contract ITSELF). Mechanism: prediction-market probabilities exhibit favorite-longshot and momentum-overshoot biases — a contract whose implied probability has spiked UP fast and now sits at a rich level often over-extends before resolution and drifts back down as the move is faded. This shorts the over-priced contract: enter short when pm_implied_prob is above a fitted rich level (extended toward certainty but not yet resolved) AND pm_prob_velocity has rolled over (cross_down through ~0 — the upward repricing momentum is exhausting); stop ABOVE entry, take-profit BELOW; exit when velocity turns back up (repricing resumes) or barriers fire. The instrument is the Polymarket contract; pm_book_depth-style capacity is a real constraint (max_position_pct conservative). Distinct from polymarket-positioning-risk-flip and g2-pm-prob-velocity-drift-long (both use pm_* to trade CRYPTO, long). Disconfirmer 1: drop the velocity-rollover arm — if shorting any rich level matches the deflated Sharpe, the momentum-exhaustion timing adds nothing. Disconfirmer 2: rich contracts can keep rising to resolution (the favorite wins); if the edge is dominated by resolution losses, the fade is on the wrong side of the longshot bias. Disconfirmer 3 (PIT/cost): Polymarket CLOB is PIT; net of CLOB fees + thin depth the fade must clear. tier0 pm_implied_prob + pm_prob_velocity, fresh prod data — low-confidence until OOS; shorting a prediction contract = buying the complementary side.",
-  "catalyst": "pm_implied_prob at a rich, over-extended level WHILE pm_prob_velocity rolls over (cross_down) — an over-priced contract faded short",
+  "rationale": "PREDICTION SEGMENT (asset_classes=[prediction], polymarket) — a distinct asset class no inbox spec trades directly (existing polymarket specs use pm_* as CRYPTO features; this trades the prediction contract ITSELF). Mechanism: prediction-market probabilities exhibit favorite-longshot and momentum-overshoot biases — a contract whose implied probability has spiked UP fast and now sits at a rich level often over-extends before resolution and drifts back down as the move is faded. This shorts the over-priced contract: enter short when the contract's OWN odds (the per-conditionId YES probability bar the finder feeds) are above a fitted rich level (extended toward certainty but not yet resolved) AND its OWN odds_velocity has rolled over (cross_down through ~0 — the upward repricing momentum is exhausting); stop ABOVE entry, take-profit BELOW; exit when velocity turns back up (repricing resumes) or barriers fire. WIRING FIX (readiness 2026-06-26): entries now key on `odds`/`odds_velocity` — the CELL'S OWN per-market odds bar — NOT the `pm_implied_prob`/`pm_prob_velocity` MACRO composite (stored market-wide under symbol=MARKET), so the entry tests what the rationale claims (this contract over-extended) instead of a market-wide aggregate. SETTLEMENT FIX: settle_at_resolution=true, so a position still open when the market resolves settles at the authoritative $1/$0 (UMA/CTF payoutNumerators join) instead of marking at the last odds — the favorite-longshot edge is DEFINED by resolution, so without this the backtest measures odds drift, not the real P&L. The instrument is the Polymarket contract; book-depth capacity is a real constraint (max_position_pct conservative). Disconfirmer 1: drop the velocity-rollover arm — if shorting any rich level matches the deflated Sharpe, the momentum-exhaustion timing adds nothing. Disconfirmer 2: rich contracts can keep rising to resolution (the favorite wins); with the resolution join this now RUNS — if the edge is dominated by resolution losses, the fade is on the wrong side of the longshot bias. Disconfirmer 3 (PIT/cost): Polymarket CLOB is PIT (odds + resolution both gated through the leakage tripwire); net of CLOB fees + thin depth the fade must clear. tier0 odds + odds_velocity, fresh prod data — low-confidence until OOS; shorting a prediction contract = buying the complementary side.",
+  "catalyst": "the contract's OWN odds at a rich, over-extended level WHILE its odds_velocity rolls over (cross_down) — an over-priced contract faded short, settled at the true $1/$0 if held to resolution",
   "universe": {
     "venues": ["polymarket"],
     "asset_classes": ["prediction"],
@@ -14,15 +14,16 @@
     "max_hold_days": 10
   },
   "entry": [
-    { "feature": { "name": "pm_implied_prob" }, "op": "gt", "threshold": { "param": "rich_level" } },
-    { "feature": { "name": "pm_prob_velocity" }, "op": "cross_down", "threshold": { "param": "vel_rollover" } }
+    { "feature": { "name": "odds" }, "op": "gt", "threshold": { "param": "rich_level" } },
+    { "feature": { "name": "odds_velocity" }, "op": "cross_down", "threshold": { "param": "vel_rollover" } }
   ],
   "exit": {
     "stop_loss": { "param": "stop" },
     "take_profit": { "param": "tp" },
     "time_stop_days": { "param": "time_stop" },
+    "settle_at_resolution": true,
     "signal_exits": [
-      { "feature": { "name": "pm_prob_velocity" }, "op": "gt", "threshold": { "param": "vel_exit" } }
+      { "feature": { "name": "odds_velocity" }, "op": "gt", "threshold": { "param": "vel_exit" } }
     ]
   },
   "risk": {

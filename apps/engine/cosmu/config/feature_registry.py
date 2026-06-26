@@ -292,6 +292,13 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="pm_implied_prob", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Odds are a cross-market probability signal."),
     FeatureDefinition(name="pm_prob_velocity", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Probability repricing speed identifies changing beliefs."),
     FeatureDefinition(name="pm_book_depth", source="polymarket_clob", tier="tier0", asset_classes=["prediction"], asof_semantics="CLOB snapshot time", prior="Depth defines fillable capacity."),
+    # The PER-CONTRACT self-features (bar-computed from the cell's OWN per-conditionId odds bar, source the bar
+    # itself — for a Polymarket cell the bar close IS the YES implied probability in [0,1]). DISTINCT from the
+    # pm_* MACRO composites above (stored under symbol="MARKET", a market-wide aggregate): these read the cell's
+    # OWN over-extension, which is what a "this contract's odds spiked" thesis actually needs. Routed via
+    # PRICE_FEATURES (bar-computed), so the registry↔route guard treats them as computed, not store-joined.
+    FeatureDefinition(name="odds", source="parquet_bars", tier="tier0", asset_classes=["prediction"], asof_semantics="bar close time", prior="The contract's own YES implied probability — its level identifies favorite/longshot extremes."),
+    FeatureDefinition(name="odds_velocity", source="parquet_bars", tier="tier0", asset_classes=["prediction"], asof_semantics="bar close time", prior="The contract's own probability repricing speed — momentum overshoot before resolution."),
     # --- EU-accessible, keyless alt-data (tier1 until validated OOS): GDELT geopolitical tone + Deribit DVOL ---
     FeatureDefinition(
         name="gdelt_tone",

@@ -83,6 +83,15 @@ class ExitRules(BaseModel):
     # ATR feature is unavailable at the entry bar (warm-up / no data) the stop falls back to the fixed stop_loss
     # fraction — never an unprotected position.
     atr_mult: ParamRef | None = None
+    # BINARY-CONTRACT RESOLUTION SETTLEMENT (prediction markets only). When True, a position still open when the
+    # market resolves is settled at the AUTHORITATIVE $1/$0 payout (the YES share pays $1 if YES wins, $0 if NO
+    # wins) instead of marking at the last odds quote. This is what makes the favorite-longshot / resolution-
+    # dependent edge testable: the share's true P&L is defined BY resolution, not by odds drift before it. Only
+    # the prediction backtest path honors it (it needs the per-conditionId resolution join from the alt store); a
+    # price-asset backtest has no resolution and ignores the flag entirely. False (default) => the position marks
+    # at the last bar's price like every other asset, so every existing spec is byte-identical. Pairs with the
+    # intraday-reversion thesis being False (it exits BEFORE resolution) and the hold-to-resolution thesis True.
+    settle_at_resolution: bool = False
 
 
 class UniverseSelector(BaseModel):
