@@ -1,7 +1,8 @@
-# Proves the dormant key-free sources actually PRODUCE rows in ingest: Reddit sentiment, Coinglass
-# liquidations, Binance open-interest/basis/netflow, CBOE put/call. All offline via injected `_fetcher`
-# (canned real-shaped payloads) — NO live network. Also asserts run_once lands them AND that the run-level
-# FRED memoization fetches each shared series exactly once (no redundant external calls).
+# Proves the dormant key-free sources actually PRODUCE rows in ingest: Reddit sentiment, Binance
+# open-interest/basis/netflow, CBOE put/call. All offline via injected `_fetcher` (canned real-shaped
+# payloads) — NO live network. Also asserts run_once lands them AND that the run-level FRED memoization
+# fetches each shared series exactly once (no redundant external calls). (Coinglass liquidations were
+# removed 2026-06-26 — key-gated + direction-blind; graveyarded in config/feature_registry.py.)
 
 from __future__ import annotations
 
@@ -13,7 +14,6 @@ from cosmu.data.altdata import (
     BinanceBasisProvider,
     BinanceOpenInterestProvider,
     CboePutCallProvider,
-    CoinglassLiquidationProvider,
     ExchangeNetflowProvider,
     FixtureAltDataProvider,
     FixtureNewsProvider,
@@ -44,18 +44,6 @@ def test_reddit_sentiment_scores_bull_minus_bear_in_range():
     assert -1.0 <= pts[0].value <= 1.0
     assert pts[0].value > 0  # 2 bull, 1 bear → net positive
     assert pts[0].available_at == pts[0].ts  # live read: availability == observation
-
-
-def test_coinglass_liquidations_produce_rows():
-    payload = {"data": [
-        {"createTime": 1672531200000, "longLiquidationUsd": 1_000_000, "shortLiquidationUsd": 500_000},
-        {"createTime": 1672617600000, "longLiquidationUsd": 250_000, "shortLiquidationUsd": 750_000},
-    ]}
-    prov = CoinglassLiquidationProvider(_fetcher=lambda url: payload)
-    pts = prov.fetch_series("BTCUSDT", "liquidations", limit=10)
-    assert len(pts) == 2
-    assert pts[0].value == 1_500_000.0
-    assert pts[0].available_at > pts[0].ts  # next-bucket availability floor
 
 
 def test_binance_open_interest_produces_rows():
@@ -111,11 +99,10 @@ def test_run_once_lands_dormant_sources(tmp_path):
     oi = BinanceOpenInterestProvider(_fetcher=lambda url: [{"timestamp": 1672531200000, "sumOpenInterestValue": "1.0"}])
     basis = BinanceBasisProvider(_fetcher=lambda url: {"markPrice": "101", "indexPrice": "100", "time": 1672531200000})
     netflow = ExchangeNetflowProvider(_fetcher=lambda url: [{"timestamp": 1672531200000, "longShortRatio": "1.1"}])
-    liq = CoinglassLiquidationProvider(_fetcher=lambda url: {"data": [{"createTime": 1672531200000, "longLiquidationUsd": 1, "shortLiquidationUsd": 1}]})
 
     providers = Providers(
         funding=_empty(), feargreed=_empty(), news=FixtureNewsProvider({}), fred=_empty(),
-        polymarket=_empty(), liquidations=liq, putcall=_empty(), defillama=_empty(),
+        polymarket=_empty(), putcall=_empty(), defillama=_empty(),
         open_interest=oi, basis=basis, netflow=netflow, osint=_empty(), polymarket_clob=_empty(),
         reddit=reddit, lunarcrush=_empty(), xai_twitter=_empty(), venue_fees=_empty(),
     )
@@ -124,7 +111,9 @@ def test_run_once_lands_dormant_sources(tmp_path):
     assert counts["reddit_sentiment"] == 1
     assert counts["open_interest"] == 1
     assert counts["perp_spot_basis"] == 1
-    assert counts["liquidation_cascade"] == 1
+    # liquidation_cascade was graveyarded 2026-06-26 (key-gated + direction-blind) — run_once no longer
+    # ingests it, so it is absent from counts and no row lands.
+    assert "liquidation_cascade" not in counts
     # exchange_netflow is a DISABLED/dormant honesty fix (the provider fetched the Binance perp long/short
     # ratio, not on-chain netflow) — run_once NO LONGER ingests it, so it is absent from counts and no new
     # row lands. The provider itself still parses correctly (test_exchange_netflow_produces_rows above).
@@ -135,7 +124,7 @@ def test_run_once_lands_dormant_sources(tmp_path):
     assert store.read_asof("binance", "BTCUSDT", "open_interest", far)
     assert store.read_asof("binance", "BTCUSDT", "perp_spot_basis", far)
     assert not store.read_asof("binance", "BTCUSDT", "exchange_netflow", far)  # dormant: never re-ingested
-    assert store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", far)
+    assert not store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", far)  # graveyarded: never ingested
 
 
 def test_run_once_memoizes_shared_fred_series(tmp_path):
@@ -154,7 +143,7 @@ def test_run_once_memoizes_shared_fred_series(tmp_path):
     store = AltDataStore(tmp_path / "alt")
     providers = Providers(
         funding=_empty(), feargreed=_empty(), news=FixtureNewsProvider({}), fred=fred,
-        polymarket=_empty(), liquidations=_empty(), putcall=_empty(), defillama=_empty(),
+        polymarket=_empty(), putcall=_empty(), defillama=_empty(),
         open_interest=_empty(), basis=_empty(), netflow=_empty(), osint=_empty(), polymarket_clob=_empty(),
         reddit=_empty(), lunarcrush=_empty(), xai_twitter=_empty(), venue_fees=_empty(),
     )

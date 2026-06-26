@@ -15,7 +15,6 @@ from typing import Any
 from cosmu.data.altdata import _STORE_MARKET_WIDE, _STORE_PROVIDER_OF
 from cosmu.ingest.pipeline import (
     MemoizingProvider,
-    ingest_liquidations,
     ingest_market_wide_numeric,
     ingest_news_event_score,
     ingest_news_sentiment,
@@ -538,7 +537,6 @@ def managed_sources() -> dict[str, SourceSpec]:
         SourceSpec("macro", "alt", ("macro_regime", "vix_level", "fed_funds_rate", "dxy", "yield_curve_2s10s", "credit_spread"), _fetch_fred, market_wide=True, per_symbol=False, note="FRED macro bundle (memoized shared series)."),
         SourceSpec("defi", "alt", ("defi_tvl",), _fetch_market_wide("defi_tvl", "defi_tvl", "defillama", "defillama"), market_wide=True, per_symbol=False),
         SourceSpec("pm_risk_on", "alt", ("pm_risk_on",), _fetch_risk_on, market_wide=True, per_symbol=False),
-        SourceSpec("liquidation_cascade", "alt", ("liquidation_cascade",), lambda store, symbols, providers: ingest_liquidations(store, providers.liquidations, symbols)),
         SourceSpec("putcall", "alt", ("putcall_ratio",), _fetch_market_wide("putcall_ratio", "putcall_ratio", "putcall", "cboe"), market_wide=True, per_symbol=False),
         SourceSpec("open_interest", "alt", ("open_interest",), _fetch_numeric("open_interest", "open_interest", "binance")),
         SourceSpec("basis", "alt", ("perp_spot_basis",), _fetch_numeric("perp_spot_basis", "basis", "binance")),

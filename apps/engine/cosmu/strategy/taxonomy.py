@@ -148,7 +148,7 @@ def _edge_type(spec: dict[str, Any], features: list[str]) -> str:
     if setup.get("orb") or setup.get("fvg"):
         return "breakout"
     # Event-driven: a dated catalyst feature.
-    if feature_set & {"news_event_score", "news_sentiment", "days_to_earnings", "reg_risk_crypto", "liquidation_cascade"}:
+    if feature_set & {"news_event_score", "news_sentiment", "days_to_earnings", "reg_risk_crypto"}:
         return "event"
     # Mean-reversion: overextension / crowd-fear features fading a move.
     if feature_set & {"rsi", "bb_z", "fear_greed", "putcall_ratio", "social_sentiment", "reddit_sentiment"}:

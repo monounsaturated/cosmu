@@ -94,9 +94,9 @@ RUBRICS: dict[str, Rubric] = {
     ),
     "Positioning": Rubric(
         pillar="Positioning",
-        prior="Funding extremes proxy crowded leverage; liquidation cascades overshoot and exhaust.",
-        criteria=("perp funding z-score", "open interest", "perp-spot basis", "exchange netflow", "liquidation cascade"),
-        scale="+1 = room to run (light/negative funding, exhausted sellers); -1 = crowded longs.",
+        prior="Funding extremes proxy crowded leverage; OI/basis/netflow confirm the positioning read.",
+        criteria=("perp funding z-score", "open interest", "perp-spot basis", "exchange netflow"),
+        scale="+1 = room to run (light/negative funding); -1 = crowded longs.",
     ),
     "OSINT": Rubric(
         pillar="OSINT",

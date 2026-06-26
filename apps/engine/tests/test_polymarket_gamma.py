@@ -255,7 +255,6 @@ def test_run_once_uses_gamma_provider(tmp_path):
         news=news,
         fred=fred,
         polymarket=gamma,
-        liquidations=FixtureAltDataProvider({}),
         putcall=FixtureAltDataProvider({}),
     )
     counts = run_once(store, symbols=["BTCUSDT"], providers=providers)

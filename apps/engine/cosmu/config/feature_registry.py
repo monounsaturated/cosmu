@@ -63,7 +63,17 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     # ingest + store route stay so banked rows are preserved (dormant), pending a real VXVCLS term-structure source.
     FeatureDefinition(name="vix_term_slope", source="fred/cboe", tier="tier0", asset_classes=["equity", "crypto"], asof_semantics="daily publication time", prior="MISLABELED: ingests VIXCLS (the VIX SPOT level) identical to vix_level — NOT a term slope; disabled pending an honest VXVCLS/VIX3M source.", enabled=False),
     FeatureDefinition(name="putcall_ratio", source="cboe", tier="tier0", asset_classes=["equity"], asof_semantics="daily publication time (next-day availability floor)", prior="Sentiment extremes mean-revert at swing horizon.", transform_version="putcall-zscore-v1"),
-    FeatureDefinition(name="liquidation_cascade", source="coinglass", tier="tier0", asset_classes=["crypto"], asof_semantics="liquidation bucket close time (next-bucket availability floor)", prior="A spike in total long+short liquidations marks forced deleveraging that overshoots — a cascade exhausts sellers and mean-reverts at the swing horizon.", transform_version="liquidation-cascade-zscore-v1"),
+    # GRAVEYARD (honesty fix, 2026-06-26): registered live but (a) DATA-STARVED — 0 rows ever ingested in prod
+    # (the wired keyless Coinglass public-history endpoint now returns code 30001 "API key missing", no COINGLASS
+    # key exists, so ingest_liquidations silently appended nothing), AND (b) DIRECTION-BLIND — the parser SUMMED
+    # longLiquidationUsd + shortLiquidationUsd into one scalar, discarding the signed skew the thesis needs (two
+    # opposite-direction cascades with equal total were indistinguishable; see docs/reports/h8-liquidation-skew-
+    # 2026-06-25.md). No keyless signed-liquidation history is reachable today (Coinglass key-gated, Binance
+    # @forceOrder geo-blocked from our cloud/M2, allForceOrders REST deprecated, Vision dumps discontinued), so
+    # there is nothing honest to surface. Disabled (dropped from feature_names()/the gate) and de-routed entirely
+    # (no provider, no ingest, no store route) — unlike the dormant banked metrics, there are ZERO rows to keep
+    # readable. Re-enable only by wiring a real signed source and surfacing liquidation_skew, not the sum.
+    FeatureDefinition(name="liquidation_cascade", source="coinglass", tier="tier0", asset_classes=["crypto"], asof_semantics="liquidation bucket close time (next-bucket availability floor)", prior="GRAVEYARD: direction-blind (summed long+short, discarding signed skew) AND data-starved (0 prod rows; Coinglass public history now key-gated, no keyless signed source reachable) — disabled pending a real signed-liquidation feed.", transform_version="liquidation-cascade-zscore-v1", enabled=False),
     # Best-effort OSINT ("watching planes"): aircraft activity from the free OpenSky Network as a crude,
     # LOW-CONFIDENCE macro-risk-appetite proxy. Availability == observation time (a live snapshot is only
     # knowable when taken — no look-ahead). tier1 + the explicit low-confidence prior mean it must earn its

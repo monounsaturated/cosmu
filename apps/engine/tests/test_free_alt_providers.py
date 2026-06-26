@@ -1,5 +1,7 @@
-# Offline parse-step tests for the new free alt-data providers (Coinglass liquidations, CBOE put/call,
-# GDELT news). Canned payloads, no network: assert correct fields AND point-in-time `available_at` floors.
+# Offline parse-step tests for the free alt-data providers (CBOE put/call, GDELT news). Canned payloads,
+# no network: assert correct fields AND point-in-time `available_at` floors. (Coinglass liquidations were
+# removed 2026-06-26 — the public history is now key-gated and the feature was direction-blind; graveyarded
+# in config/feature_registry.py.)
 
 from __future__ import annotations
 
@@ -8,33 +10,7 @@ from datetime import UTC, datetime, timedelta
 from cosmu.data.altdata import (
     _news_from_gdelt,
     _points_from_cboe_putcall,
-    _points_from_coinglass,
 )
-
-
-def test_coinglass_sums_long_short_and_floors_availability_one_bucket_later():
-    payload = {
-        "data": [
-            {"createTime": 1672531200000, "longLiquidationUsd": 1_000_000, "shortLiquidationUsd": 500_000},
-            {"createTime": 1672617600000, "longLiquidationUsd": 250_000, "shortLiquidationUsd": 750_000},
-        ]
-    }
-    pts = _points_from_coinglass(payload, bucket_seconds=86400)
-    assert len(pts) == 2
-    assert pts[0].ts == datetime(2023, 1, 1, tzinfo=UTC)
-    assert pts[0].value == 1_500_000.0  # long + short summed into one total
-    # a bucket closes before publication → available the NEXT bucket (point-in-time floor, never look-ahead)
-    assert pts[0].available_at == pts[0].ts + timedelta(seconds=86400)
-    assert pts[1].value == 1_000_000.0
-    assert [p.ts for p in pts] == sorted(p.ts for p in pts)
-
-
-def test_coinglass_handles_seconds_epoch_and_value_field_shape():
-    payload = {"data": [{"t": 1672531200, "value": 42.0}]}  # seconds epoch + generic value field
-    pts = _points_from_coinglass(payload, bucket_seconds=86400)
-    assert len(pts) == 1
-    assert pts[0].ts == datetime(2023, 1, 1, tzinfo=UTC)
-    assert pts[0].value == 42.0
 
 
 def test_cboe_putcall_parses_and_floors_next_day():

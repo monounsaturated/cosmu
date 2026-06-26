@@ -208,19 +208,6 @@ def ingest_news_event_score(
     return total
 
 
-def ingest_liquidations(alt_store: AltDataStore, provider: AltDataProvider, symbols: list[str], *, provider_name: str = "coinglass", limit: int = 1000) -> int:
-    """Pull per-crypto-symbol total liquidations (long+short USD) point-in-time. Numeric → no LLM.
-    The Coinglass provider exposes the data as metric="liquidations"; we store it under the canonical
-    registry name "liquidation_cascade" so backtest wiring is consistent with feature_registry.py."""
-    total = 0
-    for symbol in symbols:
-        points = provider.fetch_series(symbol, "liquidations", limit=limit)
-        if points:
-            _append_fresh(alt_store, provider_name, symbol, "liquidation_cascade", points)
-            total += len(points)
-    return total
-
-
 def ingest_putcall(alt_store: AltDataStore, provider: AltDataProvider, *, provider_name: str = "cboe", limit: int = 1000) -> int:
     """Pull the market-wide CBOE put/call ratio under the MARKET key, point-in-time. Numeric → no LLM."""
     return ingest_market_wide_numeric(
@@ -231,17 +218,16 @@ def ingest_putcall(alt_store: AltDataStore, provider: AltDataProvider, *, provid
 def ingest_extra_free_sources(
     alt_store: AltDataStore,
     *,
-    liquidation_provider: AltDataProvider,
     putcall_provider: AltDataProvider,
     news_provider: NewsProvider,
     symbols: list[str],
     llm: Callable[[str], StandardizedNews] | None = None,
 ) -> IngestSummary:
-    """One scheduled pass over the NEW real free sources (Coinglass liquidations per crypto symbol,
-    CBOE put/call market-wide, GDELT real news → standardized sentiment). Append-only + point-in-time, so
-    re-runs never rewrite the view. Offline-safe via injected providers (fixtures in tests)."""
+    """One scheduled pass over the real free sources (CBOE put/call market-wide, GDELT real news →
+    standardized sentiment). Append-only + point-in-time, so re-runs never rewrite the view. Offline-safe
+    via injected providers (fixtures in tests). (Coinglass liquidations were removed 2026-06-26 — the
+    public history is now key-gated and the feature was direction-blind; see feature_registry.py.)"""
     counts = {
-        "liquidation_cascade": ingest_liquidations(alt_store, liquidation_provider, symbols),
         "putcall_ratio": ingest_putcall(alt_store, putcall_provider),
         "news_sentiment": ingest_news_sentiment(alt_store, news_provider, symbols, llm=llm),
     }

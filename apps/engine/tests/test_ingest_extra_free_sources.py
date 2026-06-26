@@ -1,6 +1,7 @@
-# Ingest test for the NEW real free sources (Coinglass liquidations, CBOE put/call, GDELT-shaped news).
-# Offline via injected fixture providers: assert they land in the append-only point-in-time store and that
-# re-running a scheduled pass is idempotent-in-view (the point-in-time read is unchanged).
+# Ingest test for the real free sources (CBOE put/call, GDELT-shaped news). Offline via injected fixture
+# providers: assert they land in the append-only point-in-time store and that re-running a scheduled pass
+# is idempotent-in-view (the point-in-time read is unchanged). (Coinglass liquidations were removed
+# 2026-06-26 — key-gated + direction-blind; graveyarded in config/feature_registry.py.)
 
 from __future__ import annotations
 
@@ -14,31 +15,23 @@ _FAR = datetime(2099, 1, 1, tzinfo=UTC)
 
 
 def _providers():
-    liquidations = FixtureAltDataProvider(
-        {("BTCUSDT", "liquidations"): [AltDataPoint(ts=_T0 + timedelta(days=i), available_at=_T0 + timedelta(days=i + 1), value=1_000_000.0 * (i + 1)) for i in range(5)]}
-    )
     putcall = FixtureAltDataProvider(
         {("MARKET", "putcall_ratio"): [AltDataPoint(ts=_T0 + timedelta(days=i), available_at=_T0 + timedelta(days=i + 1), value=0.9 + 0.01 * i) for i in range(5)]}
     )
     news = FixtureNewsProvider(
         {"BTCUSDT": [NewsItem(ts=_T0 + timedelta(days=i), available_at=_T0 + timedelta(days=i), headline="Bitcoin surges to record on ETF inflows" if i % 2 else "Exchange hack triggers selloff") for i in range(5)]}
     )
-    return liquidations, putcall, news
+    return putcall, news
 
 
 def test_extra_free_sources_land_in_store_point_in_time(tmp_path):
     store = AltDataStore(tmp_path / "alt")
-    liquidations, putcall, news = _providers()
+    putcall, news = _providers()
 
-    summary = ingest_extra_free_sources(store, liquidation_provider=liquidations, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
-    assert summary.counts["liquidation_cascade"] == 5
+    summary = ingest_extra_free_sources(store, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
     assert summary.counts["putcall_ratio"] == 5
     assert summary.counts["news_sentiment"] == 5
-
-    # liquidations stored per-symbol under the coinglass provider under the canonical registry name
-    liq_now = store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", _FAR)
-    assert len(liq_now) == 5
-    assert all(p.available_at > p.ts for p in liq_now)  # next-bucket availability floor preserved
+    assert "liquidation_cascade" not in summary.counts  # graveyarded — no longer ingested
 
     # put/call stored market-wide under the cboe provider at the MARKET key (not per symbol)
     assert store.read_asof("cboe", "MARKET", "putcall_ratio", _FAR)
@@ -53,11 +46,10 @@ def test_extra_free_sources_land_in_store_point_in_time(tmp_path):
 
 def test_extra_free_sources_reingest_is_idempotent_in_view(tmp_path):
     store = AltDataStore(tmp_path / "alt")
-    liquidations, putcall, news = _providers()
-    ingest_extra_free_sources(store, liquidation_provider=liquidations, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
+    putcall, news = _providers()
+    ingest_extra_free_sources(store, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
     before = store.read_asof("cboe", "MARKET", "putcall_ratio", _FAR)
     # re-run a scheduled pass — append-only, but the point-in-time VIEW (latest-revision-per-ts) is unchanged
-    ingest_extra_free_sources(store, liquidation_provider=liquidations, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
+    ingest_extra_free_sources(store, putcall_provider=putcall, news_provider=news, symbols=["BTCUSDT"])
     after = store.read_asof("cboe", "MARKET", "putcall_ratio", _FAR)
     assert [(p.ts, p.value) for p in before] == [(p.ts, p.value) for p in after]
-    assert len(store.read_asof("coinglass", "BTCUSDT", "liquidation_cascade", _FAR)) == 5

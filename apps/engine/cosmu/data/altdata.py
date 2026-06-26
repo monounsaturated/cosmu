@@ -54,11 +54,9 @@ from cosmu.data.providers.news import (  # noqa: F401
 from cosmu.data.providers.onchain import (  # noqa: F401
     BinanceBasisProvider,
     BinanceOpenInterestProvider,
-    CoinglassLiquidationProvider,
     DefiLlamaTvlProvider,
     DeribitDvolProvider,
     ExchangeNetflowProvider,
-    _points_from_coinglass,
     _points_from_deribit_dvol,
 )
 from cosmu.data.providers.prediction import (  # noqa: F401
@@ -122,7 +120,6 @@ __all__ = [
     "ExchangeNetflowProvider",
     "BinanceOpenInterestProvider",
     "BinanceBasisProvider",
-    "CoinglassLiquidationProvider",
     "DeribitDvolProvider",
     "GdeltNewsProvider",
     "GdeltToneProvider",
@@ -139,7 +136,6 @@ __all__ = [
     "_parse_cboe_date",
     "_parse_gdelt_date",
     "_points_from_cboe_putcall",
-    "_points_from_coinglass",
     "_points_from_deribit_dvol",
     "_points_from_gdelt_tone",
 ]

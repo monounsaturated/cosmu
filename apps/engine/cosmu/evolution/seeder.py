@@ -240,18 +240,19 @@ def seed_macro_filtered_momentum_spec() -> StrategySpec:
 def seed_funding_squeeze_spec() -> StrategySpec:
     return StrategySpec(
         name="Funding-squeeze mean reversion",
-        rationale="Extreme funding rate combined with a liquidation cascade signals forced deleveraging that overshoots — fade the crowd at the exhaustion point.",
+        # The liquidation_cascade leg was dropped 2026-06-26 — that feature is graveyarded (direction-blind +
+        # data-starved, no keyless signed source; see config/feature_registry.py). Extreme funding alone proxies
+        # crowded leverage that overshoots; fade the crowd at the carry extreme.
+        rationale="Extreme funding rate signals crowded leverage and forced deleveraging that overshoots — fade the crowd at the carry exhaustion point.",
         universe=UniverseSelector(venues=["binance"], asset_classes=["crypto"], min_liquidity_usd=10_000_000, min_instruments=5),
         horizon=Horizon(bar_size="4h", min_hold_days=1, max_hold_days=7),
         entry=[
             Condition(feature=FeatureRef(name="funding_rate"), op="gt", threshold=ParamRef(param="funding_hi")),
-            Condition(feature=FeatureRef(name="liquidation_cascade"), op="gt", threshold=ParamRef(param="liq_floor")),
         ],
         exit=ExitRules(stop_loss=ParamRef(param="stop"), take_profit=ParamRef(param="take"), time_stop_days=ParamRef(param="time_stop")),
         risk=RiskRules(max_concurrent_positions=3, max_position_pct=0.03, conviction=0.55),
         param_space={
             "funding_hi": ParamSpace(kind="float", lo=0.0001, hi=0.01),
-            "liq_floor": ParamSpace(kind="float", lo=0.5, hi=3.0),
             "stop": ParamSpace(kind="float", lo=0.02, hi=0.08),
             "take": ParamSpace(kind="float", lo=0.03, hi=0.14),
             "time_stop": ParamSpace(kind="int", lo=1, hi=10, step=1),

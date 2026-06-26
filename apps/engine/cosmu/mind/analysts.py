@@ -35,7 +35,6 @@ PER_SYMBOL_METRICS: frozenset[str] = frozenset(
         "funding_rate",
         "open_interest",
         "perp_spot_basis",
-        "liquidation_cascade",
         "exchange_netflow",
         # social / news — per-asset crowd mood + headline flow (the Sentiment + Social & News analysts)
         "news_sentiment",
@@ -373,14 +372,14 @@ def social_news_analyst(ctx: MindContext) -> Stance:
 
 
 def positioning_analyst(ctx: MindContext) -> Stance:
-    """Crowded-leverage read: perp funding (z), open interest, basis, exchange netflow, and liquidation
-    cascades. Extreme positive funding = crowded longs (cautious); a liquidation spike exhausts sellers."""
+    """Crowded-leverage read: perp funding (z), open interest, basis, and exchange netflow. Extreme positive
+    funding = crowded longs (cautious). (The liquidation-cascade leg was dropped 2026-06-26 — that feature is
+    graveyarded: direction-blind + data-starved, no keyless signed source; see config/feature_registry.py.)"""
     funding = _val(ctx, "funding_rate")
-    liq = _val(ctx, "liquidation_cascade")
     oi = _val(ctx, "open_interest")
     basis = _val(ctx, "perp_spot_basis")
     netflow = _val(ctx, "exchange_netflow")
-    if funding is None and liq is None and oi is None and basis is None and netflow is None:
+    if funding is None and oi is None and basis is None and netflow is None:
         return _abstain("Positioning", "market", "Positioning feeds not ingested yet.")
     evidence: list[str] = []
     score = 0.0
@@ -390,11 +389,6 @@ def positioning_analyst(ctx: MindContext) -> Stance:
         evidence.append(f"funding_z={fz:+.2f}")
         score -= math.tanh(fz)
         asof = fa
-    if liq is not None:
-        lz, la = liq
-        evidence.append(f"liquidation_z={lz:+.2f}")
-        score += math.tanh(max(0.0, lz)) * 0.5
-        asof = la if (asof is None or (la and la > asof)) else asof
     if oi is not None:
         v, a = oi
         evidence.append(f"open_interest={v:.0f}")
@@ -423,7 +417,7 @@ def positioning_analyst(ctx: MindContext) -> Stance:
         conviction=conviction,
         weight=1.0,
         headline=f"Leverage {label}",
-        rationale="Funding extremes proxy crowded leverage; OI/basis confirm; liquidation cascades overshoot.",
+        rationale="Funding extremes proxy crowded leverage; OI/basis/netflow confirm the positioning read.",
         evidence=evidence,
         as_of=asof,
     )
