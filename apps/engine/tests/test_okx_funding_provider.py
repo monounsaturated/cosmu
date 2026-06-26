@@ -100,22 +100,37 @@ def test_okx_perp_universe_in_catalog() -> None:
 
 # ---------------------------------------------------------------------------
 # Kraken Futures funding rate provider tests
+#
+# Canned rows mirror the REAL live response shape (verified against
+# https://futures.kraken.com/derivatives/api/v3/historical-funding-rates):
+#   {"timestamp": "<ISO-8601, e.g. 2025-06-25T17:00:00Z>",
+#    "fundingRate": <absolute USD premium>,
+#    "relativeFundingRate": <per-interval rate, cross-venue comparable>}
+# The provider parses the ISO-8601 `timestamp` (NOT an int-ms epoch) and emits
+# `relativeFundingRate` (NOT the absolute `fundingRate`).
 # ---------------------------------------------------------------------------
 
-def _make_kf_row(ts_ms: int, rate: str) -> dict:
-    return {"timestamp": ts_ms, "fundingRate": rate, "symbol": "PF_XBTUSD"}
+def _kf_iso(ms_ago: int) -> str:
+    """ISO-8601 UTC timestamp `ms_ago` milliseconds before now, in Kraken's `...Z` form."""
+    dt = datetime.fromtimestamp((_NOW_MS - ms_ago) / 1000, tz=UTC).replace(microsecond=0)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-_KF_NOW_MS = _NOW_MS - 3600 * 1000       # 1 h ago
+def _make_kf_row(iso_ts: str, relative_rate: float, abs_premium: float = 0.149) -> dict:
+    # `fundingRate` is the absolute USD premium (a deliberately different magnitude) so the test
+    # would FAIL if the provider regressed to reading the wrong field.
+    return {"timestamp": iso_ts, "fundingRate": abs_premium, "relativeFundingRate": relative_rate}
+
+
 _KF_ROWS = [
-    _make_kf_row(_NOW_MS - 7200 * 1000, "-0.0002"),
-    _make_kf_row(_NOW_MS - 3600 * 1000, "0.0001"),
-    _make_kf_row(_NOW_MS,               "0.0003"),
+    _make_kf_row(_kf_iso(7200 * 1000), -0.0002),  # 2 h ago
+    _make_kf_row(_kf_iso(3600 * 1000), 0.0001),   # 1 h ago
+    _make_kf_row(_kf_iso(0), 0.0003),             # now
 ]
 
 
 def test_kraken_futures_fetch_series_parses_canned() -> None:
-    """KrakenFuturesFundingRateProvider converts JSON rows into correct AltDataPoints."""
+    """KrakenFuturesFundingRateProvider parses live-shaped JSON rows into AltDataPoints."""
     calls: list[str] = []
 
     def fetcher(url: str) -> list:
@@ -127,12 +142,24 @@ def test_kraken_futures_fetch_series_parses_canned() -> None:
 
     assert len(pts) == 3
     assert pts[0].ts < pts[1].ts < pts[2].ts
+    # Values come from relativeFundingRate (per-interval), NOT the absolute `fundingRate` (0.149).
     assert abs(pts[0].value - (-0.0002)) < 1e-10
     assert abs(pts[1].value - 0.0001) < 1e-10
     assert abs(pts[2].value - 0.0003) < 1e-10
     for p in pts:
         assert p.available_at == p.ts
+        assert p.ts.tzinfo is not None  # ISO timestamp parsed to an aware UTC datetime
+    # Correct endpoint: the /derivatives/ prefix + hyphenated path, and the symbol.
     assert "PF_XBTUSD" in calls[0]
+    assert "/derivatives/api/v3/historical-funding-rates" in calls[0]
+
+
+def test_kraken_futures_history_parses_iso_and_relative_rate() -> None:
+    """fetch_history parses ISO timestamps, filters by start_ms, and emits relativeFundingRate."""
+    provider = KrakenFuturesFundingRateProvider(_fetcher=lambda url: _KF_ROWS)
+    pts = provider.fetch_history("PF_XBTUSD", start_ms=0)
+    assert [round(p.value, 6) for p in pts] == [-0.0002, 0.0001, 0.0003]
+    assert all(p.ts.tzinfo is not None for p in pts)
 
 
 def test_kraken_futures_ignores_unknown_metric() -> None:
