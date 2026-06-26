@@ -52,6 +52,7 @@ def close_stale_legs(
             price=price,
             fee=fee,
             strategy_version_id=version_id,
+            record_execution=True,  # a rotation SELL is a real paper trade — advance the blotter/trade-count
         )
         closed.append({"symbol": p.symbol, "qty": str(p.qty), "price": str(price)})
         store.append_event(

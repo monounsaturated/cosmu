@@ -263,6 +263,7 @@ def arm(store: Store | None = None) -> dict:
         portfolio.apply_fill(
             instrument_id=instrument.id, symbol=sym, venue=VENUE, side=1, qty=qty, price=price,
             fee=(bucket_capital * Decimal(str(IBKR_ETF_BPS_PER_SIDE)) / Decimal("1e4")), strategy_version_id=version_id,
+            record_execution=True,  # real paper rebalance fill -> advance trade-count/blotter
         )
         marks[instrument.id] = price
         fills.append({"symbol": sym, "qty": str(qty), "price": str(price), "weight": weight, "reused": False})
