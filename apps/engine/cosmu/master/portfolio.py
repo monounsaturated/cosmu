@@ -228,12 +228,35 @@ class Portfolio:
         # the cell-keyed SQL never touches a column the live table lacks.
         has_cell_cols = tracks_has_cell_columns(self.store)
         cell_meta: dict[str, tuple[str, str, str] | None] = {}
+        # The (version, symbol, venue) triples that actually OWN a per-cell tracks row. A position is keyed to its
+        # cell ONLY when a real cell track exists for it — otherwise a LEGACY version-wide track (symbol/venue NULL,
+        # the documented multi-leg arms: DAA/PAA/TSMOM/GTAA/RiskParity/Sector) would split into one orphan per-leg
+        # snapshot, each marked to that ONE leg's notional (~capital/n_legs) instead of the whole book, and
+        # _update_track_returns then reads a single fragment as the track's equity (DAA $1000 → ~$169 = $1000/6).
+        # The single-leg arms (one stamped cell track) were always correct; this keeps them cell-keyed and only
+        # folds the version-wide multi-leg arms back onto the version key (their honest aggregate $1000 trajectory).
+        # Empty set when the cell columns aren't live (pre-migration) → every triple misses → version-keyed, exactly
+        # the prior behaviour. Best-effort: a read hiccup degrades to version-keying, never crashes the mark.
+        _cell_track_triples: set[tuple[str, str, str]] = set()
+        if has_cell_cols:
+            try:
+                _cell_track_triples = {
+                    (r["strategy_version_id"], r["symbol"], r["venue_id"])
+                    for r in self.store.rows(
+                        "SELECT strategy_version_id, symbol, venue_id FROM tracks "
+                        "WHERE symbol IS NOT NULL AND venue_id IS NOT NULL"
+                    )
+                }
+            except Exception:  # noqa: BLE001 — degrade to version-keying; never break the mark on a read error
+                _cell_track_triples = set()
 
         def _cell_key(p: PositionView) -> str | None:
             if p.strategy_version_id is None:
                 return None
             triple = cell_resolver(p) if (cell_resolver is not None and has_cell_cols) else None
-            if triple is not None:
+            # Adopt the cell key ONLY when a real per-cell track row owns this triple; a legacy version-wide track
+            # (no matching cell row) keeps ALL its legs on the version key so the snapshot marks the whole book.
+            if triple is not None and tuple(triple) in _cell_track_triples:
                 vid, symbol, venue_id = triple
                 key = f"{vid}:{symbol}:{venue_id}"
                 cell_meta[key] = triple

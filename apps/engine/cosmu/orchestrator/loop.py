@@ -547,19 +547,20 @@ def _update_track_returns(store: Store, cells: list[tuple[str, str, str]]) -> in
         if track is None:  # pre-migration table, OR a post-migration legacy version-wide track
             track = store.row("SELECT starting_capital FROM tracks WHERE strategy_version_id = ?", (vid,))
             ref = vid
-            # mark_to_market cell-keys the snapshot (ref_id=version:symbol:venue) even for a legacy version-wide
-            # track when the position resolves to a real cell — so read the CELL key FIRST (when columns exist),
-            # then fall back to the legacy version key. Without this a version-wide equity track froze at its seed.
-            snap = None
-            if has_cell_cols:
+            # A version-wide track aggregates ITS WHOLE BOOK on the VERSION-keyed snapshot (mark_to_market only
+            # cell-keys a position when a real per-cell track owns it — see portfolio.mark_to_market). Read the
+            # VERSION key FIRST so a MULTI-leg arm (DAA/PAA/TSMOM/GTAA/RiskParity/Sector) reads its whole-book
+            # trajectory, never one leg's fragment (the 2026-06-26 phantom -83% bug: DAA $1000→$169=$1000/6).
+            # Fall back to the cell key only when no version snapshot exists (a single-cell book whose only
+            # snapshot the resolver cell-keyed) — so the single-leg case still advances off its seed.
+            snap = store.row(
+                "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
+                (vid,),
+            )
+            if snap is None and has_cell_cols:
                 snap = store.row(
                     "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
                     (cid,),
-                )
-            if snap is None:
-                snap = store.row(
-                    "SELECT equity FROM portfolio_snapshots WHERE scope='track' AND ref_id=? ORDER BY ts DESC LIMIT 1",
-                    (vid,),
                 )
         if track is None or track.get("starting_capital") is None or snap is None or snap.get("equity") is None:
             continue
