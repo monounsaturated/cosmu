@@ -220,3 +220,117 @@ def test_ingest_completes_and_persists_even_if_cross_asset_gate_raises(tmp_path,
     assert astore.read_all("fred", "MARKET", "macro_regime")
     # the failed gate persisted no verdict row
     assert not store.rows("SELECT 1 FROM gate_verdicts")
+
+
+# --- (d) the per-market Polymarket odds hoard is folded into the ingest cron (scout #385 Fix-A) ------------
+
+
+def _seed_polymarket_universe(store: Store, rows: list[tuple[str, float]]) -> None:
+    """Seed universe_pairs with open polymarket prediction markets — the conditionId source the odds hoard reads."""
+    with store.batch() as w:
+        w.insert_many(
+            "universe_pairs",
+            ["id", "venue", "symbol", "asset_class", "instrument_type", "liquidity_usd_24h", "active", "source", "fetched_at"],
+            [(f"polymarket:{cid}", "polymarket", cid, "prediction", "prediction", liq, 1, "live", "2026-06-18T00:00:00+00:00") for cid, liq in rows],
+            ignore_duplicates=True,
+        )
+
+
+class _StubOddsSource:
+    """Hermetic PerMarketOddsSource stand-in: returns a fixed 3-bucket odds history per conditionId (so the
+    cron-fold test never hits the network). One conditionId can be made to RAISE to prove per-market isolation."""
+
+    def __init__(self, *, boom_cid: str | None = None) -> None:
+        self._boom_cid = boom_cid
+        self.fidelities: list[int] = []  # record every fidelity the ingest asked for
+
+    def fetch_odds(self, condition_id: str, *, fidelity: int = 1440, limit: int = 100_000):  # noqa: ANN001, ANN201, ARG002
+        self.fidelities.append(fidelity)
+        if condition_id == self._boom_cid:
+            raise RuntimeError("CLOB hiccup for this market")
+        return [
+            AltDataPoint(ts=_START + timedelta(days=i), available_at=_START + timedelta(days=i, minutes=fidelity), value=0.4 + 0.05 * i)
+            for i in range(3)
+        ]
+
+
+def test_ingest_cron_folds_in_per_market_odds_daily_and_hourly(tmp_path, monkeypatch):
+    """The hourly ingest cron (auto_research_pass(ingest=True)) must ALSO populate the per-market odds lane —
+    both the daily metric="odds" and the hourly metric="odds_60" — for the liquid open polymarket markets."""
+    import cosmu.ingest.polymarket_odds as odds_mod
+
+    store = _store(tmp_path, "oddscron")
+    _seed_polymarket_universe(store, [("0xCID_A", 900.0), ("0xCID_B", 500.0)])
+    astore = AltDataStore(root=tmp_path / "alt")
+
+    stub = _StubOddsSource()
+    # The ingest constructs PerMarketOddsSource() internally → swap the class for the network-free stub.
+    monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+
+    verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
+    assert verdict is None  # ingest-only pass
+
+    # Both cadences landed, keyed by conditionId, under their distinct metrics.
+    assert [round(p.value, 2) for p in astore.read_all("polymarket", "0xCID_A", "odds")] == [0.40, 0.45, 0.50]
+    assert [round(p.value, 2) for p in astore.read_all("polymarket", "0xCID_B", "odds_60")] == [0.40, 0.45, 0.50]
+    # The hourly variant asked the CLOB at fidelity=60 (and the daily at 1440) — both cadences ran.
+    assert 60 in stub.fidelities and 1440 in stub.fidelities
+
+
+def test_ingest_cron_odds_hoard_is_bounded(tmp_path, monkeypatch):
+    """The odds hoard is BOUNDED: it fetches at most _ODDS_MAX_MARKETS markets per cadence, never the full
+    universe — so one cron pass can't hammer the public CLOB even if universe_pairs has many markets."""
+    import cosmu.ingest.polymarket_odds as odds_mod
+    import cosmu.research.loop as loop_mod
+
+    store = _store(tmp_path, "oddsbound")
+    # Seed MORE markets than the cap so the bound actually bites.
+    _seed_polymarket_universe(store, [(f"0xCID_{i:02d}", 1000.0 - i) for i in range(loop_mod._ODDS_MAX_MARKETS + 5)])
+    astore = AltDataStore(root=tmp_path / "alt")
+    stub = _StubOddsSource()
+    monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+
+    auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
+    # Two cadences (daily + hourly) × at most _ODDS_MAX_MARKETS markets each.
+    assert len(stub.fidelities) == 2 * loop_mod._ODDS_MAX_MARKETS
+
+
+def test_ingest_cron_odds_hoard_is_best_effort_one_market_failure(tmp_path, monkeypatch):
+    """Per-market isolation + best-effort: one market raising mid-hoard contributes 0 rows and never aborts the
+    cron — the other market still lands AND the cross-asset transfer series still persist."""
+    import cosmu.ingest.polymarket_odds as odds_mod
+
+    store = _store(tmp_path, "oddsboom")
+    _seed_polymarket_universe(store, [("0xCID_OK", 900.0), ("0xCID_BAD", 500.0)])
+    astore = AltDataStore(root=tmp_path / "alt")
+    stub = _StubOddsSource(boom_cid="0xCID_BAD")
+    monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+
+    verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
+    assert verdict is None
+    # the healthy market landed (both cadences); the dead one contributed nothing — never aborted the batch
+    assert astore.read_all("polymarket", "0xCID_OK", "odds")
+    assert astore.read_all("polymarket", "0xCID_BAD", "odds") == []
+    # the rest of the ingest pass is untouched (the odds hoard is a wrapped bonus step)
+    assert astore.read_all("polymarket", "MARKET", "pm_risk_on")
+
+
+def test_ingest_cron_odds_hoard_failure_never_aborts_ingest(tmp_path, monkeypatch):
+    """If the ENTIRE odds hoard step blows up (e.g. universe read error), it is caught + logged and the
+    already-persisted ingest pass is unaffected — same best-effort discipline as the bar hoard."""
+    import cosmu.ingest.polymarket_odds as odds_mod
+
+    store = _store(tmp_path, "oddstotalboom")
+    astore = AltDataStore(root=tmp_path / "alt")
+
+    def _boom(*_a, **_k):  # noqa: ANN002, ANN003
+        raise RuntimeError("universe table unavailable")
+
+    # Make the inner ingest explode hard at the source module (the helper imports it locally from here).
+    monkeypatch.setattr(odds_mod, "ingest_per_market_odds", _boom)
+
+    verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
+    assert verdict is None
+    # the core ingest persisted regardless of the odds hoard exploding
+    assert astore.read_all("polymarket", "MARKET", "pm_risk_on")
+    assert astore.read_all("fred", "MARKET", "macro_regime")

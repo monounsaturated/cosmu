@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from cosmu.config.settings import Settings
 from cosmu.data.altdata import AltDataStore
@@ -13,6 +13,7 @@ from cosmu.data.sources.polymarket import PerMarketOddsSource
 from cosmu.ingest.polymarket_odds import (
     PerMarketIngestResult,
     ingest_per_market_odds,
+    ingest_per_market_odds_hourly,
     top_liquid_condition_ids,
 )
 from cosmu.knowledge.store import Store
@@ -68,9 +69,25 @@ def test_source_fetch_odds_two_hop_condition_to_history():
     src = _source({_CID: _YES_TOKEN}, {_YES_TOKEN: _HIST})
     points = src.fetch_odds(_CID)
     assert [round(p.value, 2) for p in points] == [0.40, 0.45, 0.55]
-    # PIT: a CLOB midpoint is known at its own bucket time (no declared release lag).
-    assert all(p.available_at == p.ts for p in points)
+    # PIT look-ahead fix (scout #385 Fix-C5): available_at = ts + ONE BUCKET (here daily), so a backtest only
+    # sees a bucket after it has fully closed — never the entry bar's own same-bucket price.
+    assert all(p.available_at == p.ts + timedelta(days=1) for p in points)
     assert points[0].ts == datetime(2024, 1, 1, tzinfo=UTC)
+
+
+def test_source_fetch_odds_hourly_fidelity_and_bucket_lag():
+    # fidelity=60 (hourly) → the CLOB url carries fidelity=60 AND the PIT lag is one HOUR (not one day).
+    seen: dict[str, str] = {}
+
+    def clob(url: str):
+        seen["url"] = url
+        token = url.split("market=", 1)[-1].split("&", 1)[0]
+        return {_YES_TOKEN: _HIST}.get(token, {"history": []})
+
+    src = PerMarketOddsSource(_gamma_fetcher=_gamma_for({_CID: _YES_TOKEN}), _clob_fetcher=clob)
+    points = src.fetch_odds(_CID, fidelity=60)
+    assert "fidelity=60" in seen["url"]  # hourly variant hits the CLOB at fidelity=60
+    assert all(p.available_at == p.ts + timedelta(hours=1) for p in points)  # +1-bucket lag scales with fidelity
 
 
 def test_source_empty_on_unresolvable_token():
@@ -145,3 +162,45 @@ def test_ingest_isolates_per_market_failure(tmp_path):
     results = {r.condition_id: r for r in ingest_per_market_odds(alt, store, source=src, max_markets=10)}
     assert results[_CID].written == 3
     assert results[_CID_B].written == 0  # dead market → 0 rows, batch continued
+
+
+def test_ingest_hourly_uses_fidelity_60_and_distinct_metric(tmp_path):
+    # The hourly variant ingests at fidelity=60 AND stores under metric="odds_60" — distinct from the daily
+    # "odds" series so the two cadences never co-mingle in one (provider, symbol, metric) keyspace.
+    store = _store(tmp_path)
+    _seed_universe(store, [(_CID, 500.0)])
+    alt = AltDataStore(root=tmp_path / "alt")
+    seen: dict[str, str] = {}
+
+    def clob(url: str):
+        seen["url"] = url
+        token = url.split("market=", 1)[-1].split("&", 1)[0]
+        return {_YES_TOKEN: _HIST}.get(token, {"history": []})
+
+    src = PerMarketOddsSource(_gamma_fetcher=_gamma_for({_CID: _YES_TOKEN}), _clob_fetcher=clob)
+    results = ingest_per_market_odds_hourly(alt, store, source=src, max_markets=10)
+
+    assert "fidelity=60" in seen["url"]  # hourly cadence reached the CLOB
+    assert results == [PerMarketIngestResult(condition_id=_CID, written=3, total=3)]
+    # Stored under "odds_60", NOT "odds" — the per-cell min-trades Gate reads the denser hourly series here.
+    assert len(alt.read_all("polymarket", _CID, "odds_60")) == 3
+    assert alt.read_all("polymarket", _CID, "odds") == []  # daily series untouched by the hourly run
+    # +1-bucket PIT lag carried through the ingest (hourly bucket = one hour).
+    assert all(p.available_at == p.ts + timedelta(hours=1) for p in alt.read_all("polymarket", _CID, "odds_60"))
+
+
+def test_ingest_carries_one_bucket_pit_lag(tmp_path):
+    # The daily ingest persists available_at = ts + one DAY (the look-ahead fix), so read_asof at the bucket's own
+    # ts sees NOTHING and only sees the point a full day later — the entry bar can't use its own bucket price.
+    store = _store(tmp_path)
+    _seed_universe(store, [(_CID, 500.0)])
+    alt = AltDataStore(root=tmp_path / "alt")
+    src = _source({_CID: _YES_TOKEN}, {_YES_TOKEN: _HIST})
+
+    ingest_per_market_odds(alt, store, source=src, max_markets=10)
+    first_ts = datetime(2024, 1, 1, tzinfo=UTC)
+    # As-of the first bucket's own timestamp: not yet available (lagged one day) → empty.
+    assert alt.read_asof("polymarket", _CID, "odds", first_ts) == []
+    # As-of one day later: the first bucket is now knowable.
+    visible = alt.read_asof("polymarket", _CID, "odds", first_ts + timedelta(days=1))
+    assert [round(p.value, 2) for p in visible] == [0.40]
