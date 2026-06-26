@@ -254,6 +254,16 @@ class _StubOddsSource:
         ]
 
 
+class _StubResolutionSource:
+    """Hermetic PolymarketResolutionSource stand-in: the odds hoard calls ingest_per_market_resolutions for the
+    SAME markets it ingested odds for, which otherwise hits live Gamma /markets HTTP. Default = no-network no-op
+    (every market still UNresolved → []), exactly the common-case the real source returns for liquid-OPEN markets,
+    so the hoard tests stay net-free + fast without changing what they assert."""
+
+    def fetch_resolution(self, condition_id: str):  # noqa: ANN001, ANN201, ARG002
+        return []
+
+
 def test_ingest_cron_folds_in_per_market_odds_daily_and_hourly(tmp_path, monkeypatch):
     """The hourly ingest cron (auto_research_pass(ingest=True)) must ALSO populate the per-market odds lane —
     both the daily metric="odds" and the hourly metric="odds_60" — for the liquid open polymarket markets."""
@@ -264,8 +274,10 @@ def test_ingest_cron_folds_in_per_market_odds_daily_and_hourly(tmp_path, monkeyp
     astore = AltDataStore(root=tmp_path / "alt")
 
     stub = _StubOddsSource()
-    # The ingest constructs PerMarketOddsSource() internally → swap the class for the network-free stub.
+    # The ingest constructs PerMarketOddsSource() / PolymarketResolutionSource() internally → swap both classes for
+    # network-free stubs (the resolution join would otherwise hit live Gamma /markets for the same markets).
     monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+    monkeypatch.setattr(odds_mod, "PolymarketResolutionSource", lambda *a, **k: _StubResolutionSource())  # noqa: ARG005
 
     verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
     assert verdict is None  # ingest-only pass
@@ -289,6 +301,7 @@ def test_ingest_cron_odds_hoard_is_bounded(tmp_path, monkeypatch):
     astore = AltDataStore(root=tmp_path / "alt")
     stub = _StubOddsSource()
     monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+    monkeypatch.setattr(odds_mod, "PolymarketResolutionSource", lambda *a, **k: _StubResolutionSource())  # noqa: ARG005
 
     auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
     # Two cadences (daily + hourly) × at most _ODDS_MAX_MARKETS markets each.
@@ -305,6 +318,7 @@ def test_ingest_cron_odds_hoard_is_best_effort_one_market_failure(tmp_path, monk
     astore = AltDataStore(root=tmp_path / "alt")
     stub = _StubOddsSource(boom_cid="0xCID_BAD")
     monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+    monkeypatch.setattr(odds_mod, "PolymarketResolutionSource", lambda *a, **k: _StubResolutionSource())  # noqa: ARG005
 
     verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
     assert verdict is None
