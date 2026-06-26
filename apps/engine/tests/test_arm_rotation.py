@@ -37,6 +37,10 @@ def test_rotation_closes_stale_leg_and_books_real_pnl(tmp_path):
     # +$20/share on 2.5 shares minus entry fee 0.2 + exit fee (1bp of 1050) — a REAL net win, booked.
     assert pos.realized_pnl > Decimal("49")
     assert store.row("SELECT id FROM events WHERE kind = 'rotation_closed'") is not None
+    # FRONT-DISPLAY fix (audit 2026-06-26): a rotation SELL is a real paper trade and must write an `executions`
+    # row so the trade-count + blotter ADVANCE on a real rebalance (not just `positions`). Idempotent, paper-only.
+    fill = store.row("SELECT side, is_paper FROM executions WHERE strategy_version_id = 'v1'")
+    assert fill is not None and fill["side"] == "sell" and int(fill["is_paper"]) == 1
 
 
 def test_kept_legs_and_other_tracks_are_untouched(tmp_path):

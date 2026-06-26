@@ -240,6 +240,7 @@ def arm(store: Store | None = None) -> dict:
     portfolio.apply_fill(
         instrument_id=instrument.id, symbol=signal, venue=VENUE, side=1, qty=qty, price=price,
         fee=(TRACK_CAPITAL * Decimal(str(IBKR_ETF_BPS_PER_SIDE)) / Decimal("1e4")), strategy_version_id=version_id,
+        record_execution=True,  # real paper rebalance fill -> advance trade-count/blotter
     )
     snap = portfolio.mark_to_market({instrument.id: price})
     store.append_event(

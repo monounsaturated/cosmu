@@ -20,7 +20,13 @@ def overview() -> OverviewResponse:
     All four reads share ONE autocommit Postgres connection (store.reading()) — without this each store.row()
     opens + closes a separate psycopg2 connection (~1s RTT × 5 ≈ 5–7s, over the 5s frontend budget)."""
     with store.reading():
-        snapshots = store.rows("SELECT ts, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts ASC LIMIT 120")
+        # MOST-RECENT 120 aggregate snapshots, returned oldest→newest for the chart. `ORDER BY ts DESC LIMIT 120`
+        # grabs the freshest window (the older `ORDER BY ts ASC LIMIT 120` pinned the hero to the OLDEST 120 points
+        # — frozen at the first ~5 days forever as snapshots accrued past it); reversing back to chronological order
+        # leaves the curve drawn left→old, right→new AND keeps `snapshots[-1]` the latest point (pnl_net / equity below).
+        snapshots = list(reversed(
+            store.rows("SELECT ts, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT 120")
+        ))
         # NO POOLED WALLET (locked invariant): the honest Paper equity is the Σ of per-strategy ALLOCATED capital
         # (each track funds itself with sim_track_capital, ~$1k), NOT the $100k sim_bankroll. The stored aggregate
         # snapshot's `equity` column = bankroll + P&L (a pooled-wallet artifact), so we IGNORE it and rebuild the

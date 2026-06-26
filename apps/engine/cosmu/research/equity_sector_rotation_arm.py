@@ -250,6 +250,7 @@ def arm(store: Store | None = None) -> dict:
             instrument_id=instrument.id, symbol=sym, venue=VENUE, side=1, qty=qty, price=price,
             fee=(per_leg_capital * Decimal(str(ETF_BPS_PER_SIDE)) / Decimal("1e4")),
             strategy_version_id=version_id,
+            record_execution=True,  # real paper rebalance fill -> advance trade-count/blotter
         )
         marks[instrument.id] = price
         legs.append({"symbol": sym, "qty": str(qty), "price": str(price)})

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -110,10 +112,21 @@ class Portfolio:
         price: Decimal,
         fee: Decimal,
         strategy_version_id: str | None = None,
+        record_execution: bool = False,
+        is_paper: bool = True,
     ) -> PositionView:
         """Fold one fill into the position with a memoryless average-cost basis. A reducing/closing fill books
         realized P&L net of fee and records whether THAT close was a loss (the averaging-down guard reads it —
-        never to size the next bet). Returns the updated view."""
+        never to size the next bet). Returns the updated view.
+
+        `record_execution=True` ALSO appends one row to the `executions` ledger (the fill blotter + trade-count
+        the front reads), idempotently — the deploy-lane TAA arms pass it so a real monthly rebalance fill ADVANCES
+        the trade-count, instead of writing only `positions` and leaving the blotter frozen at the 06-14 backfill.
+        DEFAULT False so the backtest/replay path (which calls apply_fill thousands of times per sweep) NEVER
+        pollutes the live ledger — the money path (positions/realized P&L/marks) is byte-identical to before either
+        way. Idempotent via a CONTENT-HASHED id (version+instrument+venue+side+qty+price+UTC-day): re-running the
+        same 4-hourly tick re-touches the SAME row → `ON CONFLICT (id) DO NOTHING` no-op (no double-count, no
+        retroactive backfill of prior rotations), while a genuine rebalance (new qty/price/day) writes a new row."""
         existing = self.position(instrument_id, venue, strategy_version_id=strategy_version_id)
         signed = qty if side > 0 else -qty
         prev_qty = existing.qty if existing else Decimal("0")
@@ -160,7 +173,68 @@ class Portfolio:
                 utcnow(),
             ),
         )
+        if record_execution:
+            self._record_execution(
+                instrument_id=instrument_id, venue=venue, side=side, qty=qty, price=price, fee=fee,
+                strategy_version_id=strategy_version_id, is_paper=is_paper,
+            )
         return PositionView(instrument_id, symbol, new_qty, new_avg, venue, strategy_version_id, realized, last_was_loss)
+
+    def _record_execution(
+        self,
+        *,
+        instrument_id: str,
+        venue: str,
+        side: int,
+        qty: Decimal,
+        price: Decimal,
+        fee: Decimal,
+        strategy_version_id: str | None,
+        is_paper: bool,
+    ) -> None:
+        """Append ONE idempotent row to the `executions` ledger for a fill (the trade-count + blotter source). Keyed
+        by a content hash (version, instrument, venue, side, abs(qty), price, UTC-day) so re-running the same tick is
+        a `DO NOTHING` no-op — the trade-count advances on a REAL rebalance (distinct qty/price/day) but never
+        double-counts a re-mark. Best-effort + isolated: a ledger write must NEVER crash the money path (positions
+        were already booked above), so any failure is swallowed — the worst case is a momentarily-stale blotter, not
+        a lost or distorted position. Reuses ONE paper `runs` row per (version, day) as the FK parent."""
+        try:
+            abs_qty = abs(qty)
+            day = utcnow()[:10]  # UTC date bucket — same leg re-touched within the day collapses to one row
+            digest = hashlib.sha1(
+                f"{strategy_version_id}|{instrument_id}|{venue}|{side}|{abs_qty}|{price}|{day}".encode()
+            ).hexdigest()
+            exec_id = f"fill-{digest}"
+            if self.store.row("SELECT 1 FROM executions WHERE id = ?", (exec_id,)) is not None:
+                return  # already logged this fill this day — idempotent no-op (no double-count)
+            run_id = self._paper_run_for(strategy_version_id, venue, day)
+            self.store.rows(
+                """
+                INSERT INTO executions(id, run_id, strategy_version_id, instrument_id, venue_id, side, qty,
+                    price, fee, slippage, order_type, is_paper, ts, fill_log)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '0', 'market', ?, ?, ?)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    exec_id, run_id, strategy_version_id, instrument_id, venue,
+                    "buy" if side > 0 else "sell", str(abs_qty), str(price), str(fee),
+                    1 if is_paper else 0, utcnow(), json.dumps({"source": "apply_fill"}),
+                ),
+            )
+        except Exception:  # noqa: BLE001 — the ledger row is advisory display data; never break the money path
+            return
+
+    def _paper_run_for(self, strategy_version_id: str | None, venue: str, day: str) -> str:
+        """The FK-parent `runs` row for a fill's execution, reused per (version, day) so a day's rebalance legs share
+        one run instead of minting a run per leg. Deterministic id (so concurrent ticks converge on the same row),
+        created on first use, idempotent via ON CONFLICT."""
+        run_id = f"paperrun-{strategy_version_id}-{day}"
+        self.store.rows(
+            "INSERT INTO runs(id, strategy_version_id, mode, venue_id, seed, started_at, status) "
+            "VALUES (?, ?, 'paper', ?, 0, ?, 'completed') ON CONFLICT (id) DO NOTHING",
+            (run_id, strategy_version_id, venue, utcnow()),
+        )
+        return run_id
 
     # --- marks / snapshots -------------------------------------------------------------------------
 
