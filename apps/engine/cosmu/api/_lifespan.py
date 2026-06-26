@@ -69,6 +69,20 @@ async def lifespan(_: FastAPI):
 
         worker_stop = asyncio.Event()
         worker_task = asyncio.create_task(run_worker(store, settings=settings, stop=worker_stop))
+
+    # The Railway → Modal cross-monitor (the watcher's watcher) — IN-PROCESS, OFF by default
+    # (MODAL_WATCH_ENABLED=1 activates). It re-runs the shared heartbeat.check() FROM Railway and pages if the
+    # Modal-driven DB signals all go stale — the one silent failure mode (total Modal death) the on-Modal
+    # heartbeat structurally can't see itself. Detection only: no failover, no money path, never crashes the API.
+    modal_watch_stop: asyncio.Event | None = None
+    modal_watch_task: asyncio.Task | None = None
+    if getattr(settings, "modal_watch_enabled", False):
+        from cosmu.ops.modal_watch import run_modal_watch_loop
+
+        modal_watch_stop = asyncio.Event()
+        modal_watch_task = asyncio.create_task(
+            run_modal_watch_loop(store, settings=settings, stop=modal_watch_stop)
+        )
     try:
         yield
     finally:
@@ -78,6 +92,12 @@ async def lifespan(_: FastAPI):
                 await asyncio.wait_for(worker_task, timeout=10)
             except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001 — shutdown is best-effort
                 worker_task.cancel()
+        if modal_watch_stop is not None and modal_watch_task is not None:
+            modal_watch_stop.set()
+            try:
+                await asyncio.wait_for(modal_watch_task, timeout=10)
+            except (TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001 — shutdown is best-effort
+                modal_watch_task.cancel()
         notify_health_change(notifier, status="down", detail="cosmu-engine shutting down")
 
 
