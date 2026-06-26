@@ -39,6 +39,7 @@ from cosmu.api.routers import (
     market,
     memory,
     mind,
+    ops,
     overview,
     population,
     readiness,
@@ -108,6 +109,7 @@ for _module in (
     autonomy,
     toggle,
     live,
+    ops,
     market,
     universe,
     research,
@@ -144,7 +146,7 @@ for _module in (
 # canonical _shared) — a write to app.store/app.settings must update all of them.
 _INJECTABLE_MODULES = (
     _shared_mod, autonomy, console, correlations, costs, events, evolution, explorer, health,
-    indexes, intelligence, lab, leaderboard, live, memory, mind, overview, population,
+    indexes, intelligence, lab, leaderboard, live, memory, mind, ops, overview, population,
     recommendations, research, scores, settings_router, skills, spine,
     strategies, strategy, toggle, universe, verdicts,
 )

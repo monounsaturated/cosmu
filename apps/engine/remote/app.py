@@ -136,6 +136,22 @@ def _run(module_args: list[str], *, extra_env: dict[str, str] | None = None) -> 
     return proc.returncode
 
 
+def _live_armed() -> bool:
+    """Is live trading armed right now (the global live toggle ON in the DB)? Gates the capital-guard auto-monitor
+    in `tick` so it is a strict no-op until a venue is armed — saving the order-path import/query when nothing can
+    move money. Engine is pip-installed in this image, so the check imports it directly. Fail-OPEN (True) if the
+    check itself errors: the guard is independently a clean no-op with nothing funded, so running it is always
+    safe — better to run a no-op pass than to silently skip the safety net on a transient read error."""
+    try:
+        from cosmu.config.settings import Settings
+        from cosmu.knowledge.store import Store
+        from cosmu.master.scheduler import _live_enabled
+
+        return _live_enabled(Store(Settings()))
+    except Exception:  # noqa: BLE001 — fail open: the guard pass is a no-op when nothing is funded
+        return True
+
+
 @app.function(**_HEAVY)
 def gate_sweep() -> int:
     """Full autonomous cycle on REAL data: ingest → author → ML-ordered screen → deterministic gate/FDR →
@@ -199,6 +215,12 @@ def tick() -> int:
     _run(["cosmu.orchestrator.loop"])        # paper clock: mark held positions to the latest real close
     _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
     _run(["cosmu.strategy.agent_run"])       # observe-only LLM strategies: reason (Mind panel) + record traces ($0)
+    # CAPITAL-GUARD auto-monitor: a reduce-only safety supervisor over the live book (floor liquidation +
+    # profit-lock trim). Guarded by live_enabled so it is a strict NO-OP until a venue is armed (with nothing
+    # live/funded the pass touches no order path); once armed it reaches the REAL executor/exec registry and can
+    # only ever REDUCE exposure. Runs AFTER the paper clock marks equity so it judges the freshest marks.
+    if _live_armed():
+        _run(["cosmu.ops.capital_guard"])    # protect funded capital (reduce-only); no-op until a venue is armed
     if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts + universe refresh
         _run(["cosmu.costs.refresh"])
         _run(["cosmu.data.universe_build"])  # refresh universe_pairs + R2 snapshot from live venue APIs

@@ -386,6 +386,7 @@ export interface DefundRequest {
 
 export interface DefundResponse {
   defunded: string[];
+  liquidated?: number;
   ok: boolean;
 }
 
@@ -731,6 +732,22 @@ export interface KeyPresence {
   local?: boolean | null;
 }
 
+export interface KillswitchRequest {
+  confirm?: boolean;
+  scope?: "all" | "combo";
+  version_id?: string | null;
+}
+
+export interface KillswitchResponse {
+  actions?: Record<string, unknown>[];
+  closed?: number;
+  evaluated?: number;
+  reason?: string | null;
+  scope: "all" | "combo";
+  triggered: boolean;
+  version_id?: string | null;
+}
+
 export interface LabSymbolRow {
   created_at: string;
   kind: string;
@@ -840,6 +857,19 @@ export interface LineageEntry {
 export interface LineageStats {
   by_operator: LineageEntry[];
   by_origin: LineageEntry[];
+}
+
+export interface LiquidateRequest {
+  scope: "all" | "strategy";
+  version_id?: string | null;
+}
+
+export interface LiquidateResponse {
+  closed: number;
+  ok: boolean;
+  routed: number;
+  scope: "all" | "strategy";
+  version_ids: string[];
 }
 
 export interface LiveCaps {

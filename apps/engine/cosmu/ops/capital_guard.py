@@ -265,24 +265,126 @@ def run_capital_guard(
     if not holdings:
         return report  # nothing funded/held → clean no-op (never touches the order path)
 
+    actions: list[tuple[_FundedHolding, GuardAction]] = []
+    for h in holdings:
+        action = _decide(h, cfg)
+        if action is not None:
+            actions.append((h, action))
+    report.evaluated = len(actions)
+
+    _route_and_audit(
+        store, actions, portfolio=portfolio, pricer=pricer, catalog=cat, now=now, report=report, actor="master",
+    )
+    return report
+
+
+def kill(
+    store: Store,
+    *,
+    scope: str = "all",
+    version_id: str | None = None,
+    catalog: VenueCatalog | None = None,
+    router=None,  # noqa: ANN001 — orchestrator.loop.PricingRouter
+    now: datetime | None = None,
+) -> GuardReport:
+    """The MANUAL operator kill-switch — a FORCED, threshold-free capital-preservation close of every funded
+    holding in scope, routed through the SAME reduce-only order path the automatic supervisor uses. This is the
+    operator's "stop everything now" backstop: unlike run_capital_guard it does NOT wait for a floor/give-back
+    breach — it liquidates the FULL held quantity of each in-scope funded track unconditionally.
+
+      • scope='all' (the default, GLOBAL kill-all) closes every funded holding;
+      • scope='combo' (with `version_id` = the combo/track id) closes ONLY that one cell — a sibling track is
+        left alone.
+
+    Same money-path guarantees as the automatic guard: every order is REDUCE-ONLY (caps/kill/regime EXEMPT — a
+    close is the safety move), routes live ONLY on an armed venue (sim-closes otherwise, byte-identical to the
+    paper executor's exits), and is audited as `capital_guard_action` with actor='human'. STRICT NO-OP when
+    nothing in scope is funded/held → a clean empty report (never touches the order path). Offline (no mark) a
+    holding is skipped rather than closed at a fabricated price."""
+    cat = catalog or default_catalog()
+    now = now or datetime.now(tz=UTC)
+    portfolio = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    pricer = router or PricingRouter(cat, settings=store.settings)
+    report = GuardReport()
+
+    holdings = _funded_holdings(store, portfolio, cat)
+    if scope == "combo":
+        if not version_id:
+            return report  # combo scope with no target → nothing to kill (clean no-op, never guess)
+        holdings = [h for h in holdings if h.version_id == version_id]
+    if not holdings:
+        return report  # nothing funded/held in scope → clean no-op (never touches the order path)
+
+    # A FORCED full liquidation per holding — the whole held qty, regardless of any threshold. Reuses the
+    # liquidate GuardAction shape so the shared router/audit treats it identically to a floor-breach close.
+    actions: list[tuple[_FundedHolding, GuardAction]] = [
+        (
+            h,
+            GuardAction(
+                version_id=h.version_id, symbol=h.symbol, venue_id=h.venue_id,
+                kind="liquidate", reason="manual_kill", qty=h.position.qty,
+                equity=h.equity, starting_capital=h.starting_capital, peak=h.peak,
+            ),
+        )
+        for h in holdings
+    ]
+    report.evaluated = len(actions)
+
+    _route_and_audit(
+        store, actions, portfolio=portfolio, pricer=pricer, catalog=cat, now=now, report=report,
+        actor="human", basis_fallback=True,
+    )
+    return report
+
+
+def _route_and_audit(
+    store: Store,
+    actions: list[tuple[_FundedHolding, GuardAction]],
+    *,
+    portfolio: Portfolio,
+    pricer,  # noqa: ANN001 — orchestrator.loop.PricingRouter (or a stub exposing last_price)
+    catalog: VenueCatalog,
+    now: datetime,
+    report: GuardReport,
+    actor: str,
+    basis_fallback: bool = False,
+) -> None:
+    """Route a batch of REDUCE-ONLY protective closes through the ONE order path and audit what BOOKED — the
+    shared spine of BOTH the automatic supervisor pass (run_capital_guard) and the manual operator kill-switch
+    (kill). For each (holding, action): build a reduce-only sell at the latest REAL mark, group by the book/venue
+    the close routes to (live-book on an armed venue → its adapter; everything else → the deterministic sim path),
+    execute, then count + emit a `capital_guard_action` event for each accepted close. Mutates `report` in place.
+
+    Reduce-only is gauntlet-EXEMPT from caps/kill/regime (closing IS the safety move), so a genuine protective
+    close always routes. `actor` tags the audit event so the manual kill-switch is distinguishable from the
+    automatic pass on the ledger.
+
+    PRICING: a close fills at the latest REAL mark (never a synthetic price). When offline (no mark):
+      • basis_fallback=False (the AUTOMATIC guard) → SKIP the close and defer to the next 4h pass — a threshold
+        breach is not urgent enough to close at a stale basis;
+      • basis_fallback=True (the MANUAL kill) → fall back to the position's own avg_price (a FLAT close, never a
+        fabricated P&L — exactly /live/liquidate's behaviour) so the operator's "stop now" is never silently a
+        no-op just because the box is offline; a live fill reconciles to the venue's true price out-of-band."""
+    if not actions:
+        return
+
     # LIVE IGNITION (shared with step_tracks): the active adapters per venue when the operator has armed live.
     # Empty unless armed → every close routes SIM (byte-identical to the paper executor's own exits).
     live_adapters = _resolve_live_adapters(store)
 
-    # Decide + build the reduce-only intents, grouped by the book/venue the close routes to.
+    # Build the reduce-only intents, grouped by the book/venue the close routes to.
     sim_intents: list[IntendedOrder] = []
     live_by_venue: dict[str, list[IntendedOrder]] = {}
     meta_by_coid: dict[str, GuardAction] = {}
-    for h in holdings:
-        action = _decide(h, cfg)
-        if action is None:
-            continue
-        report.evaluated += 1
-        # The close fills at the latest REAL mark (never a synthetic price). Offline/no mark → defer to the next
-        # pass rather than invent an exit price.
+    for h, action in actions:
+        # The close fills at the latest REAL mark. Offline/no mark → the manual kill falls back to the position's
+        # basis (a flat close); the automatic guard defers to the next pass rather than invent an exit price.
         mark = pricer.last_price(h.symbol, h.venue_id)
         if mark <= 0:
-            continue
+            if basis_fallback and h.position.avg_price > 0:
+                mark = h.position.avg_price
+            else:
+                continue
         stamp = now.date().isoformat()
         coid = f"guard-{action.reason}-{h.version_id}-{stamp}"
         routes_live = h.position.venue in _LIVE_BOOKS and h.venue_id in live_adapters
@@ -307,13 +409,13 @@ def run_capital_guard(
             sim_intents.append(intent)
 
     if not sim_intents and not live_by_venue:
-        return report
+        return
 
     outcome_by_coid: dict[str, OrderOutcome] = {}
     if sim_intents:
         for oc in execute_orders(
             sim_intents, live_enabled=False, kill_switch=False, adapter=None,
-            store=store, portfolio=portfolio, risk=store.settings.risk, catalog=cat,
+            store=store, portfolio=portfolio, risk=store.settings.risk, catalog=catalog,
         ):
             outcome_by_coid[oc.client_order_id] = oc
     if live_by_venue:
@@ -326,7 +428,7 @@ def run_capital_guard(
                 continue
             for oc in execute_orders(
                 group, live_enabled=True, kill_switch=kill, adapter=adapter,
-                store=store, portfolio=portfolio, risk=store.settings.risk, catalog=cat,
+                store=store, portfolio=portfolio, risk=store.settings.risk, catalog=catalog,
             ):
                 outcome_by_coid[oc.client_order_id] = oc
 
@@ -352,10 +454,29 @@ def run_capital_guard(
         }
         report.actions.append(record)
         store.append_event(
-            actor="master",
+            actor=actor,
             kind="capital_guard_action",
             ref_type="strategy_version",
             ref_id=action.version_id,
             payload=record,
         )
-    return report
+
+
+def main() -> int:
+    """The cron entry (`python -m cosmu.ops.capital_guard`, wired into the Modal `tick`): run ONE automatic
+    supervisor pass over the live book. STRICT NO-OP until a venue is armed AND a funded track breaches a
+    threshold — with nothing funded/held this returns 0 having touched no order path. Returns 0 always (a guard
+    pass that protected 0 positions is the healthy steady state, not an error); prints a one-line summary so the
+    Modal run log shows what it did."""
+    from cosmu.config.settings import Settings
+
+    store = Store(Settings())
+    report = run_capital_guard(store)
+    print(f"[capital_guard] evaluated={report.evaluated} protected={report.protected}")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())
