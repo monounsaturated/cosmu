@@ -380,6 +380,31 @@ class StrategyFinder:
                 out[cid] = bars[-limit:]
         return out
 
+    def _prediction_resolutions(self, condition_ids: list[str]) -> dict[str, tuple[datetime, float]]:
+        """The authoritative UMA/CTF resolution per conditionId: {conditionId -> (resolution_ts, payout)} read
+        POINT-IN-TIME as-of NOW through the PredictionDataAdapter (which reads the alt store metric="resolution").
+        A market not yet resolved yields no entry (it never settles in the backtest — it marks at the last odds).
+        This is the join that lets exit.settle_at_resolution settle a held-to-resolution position at the true
+        $1/$0 instead of the last odds quote (scout #385 Fix-B). The resolution point is itself stamped at the
+        real resolution time, so reading it as-of now is honest — and the backtest only settles bars whose ts has
+        reached that resolution time."""
+        from cosmu.adapters.data.prediction import Market, PredictionDataAdapter
+        from cosmu.adapters.data.prediction import instrument_id as pm_instrument_id
+
+        alt_store = self._resolve_alt_store()
+        markets = [Market(symbol=cid, token=cid) for cid in condition_ids]
+        adapter = PredictionDataAdapter(markets, alt_reader=alt_store, metric="odds")
+        as_of = datetime(2100, 1, 1, tzinfo=UTC)  # "now" wide enough to surface any already-resolved market
+        out: dict[str, tuple[datetime, float]] = {}
+        for cid in condition_ids:
+            try:
+                res = adapter.resolution(pm_instrument_id(cid), as_of)
+            except Exception:  # noqa: BLE001 — one unreadable resolution never aborts the panel
+                continue
+            if res is not None:
+                out[cid] = (res.ts, res.payout)
+        return out
+
     def _market(self, spec: StrategySpec) -> tuple[dict[str, list[Bar]], dict[str, tuple[str, str]]]:
         """The screen panel keyed by CELL KEY, plus a cell_meta map (cell_key -> (symbol, venue_id)).
 
@@ -485,6 +510,15 @@ class StrategyFinder:
         # CANONICAL symbol (a 'BTC/USDT@kraken' cell reads BTC/USDT's funding — alt data is per pair, not per cell),
         # so a UNIFY/FALLBACK venue cell still gets the right point-in-time series under its own key.
         alt = _alt_by_cell(self._resolve_alt_store(), spec, market, cell_meta)
+        # Prediction-market RESOLUTION join (scout #385 Fix-B): {conditionId -> (resolution_ts, payout)} so a cell
+        # whose spec opted into exit.settle_at_resolution settles a held-to-resolution position at the true $1/$0.
+        # Built ONLY for polymarket cells of a settle-at-resolution spec — empty otherwise → byte-identical for
+        # every non-prediction spec (the backtest ignores an empty map).
+        resolution_by_symbol = (
+            self._prediction_resolutions([sym for _key, (sym, ven) in cell_meta.items() if ven == "polymarket"])
+            if spec.exit.settle_at_resolution
+            else {}
+        )
 
         results: list[VariantResult] = []
 
@@ -492,7 +526,7 @@ class StrategyFinder:
             r = self._screen(spec, variant, market, venue, alt, grid_size=grid_size,
                              fee_schedule=fee_schedule, depth_schedule=depth_schedule,
                              asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol,
-                             cell_meta=cell_meta)
+                             cell_meta=cell_meta, resolution_by_symbol=resolution_by_symbol)
             if r is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             results.append(r)
@@ -531,6 +565,7 @@ class StrategyFinder:
                 slippage_bps=venue.slippage_bps, impact_bps=venue.impact_bps,
                 depth_schedule=depth_schedule, alt_by_symbol=alt,
                 asset_class_by_symbol=asset_class_by_symbol,
+                resolution_by_symbol=resolution_by_symbol,
             )  # include_holdout defaults True — the single exam look for this champion variant
             r.target_vol = champion.target_vol  # T1: freeze vol anchor from the full backtest (incl. holdout bars)
             any_cell_holdout = False
@@ -606,6 +641,7 @@ class StrategyFinder:
         asset_class_by_symbol: dict[str, str] | None = None,
         venue_id_by_symbol: dict[str, str] | None = None,
         cell_meta: dict[str, tuple[str, str]] | None = None,
+        resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
     ) -> VariantResult | None:
         """Compile + backtest one variant on REAL bars, then BUILD AND SCORE ONE CELL PER (symbol, venue) on its
         OWN streams. Returns a VariantResult carrying per-cell verdicts — or None for an invalid grid point.
@@ -630,6 +666,7 @@ class StrategyFinder:
             alt_by_symbol=alt_by_symbol,
             include_holdout=False,
             asset_class_by_symbol=asset_class_by_symbol,
+            resolution_by_symbol=resolution_by_symbol,
         )
         metrics = detailed.metrics  # POOLED — display only (best_symbol, the leaderboard); never the brut verdict
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)

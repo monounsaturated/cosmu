@@ -15,6 +15,19 @@ from cosmu.core.interfaces import AssetClass, Bar, Feature, Instrument
 
 _VENUE = "polymarket"
 _PROVIDER = "polymarket"
+# The authoritative UMA/CTF resolution metric (the YES payout ∈ {1.0, 0.0}) ingested by
+# ingest/polymarket_odds.ingest_per_market_resolutions, stamped point-in-time at the REAL resolution time.
+_RESOLUTION_METRIC = "resolution"
+
+
+@dataclass(frozen=True)
+class Resolution:
+    """The authoritative settlement of one prediction market: the YES share pays `payout` ($1 if YES wins, $0 if
+    NO wins) at `ts` (the real resolution time, which is ALSO its available_at — knowable only once resolved)."""
+
+    ts: datetime
+    payout: float
+    available_at: datetime
 
 
 @dataclass(frozen=True)
@@ -97,5 +110,26 @@ class PredictionDataAdapter:
             )
         return out
 
+    def resolution(self, instrument_id: str, as_of: datetime) -> Resolution | None:
+        """The authoritative UMA/CTF resolution for one market, point-in-time as of `as_of` — the YES payout
+        ∈ {$1, $0} and the real resolution time, read from the alt store under metric="resolution". Returns None
+        when the market is not resolved by `as_of` (no settlement point is visible yet), so the backtest then
+        marks at the last odds exactly as before (it never fabricates a settlement). PIT-honest: read_asof only
+        returns the point once available_at (the real resolution ts) <= as_of, so a held-to-resolution position
+        can settle at the true payout but never before the chain actually resolved it."""
+        if self._alt is None:
+            return None
+        symbol = instrument_id.rsplit(":", 1)[-1]
+        market = self._markets.get(symbol)
+        if market is None:
+            return None
+        points = self._alt.read_asof(_PROVIDER, market.token, _RESOLUTION_METRIC, as_of)
+        if not points:
+            return None
+        # A market resolves once (binary, terminal). If multiple points exist (a revision), the LATEST-ts wins —
+        # read_asof already orders by ts, so take the last available one.
+        p = points[-1]
+        return Resolution(ts=p.ts, payout=float(p.value), available_at=p.available_at)
 
-__all__ = ["Market", "PredictionDataAdapter", "instrument_id"]
+
+__all__ = ["Market", "PredictionDataAdapter", "Resolution", "instrument_id"]

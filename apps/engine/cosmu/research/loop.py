@@ -62,13 +62,23 @@ def _hoard_per_market_odds(store: Store, alt_store) -> None:  # noqa: ANN001
         from cosmu.ingest.polymarket_odds import (
             ingest_per_market_odds,
             ingest_per_market_odds_hourly,
+            ingest_per_market_resolutions,
         )
 
         daily = ingest_per_market_odds(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
         hourly = ingest_per_market_odds_hourly(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
+        # The authoritative UMA/CTF RESOLUTION join (scout #385 Fix-B): for the SAME markets we ingested odds for,
+        # fetch the $1/$0 YES payout when resolved, stamped at the real resolution time. Most liquid-open markets
+        # are UNresolved → a clean near-no-op; a market that has since resolved gets its terminal settlement point
+        # (Gamma returns it by conditionId even after it closes). This is what lets a held-to-resolution backtest
+        # settle at the true payout instead of the last odds. Best-effort + idempotent like the odds hoard.
+        resolved_ids = [r.condition_id for r in daily]
+        resolutions = ingest_per_market_resolutions(alt_store, store, condition_ids=resolved_ids)
         logger.info(
-            "per-market odds hoard: %s markets, %s daily + %s hourly new odds points (metric=odds / odds_60).",
+            "per-market odds hoard: %s markets, %s daily + %s hourly new odds points (metric=odds / odds_60); "
+            "%s new resolution settlements (metric=resolution).",
             len(daily), sum(r.written for r in daily), sum(r.written for r in hourly),
+            sum(r.written for r in resolutions),
         )
     except Exception:  # noqa: BLE001 — the odds hoard is a free bonus; its failure must never touch the ingest result
         logger.exception("per-market odds hoard step failed; ingest step (already persisted) is unaffected")

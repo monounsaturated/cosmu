@@ -90,6 +90,47 @@ def test_source_fetch_odds_hourly_fidelity_and_bucket_lag():
     assert all(p.available_at == p.ts + timedelta(hours=1) for p in points)  # +1-bucket lag scales with fidelity
 
 
+def test_source_hourly_uses_windowed_startts_endts_not_interval_max():
+    # DO #4 (readiness 2026-06-26): the trust experiment proved `interval=max&fidelity=60` silently returns
+    # daily-or-NOTHING; true hourly spacing needs explicit startTs/endTs WINDOWS. The hourly path must therefore
+    # NOT carry interval=max — it must carry startTs + endTs, paged across the market's life.
+    urls: list[str] = []
+
+    def clob(url: str):
+        urls.append(url)
+        # Serve ONE window's worth of hourly rows for the first page, then empty (so paging terminates).
+        if "startTs" in url and len([u for u in urls if "startTs" in u]) == 1:
+            base = 1709251200  # 2024-03-01
+            return {"history": [{"t": base + 3600 * h, "p": 0.40 + 0.001 * h} for h in range(24)]}
+        return {"history": []}
+
+    src = PerMarketOddsSource(_gamma_fetcher=_gamma_for({_CID: _YES_TOKEN}), _clob_fetcher=clob)
+    points = src.fetch_odds(_CID, fidelity=60)
+    assert points, "hourly windowed fetch returned rows"
+    # Hourly path: every URL is a windowed request (startTs+endTs+fidelity=60), NEVER interval=max.
+    assert all("startTs=" in u and "endTs=" in u and "fidelity=60" in u for u in urls)
+    assert all("interval=max" not in u for u in urls)
+    # True hourly spacing: consecutive ts are 3600s apart.
+    assert (points[1].ts - points[0].ts) == timedelta(hours=1)
+    # +1-bucket PIT lag scales with the hourly bucket.
+    assert all(p.available_at == p.ts + timedelta(hours=1) for p in points)
+
+
+def test_source_daily_still_uses_interval_max():
+    # The DAILY path is unchanged: the single interval=max call (NO windowing) — byte-identical to before.
+    seen: list[str] = []
+
+    def clob(url: str):
+        seen.append(url)
+        token = url.split("market=", 1)[-1].split("&", 1)[0]
+        return {_YES_TOKEN: _HIST}.get(token, {"history": []})
+
+    src = PerMarketOddsSource(_gamma_fetcher=_gamma_for({_CID: _YES_TOKEN}), _clob_fetcher=clob)
+    points = src.fetch_odds(_CID)  # fidelity defaults to 1440 (daily)
+    assert [round(p.value, 2) for p in points] == [0.40, 0.45, 0.55]
+    assert len(seen) == 1 and "interval=max" in seen[0] and "startTs" not in seen[0]
+
+
 def test_source_empty_on_unresolvable_token():
     src = _source({}, {_YES_TOKEN: _HIST})  # gamma resolves nothing
     assert src.fetch_odds(_CID) == []
