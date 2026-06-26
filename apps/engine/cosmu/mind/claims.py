@@ -18,6 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from cosmu.config.voices import OPENROUTER_FREE_MODEL
 from cosmu.lab.llm import (
     OPENROUTER_URL,
     XAI_URL,
@@ -29,9 +30,11 @@ from cosmu.lab.llm import (
 # stays reproducible. Bump whenever the extraction prompt or the Claim schema changes.
 CLAIM_EXTRACT_VERSION = "claim-extract-v1"
 
-# Cheap tiers — turning a post into a handful of typed claims needs no frontier model.
+# Cheap tiers — turning a post into a handful of typed claims needs no frontier model. The DEFAULT extraction
+# model is an OpenRouter `:free` variant (the RATCHET, see config/voices.py::OPENROUTER_FREE_MODEL) so the lane is
+# ~$0: `:free` models do not draw down the OpenRouter credit. xAI/Grok stays an optional override (not the default).
 _XAI_MODEL = "grok-3-mini"
-_OPENROUTER_MODEL = "openai/gpt-4o-mini"
+_OPENROUTER_MODEL = OPENROUTER_FREE_MODEL
 
 # Controlled vocabularies. Direction is the predicted move; horizon is the (canonical) time-to-resolution. Keeping
 # both as a fixed set is what makes Phase 2's deterministic resolution possible — a free-form "soon" cannot be
@@ -285,15 +288,17 @@ class ClaimExtractor:
 
 
 def build_claim_extractor_from_settings(settings) -> ClaimExtractor:  # noqa: ANN001 — cosmu.config.settings.Settings
-    """Build the extractor WITH the operator's LLM key wired in — xAI preferred (already on Railway), OpenRouter
-    fallback, both OpenAI-compatible. With NO key the chat seam is None so the extractor ingests nothing (honest
-    degradation). The LLM is NEVER on the gate/scoring/money path."""
+    """Build the extractor WITH the operator's LLM key wired in. RATCHET: the DEFAULT extraction lane is an
+    OpenRouter `:free` model (`OPENROUTER_FREE_MODEL`) so the lane is ~$0 — `:free` variants do not draw down the
+    OpenRouter credit. xAI/Grok is an OPTIONAL override (only when no OpenRouter key is set but an xAI key is). With
+    NO key at all the chat seam is None so the extractor ingests nothing (honest degradation). The LLM is NEVER on
+    the gate/scoring/money path."""
     chat: ChatFn | None = None
     model_id = _OPENROUTER_MODEL
-    if getattr(settings, "xai_api_key", None):
+    if getattr(settings, "openrouter_api_key", None):
+        chat = openrouter_chat(settings.openrouter_api_key, url=OPENROUTER_URL)
+        model_id = _OPENROUTER_MODEL  # the locked `:free` model — ~$0
+    elif getattr(settings, "xai_api_key", None):
         chat = openrouter_chat(settings.xai_api_key, url=XAI_URL)
         model_id = _XAI_MODEL
-    elif getattr(settings, "openrouter_api_key", None):
-        chat = openrouter_chat(settings.openrouter_api_key, url=OPENROUTER_URL)
-        model_id = _OPENROUTER_MODEL
     return ClaimExtractor(chat=chat, model_id=model_id)

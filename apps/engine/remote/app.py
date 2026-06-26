@@ -214,6 +214,11 @@ def tick() -> int:
     rc = _run(["cosmu.master.scheduler"])   # discovery: author → gate/FDR → fund SIM survivors
     _run(["cosmu.orchestrator.loop"])        # paper clock: mark held positions to the latest real close
     _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
+    _run(["cosmu.ingest.voices_template"])   # LLM-voices/authority lane TEMPLATE: mock by default ($0, no network/
+    #                                          LLM); VOICES_LIVE_ENABLED=1 flips to keyless retrieval + OpenRouter
+    #                                          :free extraction (still ~$0). Observe-only — proposes + scores the
+    #                                          credibility scoreboard + the 2 PIT features; the Gate alone funds.
+    #                                          Runs BEFORE agent_run so the authority signal the Mind reads is fresh.
     _run(["cosmu.strategy.agent_run"])       # observe-only LLM strategies: reason (Mind panel) + record traces ($0)
     # CAPITAL-GUARD auto-monitor: a reduce-only safety supervisor over the live book (floor liquidation +
     # profit-lock trim). Guarded by live_enabled so it is a strict NO-OP until a venue is armed (with nothing

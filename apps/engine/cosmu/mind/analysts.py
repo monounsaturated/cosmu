@@ -44,6 +44,12 @@ PER_SYMBOL_METRICS: frozenset[str] = frozenset(
     }
 )
 
+# The credibility metric the Authority analyst reads — per-asset (BTC authority ≠ ETH authority), BUT keyed in
+# alt_data by ENTITY ("BTC"), not the analyst's venue symbol ("BTCUSDT"). So it is resolved on its OWN entity-keyed
+# path (resolve_authority_signal), never through the symbol-keyed PER_SYMBOL_METRICS read below (which would query
+# symbol="BTCUSDT" and find nothing). Kept out of PER_SYMBOL_METRICS deliberately for that reason.
+AUTHORITY_SIGNAL_METRIC = "authority_weighted_claim_signal"
+
 
 @dataclass(frozen=True)
 class Stance:
@@ -119,13 +125,41 @@ def context_for_symbol(store: Store, base: MindContext, symbol: str) -> MindCont
     from cosmu.ingest.alt_summary import latest_value_per_metric_for_symbol
 
     shared = {m: v for m, v in base.values.items() if m not in PER_SYMBOL_METRICS}
+    # The authority signal is also per-symbol but lives under an ENTITY key, so strip any inherited market-wide
+    # value and resolve it on its own entity-keyed path (None when this symbol has no mapped entity / no row).
+    shared.pop(AUTHORITY_SIGNAL_METRIC, None)
     per_symbol = latest_value_per_metric_for_symbol(store, symbol, sorted(PER_SYMBOL_METRICS))
     merged = {**shared, **per_symbol}
+    authority = resolve_authority_signal(store, symbol)
+    if authority is not None:
+        merged[AUTHORITY_SIGNAL_METRIC] = authority
     as_of: str | None = None
     for _, available_at in merged.values():
         if available_at and (as_of is None or available_at > as_of):
             as_of = available_at
     return replace(base, values=merged, as_of=as_of)
+
+
+def resolve_authority_signal(store: Store, symbol: str) -> tuple[float, str | None] | None:
+    """Read the latest authority_weighted_claim_signal for `symbol` from alt_data. The credibility pipeline stores
+    this feature keyed by ENTITY ('BTC'), not the analyst's venue symbol ('BTCUSDT'), so map the symbol back to its
+    entity first (via ENTITY_BARS_SYMBOL, inverted). Returns (value, available_at) PIT, or None when the symbol has
+    no mapped entity or no ingested authority row yet (honest abstain — never a cross-asset or fabricated value)."""
+    from cosmu.config.voices import ENTITY_BARS_SYMBOL
+    from cosmu.ingest.alt_summary import latest_value_per_metric_for_symbol
+
+    entity = _SYMBOL_TO_ENTITY.get(symbol)
+    if entity is None:
+        entity = next((e for e, s in ENTITY_BARS_SYMBOL.items() if s == symbol), None)
+        _SYMBOL_TO_ENTITY[symbol] = entity  # cache the (possibly-None) resolution
+    if entity is None:
+        return None
+    got = latest_value_per_metric_for_symbol(store, entity, [AUTHORITY_SIGNAL_METRIC])
+    return got.get(AUTHORITY_SIGNAL_METRIC)
+
+
+# symbol → entity cache for the authority lookup (built lazily from ENTITY_BARS_SYMBOL on first miss).
+_SYMBOL_TO_ENTITY: dict[str, str | None] = {}
 
 
 def _latest_values(store: Store) -> dict[str, tuple[float, str | None]]:
@@ -371,6 +405,41 @@ def social_news_analyst(ctx: MindContext) -> Stance:
     )
 
 
+def authority_analyst(ctx: MindContext) -> Stance:
+    """The CREDIBILITY pillar — reads `authority_weighted_claim_signal`, a [-1, +1] consensus of recent claims on
+    this asset weighted by each voice's price-anchored track record (Brier-skill vs base rate), primacy, and
+    lead-lag (foresight vs echo). A positive shift = credible voices turning bullish before it is priced; a
+    loud-but-wrong account barely registers (influence ≠ authority). LOW confidence + half weight by design: it
+    must earn its place out-of-sample through the gate, and it abstains until the credibility pass has ingested a
+    signal for this entity. This is the LLM-voices lane reading its own authority socle — observe-only, never funds."""
+    hit = _val(ctx, AUTHORITY_SIGNAL_METRIC)
+    if hit is None:
+        return _abstain("Authority", "market", "Credible-voice authority signal not ingested for this asset yet.",
+                        low_confidence=True)
+    value, asof = hit
+    # value is already a credibility-weighted directional consensus in [-1, +1]; map sign → lean, |value| → conviction.
+    conviction = round(_clamp01(0.3 + abs(value) * 0.6), 3)
+    if value > 0.1:
+        lean, label = "bullish", "credible voices lean up"
+    elif value < -0.1:
+        lean, label = "bearish", "credible voices lean down"
+    else:
+        lean, label, conviction = "neutral", "no credible consensus", 0.35
+    return Stance(
+        perspective="Authority",
+        kind="market",
+        lean=lean,
+        conviction=conviction,
+        weight=0.5,
+        headline=f"Authority {value:+.2f} — {label}",
+        rationale="Price-anchored credibility: voices weighted by whether their PAST dated calls beat the base "
+                  "rate (Brier-skill), were FIRST (primacy), and LED vs ECHOED events. Must earn its place OOS.",
+        evidence=[f"{AUTHORITY_SIGNAL_METRIC}={value:+.2f}"],
+        as_of=asof,
+        low_confidence=True,
+    )
+
+
 def positioning_analyst(ctx: MindContext) -> Stance:
     """Crowded-leverage read: perp funding (z), open interest, basis, and exchange netflow. Extreme positive
     funding = crowded longs (cautious). (The liquidation-cascade leg was dropped 2026-06-26 — that feature is
@@ -501,6 +570,7 @@ ALL_ANALYSTS: tuple[Callable[[MindContext], Stance], ...] = (
     macro_analyst,
     sentiment_analyst,
     social_news_analyst,
+    authority_analyst,
     positioning_analyst,
     osint_analyst,
     ml_analyst,
