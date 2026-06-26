@@ -182,7 +182,6 @@ _STORE_PROVIDER_OF = {
     "news_event_score": "news",  # typed event/news scorer: sign × magnitude, stored per-symbol
     "pm_risk_on": "polymarket",
     "macro_regime": "fred",
-    "liquidation_cascade": "coinglass",
     "putcall_ratio": "cboe",
     "vix_level": "fred",
     "fed_funds_rate": "fred",
@@ -322,7 +321,6 @@ _STORE_MARKET_WIDE = frozenset({
 # so data written under the old name is still accessible until re-ingested under the canonical name.
 _STORE_METRIC_ALIAS: dict[str, str] = {
     "pm_risk_on": "risk_on",
-    "liquidation_cascade": "liquidations",
 }
 
 # Semantic-REQUEST alias: a metric NAME a consumer asks for that is not itself a canonical stored series, but

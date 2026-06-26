@@ -102,7 +102,7 @@ def test_run_once_accepts_knowledge_store(tmp_path):
     store = Store(Settings(database_url=f"sqlite:///{tmp_path}/k.sqlite3", openrouter_api_key=None))
     providers = Providers(
         funding=funding, feargreed=feargreed, news=news, fred=funding, polymarket=funding,
-        liquidations=funding, putcall=funding, defillama=funding, open_interest=funding, basis=funding,
+        putcall=funding, defillama=funding, open_interest=funding, basis=funding,
         netflow=funding, osint=funding, polymarket_clob=funding, reddit=funding, lunarcrush=funding,
     )
     counts = run_once(store, symbols=["BTCUSDT"], providers=providers)

@@ -1,4 +1,4 @@
-# intent: the one-pass, cron-able free-data ingest CLI — arrange the free sources once, hit go, fill the append-only point-in-time alt-data store; inputs: the real free providers (funding/F&G/GDELT news/FRED macro/Polymarket odds/Coinglass liquidations/CBOE put-call), injectable so tests run offline on fixtures; outputs: per-source append counts into the store the cross-asset gate reads; invariants: append-only + point-in-time (re-runs never rewrite the view), ZERO API keys required, ONE pass per invocation (NOT a daemon), per-source failure is caught and logged as a 0 count so one dead source never aborts the pass, and the LLM runs ONLY at news standardization (cached, offline lexicon by default).
+# intent: the one-pass, cron-able free-data ingest CLI — arrange the free sources once, hit go, fill the append-only point-in-time alt-data store; inputs: the real free providers (funding/F&G/GDELT news/FRED macro/Polymarket odds/CBOE put-call), injectable so tests run offline on fixtures; outputs: per-source append counts into the store the cross-asset gate reads; invariants: append-only + point-in-time (re-runs never rewrite the view), ZERO API keys required, ONE pass per invocation (NOT a daemon), per-source failure is caught and logged as a 0 count so one dead source never aborts the pass, and the LLM runs ONLY at news standardization (cached, offline lexicon by default).
 
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ from cosmu.data.altdata import (
     BinanceBasisProvider,
     BinanceOpenInterestProvider,
     CboePutCallProvider,
-    CoinglassLiquidationProvider,
     DefiLlamaTvlProvider,
     DeribitDvolProvider,
     ExchangeNetflowProvider,
@@ -58,7 +57,6 @@ from cosmu.data.universe import perp_universe
 from cosmu.ingest.llm_formatter import build_event_formatter_from_settings
 from cosmu.ingest.pipeline import (
     MemoizingProvider,
-    ingest_liquidations,
     ingest_market_wide_numeric,
     ingest_news_event_score,
     ingest_news_sentiment,
@@ -114,7 +112,6 @@ class Providers:
     news: NewsProvider = field(default_factory=GdeltNewsProvider)
     fred: AltDataProvider = field(default_factory=FredMacroProvider)
     polymarket: AltDataProvider = field(default_factory=lambda: PolymarketGammaProvider())
-    liquidations: AltDataProvider = field(default_factory=CoinglassLiquidationProvider)
     putcall: AltDataProvider = field(default_factory=CboePutCallProvider)
     defillama: AltDataProvider = field(default_factory=DefiLlamaTvlProvider)
     open_interest: AltDataProvider = field(default_factory=BinanceOpenInterestProvider)
@@ -360,7 +357,6 @@ def run_once(store=None, *, symbols: list[str] | None = None, providers: Provide
             store, p.polymarket, source_metric=p.polymarket_token, stored_metric="pm_risk_on", provider_name="polymarket"
         ),
     )
-    counts["liquidation_cascade"] = _safe("liquidation_cascade", lambda: ingest_liquidations(store, p.liquidations, symbols))
     counts["putcall_ratio"] = _safe("putcall_ratio", lambda: ingest_putcall(store, p.putcall))
     # FRED-derived macro features (key from env: FRED_API_KEY)
     counts["dxy"] = _safe(

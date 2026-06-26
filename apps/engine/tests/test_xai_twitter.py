@@ -222,7 +222,7 @@ def test_run_once_includes_twitter_counts(tmp_path) -> None:
 
     providers = Providers(
         funding=empty, feargreed=empty, news=empty, fred=empty, polymarket=empty,
-        liquidations=empty, putcall=empty, defillama=empty, open_interest=empty, basis=empty,
+        putcall=empty, defillama=empty, open_interest=empty, basis=empty,
         netflow=empty, osint=empty, polymarket_clob=empty, reddit=empty, lunarcrush=empty,
         xai_twitter=_provider_offline(),  # real offline provider
     )
@@ -246,7 +246,7 @@ def test_no_key_in_run_once_counts_zero(tmp_path) -> None:
 
     providers = Providers(
         funding=empty, feargreed=empty, news=empty, fred=empty, polymarket=empty,
-        liquidations=empty, putcall=empty, defillama=empty, open_interest=empty, basis=empty,
+        putcall=empty, defillama=empty, open_interest=empty, basis=empty,
         netflow=empty, osint=empty, polymarket_clob=empty, reddit=empty, lunarcrush=empty,
         xai_twitter=no_key_provider,
     )

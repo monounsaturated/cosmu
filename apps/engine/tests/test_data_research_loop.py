@@ -43,7 +43,6 @@ def _fixture_providers() -> Providers:
     or (MARKET, native-id) exactly like the real free APIs the run CLI defaults to."""
     funding = FixtureAltDataProvider({(s, "funding_rate"): _series("funding_rate", base=0.0001) for s in _CRYPTO})
     feargreed = FixtureAltDataProvider({("MARKET", "fear_greed"): _series("fear_greed", base=50.0)})
-    liquidations = FixtureAltDataProvider({(s, "liquidations"): _series("liquidations", base=1_000_000.0) for s in _CRYPTO})
     putcall = FixtureAltDataProvider({("MARKET", "putcall_ratio"): _series("putcall_ratio", base=0.9)})
     # The two market-wide cross-asset transfer series, keyed by their NATIVE source ids (mapped to the
     # semantic risk_on / macro_regime names at ingest, as ingest_market_wide_numeric does).
@@ -54,7 +53,7 @@ def _fixture_providers() -> Providers:
     multiasset = FixtureAltDataProvider({("MARKET", m): _series(m, base=100.0) for m in ("gold_xau", "spx_index", "eurusd")})
     return Providers(
         funding=funding, feargreed=feargreed, news=news, fred=fred, polymarket=polymarket,
-        liquidations=liquidations, putcall=putcall, multiasset=multiasset,
+        putcall=putcall, multiasset=multiasset,
         fred_series="T10Y2Y", polymarket_token="risk-on",
     )
 
@@ -84,7 +83,7 @@ def test_run_once_populates_store_with_positive_counts(tmp_path, monkeypatch):
     astore = AltDataStore(root=tmp_path / "alt")
     counts = run_once(astore, symbols=list(_CRYPTO), providers=_fixture_providers())
 
-    for source in ("funding_rate", "fear_greed", "news_sentiment", "macro_regime", "pm_risk_on", "liquidation_cascade", "putcall_ratio"):
+    for source in ("funding_rate", "fear_greed", "news_sentiment", "macro_regime", "pm_risk_on", "putcall_ratio"):
         assert counts[source] > 0, f"{source} should ingest > 0 points from fixtures"
     # the cross-asset transfer series landed under their SEMANTIC names at the MARKET key
     assert astore.read_all("polymarket", "MARKET", "pm_risk_on")

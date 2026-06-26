@@ -33,7 +33,6 @@ _FEATURE_HINTS: dict[str, str] = {
     "cross-sectional": "xsec_momentum_rank", "rank": "xsec_momentum_rank",
     # ── perp / derivatives ─────────────────────────────────────────────────────
     "funding": "funding_rate", "basis": "perp_spot_basis", "open interest": "open_interest",
-    "liquidation": "liquidation_cascade", "cascade": "liquidation_cascade",
     "dvol": "dvol", "implied vol": "dvol", "options": "dvol",
     # ── macro / cross-asset ────────────────────────────────────────────────────
     "vix": "vix_level", "fear index": "vix_level",

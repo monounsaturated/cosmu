@@ -34,7 +34,6 @@ _TERM_TO_FEATURE: dict[str, str] = {
     "funding_rate": "funding_rate", "funding": "funding_rate", "carry": "funding_rate",
     "perp_spot_basis": "perp_spot_basis", "basis": "perp_spot_basis",
     "open_interest": "open_interest", "leverage": "open_interest",
-    "liquidation_cascade": "liquidation_cascade",
     # sentiment / crowd
     "fear_greed": "fear_greed", "news_sentiment": "news_sentiment", "sentiment": "news_sentiment",
     "reddit_sentiment": "reddit_sentiment", "social_sentiment": "social_sentiment",

@@ -9,26 +9,6 @@ from datetime import UTC, datetime, timedelta
 from ._types import AltDataPoint, _ssl_context
 
 
-def _points_from_coinglass(payload: dict, bucket_seconds: int) -> list[AltDataPoint]:
-    """Coinglass liquidation_history: {"data": [{"createTime"/"t": ms, "longLiquidationUsd",
-    "shortLiquidationUsd"} | {"turnoverNumber"/"value": usd}]}. Sum long+short into one total liquidated
-    USD per bucket; a bucket observed at ts is available one bucket later (it closes before publication)."""
-    rows = payload.get("data", []) or []
-    out: list[AltDataPoint] = []
-    for row in rows:
-        raw_ts = row.get("createTime", row.get("t", row.get("time")))
-        if raw_ts is None:
-            continue
-        ts_seconds = int(raw_ts) / 1000 if int(raw_ts) > 10**11 else int(raw_ts)
-        ts = datetime.fromtimestamp(ts_seconds, tz=UTC)
-        if "longLiquidationUsd" in row or "shortLiquidationUsd" in row:
-            value = float(row.get("longLiquidationUsd", 0) or 0) + float(row.get("shortLiquidationUsd", 0) or 0)
-        else:
-            value = float(row.get("turnoverNumber", row.get("value", 0)) or 0)
-        out.append(AltDataPoint(ts=ts, available_at=datetime.fromtimestamp(ts_seconds + bucket_seconds, tz=UTC), value=value))
-    return sorted(out, key=lambda p: p.ts)
-
-
 def _points_from_deribit_dvol(payload: dict, limit: int) -> list[AltDataPoint]:
     """Deribit get_volatility_index_data: {"result": {"data": [[ts_ms, open, high, low, close], ...]}}.
     We use the `close` (daily DVOL value at bar-end). `available_at = ts + 1 day` — a daily bar opens at
@@ -155,33 +135,6 @@ class BinanceBasisProvider:
         basis = (mark - index) / index
         ts = datetime.fromtimestamp(int(row.get("time", 0)) / 1000, tz=UTC)
         return [AltDataPoint(ts=ts, available_at=ts, value=basis)]
-
-
-class CoinglassLiquidationProvider:
-    """Coinglass free liquidations history (no key on the public history endpoint). Numeric → no LLM.
-    Per-symbol metric "liquidations" (total long+short USD liquidated in the bucket). Coinglass closes a
-    bucket before it publishes it, so a bucket observed at time T is available at the NEXT bucket boundary
-    (here +1 day for the daily interval) — a conservative point-in-time floor, never look-ahead."""
-
-    def __init__(self, base_url: str = "https://open-api.coinglass.com", interval: str = "1d", bucket_seconds: int = 86400, *, _fetcher: Callable[[str], dict] | None = None) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.interval = interval
-        self.bucket_seconds = bucket_seconds
-        self._fetcher = _fetcher or self._fetch
-
-    def _fetch(self, url: str) -> dict:
-        req = urllib.request.Request(url, headers={"User-Agent": "cosmu-engine/0.1"})
-        with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-
-    def fetch_series(self, symbol: str, metric: str, *, limit: int) -> list[AltDataPoint]:
-        if metric != "liquidations":
-            return []
-        coin = symbol[:-4] if symbol.endswith("USDT") else symbol
-        query = urllib.parse.urlencode({"symbol": coin, "interval": self.interval})
-        url = f"{self.base_url}/public/v2/liquidation_history?{query}"
-        payload = self._fetcher(url)
-        return _points_from_coinglass(payload, self.bucket_seconds)[-limit:]
 
 
 class DeribitDvolProvider:
