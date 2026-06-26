@@ -60,6 +60,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
   "allow_network: opt-out of the session-wide socket guard (for tests that genuinely need a live connection)",
+  "real_backup_probe: heartbeat tests that exercise the genuine _newest_backup_age_h (opt out of the fresh-backup stub)",
 ]
 
 [tool.ruff]

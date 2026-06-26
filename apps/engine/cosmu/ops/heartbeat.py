@@ -9,6 +9,12 @@
 #   tick   → autonomy_status().last_tick_at        (Modal gate_sweep every 4h)
 #   mark   → MAX(events.ts WHERE kind=tracks_marked) (Modal paper_mark daily)
 #   exec   → MAX(events.ts WHERE kind IN (paper_stepped, forward_entry)) (Modal paper-exec — the EXECUTOR clock)
+#   backup → age of the newest r2://<bucket>/backups/pg/*.dump   (Modal daily_backup at 05:00 UTC)
+#
+# `backup` is the ONLY non-DB signal: the daily_backup cron writes to R2, not the DB, so its liveness can't be
+# read from `events`/`alt_data`. It probes the R2 newest-object age directly (best-effort boto3 list); a silent
+# backup death (Modal evicts the schedule, pg_dump version drift, R2 creds rotate) pages instead of going
+# unnoticed for days — the exact silent-death class this whole module exists to catch.
 #
 # `exec` is the executor-liveness probe: paper_step.step_tracks emits `paper_stepped` EVERY tick (even a tick
 # that opens/closes nothing) and `forward_entry` when a track actually trades. A stalled executor (the paper
@@ -32,8 +38,11 @@ from cosmu.notify.slack import SlackNotifier
 
 # Staleness ceilings in HOURS. None of these gate money; they only decide when to page.
 # `exec` shares the daily paper-clock cadence (paper_step runs alongside paper_mark), so 30h ~= 2x a daily run —
-# a single missed run won't page, a dark executor will.
-DEFAULT_THRESHOLDS_H: dict[str, float] = {"ingest": 3.0, "tick": 9.0, "mark": 30.0, "exec": 30.0}
+# a single missed run won't page, a dark executor will. `backup` rides the same 2x-daily logic: the dump fires
+# at 05:00 UTC daily, so 30h means a single missed run is tolerated but a dark backup job pages.
+DEFAULT_THRESHOLDS_H: dict[str, float] = {
+    "ingest": 3.0, "tick": 9.0, "mark": 30.0, "exec": 30.0, "backup": 30.0,
+}
 
 
 def _age_hours(ts: Any, now: datetime) -> float | None:
@@ -49,9 +58,45 @@ def _age_hours(ts: Any, now: datetime) -> float | None:
     return (now - t).total_seconds() / 3600.0
 
 
-def check(store: Store, *, now: datetime | None = None, thresholds: dict[str, float] | None = None) -> dict[str, Any]:
-    """Compute the age of each fleet signal and which are stale. Pure read; deterministic for a fixed `now`."""
+def _newest_backup_age_h(settings: Settings, now: datetime) -> float | None:
+    """Hours since the newest r2://<bucket>/backups/pg/*.dump. None ⇒ STALE (missing creds / empty prefix /
+    any error). This is the only signal that reads R2 instead of the DB — the daily_backup cron writes there,
+    not to events/alt_data. Best-effort by design: a transient R2 blip returns None (PAGE) rather than crashing
+    the probe, and keyless-degrades (None) in offline tests; prod's `cosmu-engine` secret always carries R2_*."""
+    if not all(
+        (settings.r2_account_id, settings.r2_access_key_id, settings.r2_secret_access_key, settings.r2_bucket)
+    ):
+        return None  # keyless degradation (offline tests); prod secret always has R2_*
+    try:
+        # Reuse pg_backup's R2 client + prefix so the writer and the watcher can never drift on endpoint/path.
+        from cosmu.data.pg_backup import _PREFIX, _r2_client
+
+        s3 = _r2_client(settings)
+        objs = s3.list_objects_v2(Bucket=settings.r2_bucket, Prefix=f"{_PREFIX}/").get("Contents", [])
+        dumps = [o for o in objs if o["Key"].endswith(".dump")]
+        if not dumps:
+            return None  # prefix exists but no dump yet (or all pruned) — treat as stale
+        newest = max(dumps, key=lambda o: o["LastModified"])
+        last_modified = newest["LastModified"]
+        if last_modified.tzinfo is None:  # boto3 returns tz-aware UTC, but be defensive for stubs
+            last_modified = last_modified.replace(tzinfo=UTC)
+        return (now - last_modified).total_seconds() / 3600.0
+    except Exception:  # noqa: BLE001 — a transient R2 error ⇒ page (None), never crash the probe
+        return None
+
+
+def check(
+    store: Store,
+    *,
+    settings: Settings | None = None,
+    now: datetime | None = None,
+    thresholds: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Compute the age of each fleet signal and which are stale. Pure read; deterministic for a fixed `now`.
+    `settings` defaults to the Store's own Settings (which carries the R2_* creds) — the `backup` signal needs
+    it to probe R2; tests inject it (or stub `_newest_backup_age_h`) to stay offline."""
     now = now or datetime.now(UTC)
+    settings = settings or store.settings
     th = {**DEFAULT_THRESHOLDS_H, **(thresholds or {})}
     canary = store.row("SELECT MAX(ingested_at) AS t FROM alt_data")
     marked = store.row("SELECT MAX(ts) AS t FROM events WHERE kind = 'tracks_marked'")
@@ -63,6 +108,7 @@ def check(store: Store, *, now: datetime | None = None, thresholds: dict[str, fl
         "tick": _age_hours(autonomy_status(store).last_tick_at, now),
         "mark": _age_hours(marked.get("t") if marked else None, now),
         "exec": _age_hours(stepped.get("t") if stepped else None, now),
+        "backup": _newest_backup_age_h(settings, now),  # R2 freshness — the only non-DB signal
     }
     # A signal is stale if it has NEVER fired (None) or exceeds its ceiling.
     stale = {k: ages[k] for k in ages if ages[k] is None or ages[k] > th[k]}
