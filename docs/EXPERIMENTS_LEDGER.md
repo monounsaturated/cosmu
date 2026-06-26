@@ -158,10 +158,10 @@ Ranked by leverage. Each crosses the zero-impact line (a live test, a prod wake,
 
 ---
 
-## Surfaced prod bugs (captured during experiments, not fixed under no-impact)
+## Surfaced prod bugs (captured during experiments)
 
-- **`KrakenFuturesFundingRateProvider`** — stale URL + wrong field parse → silently returns `[]` (found in H3).
-- **`liquidation-cascade-zscore-v1`** — direction-blind (sums long+short legs) **and** data-starved (0 rows ever ingested; cron silently failing) (found in H8).
+- **`KrakenFuturesFundingRateProvider`** — ✅ **FIXED (#404, commit `85d7988`, `data/providers/funding.py`).** Was: stale URL + wrong field parse + ms-vs-ISO timestamp parse → silently returned `[]` (found in H3). Now: correct `/derivatives/api/v3/historical-funding-rates` endpoint, `relativeFundingRate` (cross-venue comparable), ISO-8601 timestamp parse, Mozilla UA. Verified live (~8763 rows/~1yr where it previously returned 0). Non-regression re-verified in #416.
+- **`liquidation-cascade-zscore-v1`** — ✅ **GRAVEYARDED (#406, commit `b24b971`).** Was: direction-blind (summed long+short legs, discarding the signed skew) **and** data-starved (0 of ~934k rows ever ingested; keyless Coinglass endpoint now 30001 key-gated) (found in H8). Decision = remove, not repair — no keyless signed-liquidation source is reachable today (Coinglass key-gated, Binance `@forceOrder` geo-blocked, Vision dumps discontinued). See `docs/reports/h8-liquidation-skew-2026-06-25.md`. Re-test if a signed-liquidation feed appears.
 
 ---
 

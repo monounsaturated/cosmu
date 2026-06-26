@@ -1,3 +1,13 @@
+> ⚠️ **ARCHIVED / SUPERSEDED (2026-06-26).** This registry was frozen on **2026-06-07** and is now a historical
+> snapshot — several PRs it lists as "OPEN" (e.g. #134, #136, #140, #142, #143) have long since merged, and the
+> "NEXT" tracks are superseded. **Do not treat any status below as current.** The live sources are:
+> - **`BACKLOG.md`** (repo root) — the canonical Now/Next/Later work queue.
+> - **`docs/EXPERIMENTS_LEDGER.md`** — what was tested, what survived, and surfaced prod bugs.
+>
+> Kept (not deleted) as a record of the 2026-06 campaign's state of play.
+
+---
+
 # COSMU — Open Threads & Ideas Registry (don't forget any)
 
 Updated 2026-06-07. The single place tracking active work, open PRs, parked ideas, and known fixes — so nothing

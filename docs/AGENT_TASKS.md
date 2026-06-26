@@ -1,3 +1,13 @@
+> ⚠️ **ARCHIVED / SUPERSEDED (2026-06-26).** This dispatch queue is a historical snapshot. Several tasks below are
+> marked un-wired but have since SHIPPED — notably **L · `cost-monitor`** (live in `cosmu/costs/`: `operating_costs.py`,
+> `alerts.py`, `fetchers.py`, `refresh.py`) and **M · Slack notifier** (wired: `cosmu/notify/slack.py` +
+> `slack_webhook_url` in `config/settings.py`). **Do not treat task statuses below as current.** The live work queue
+> is **`BACKLOG.md`** (repo root); tested-edge results live in **`docs/EXPERIMENTS_LEDGER.md`**.
+>
+> Kept (not deleted) as a record of the parallel-agent dispatch campaign.
+
+---
+
 # COSMU — Agent Task Prompts (dispatch queue)
 
 > **Copy-paste source for parallel agents.** Each block is a self-contained prompt: paste it into a new
