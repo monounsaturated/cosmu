@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -36,7 +37,7 @@ from cosmu.data.sources.voices import (
 )
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.mind import claims as claims_mod
-from cosmu.mind.authority import authority_weighted_signal, compute_authority
+from cosmu.mind.authority import Event, authority_weighted_signal, compute_authority
 from cosmu.mind.claims import Claim, ClaimExtractor, build_claim_extractor_from_settings
 
 logger = logging.getLogger("cosmu.ingest.voices_pass")
@@ -141,6 +142,55 @@ def _load_all_claims(store: Store) -> list[Claim]:
             ts=ts if ts.tzinfo else ts.replace(tzinfo=UTC), quote=str(r.get("quote") or ""),
             url=str(r.get("url") or ""),
         ))
+    return out
+
+
+# The inverse of the entity→venue-symbol routing: a market_events row affects venue symbols ("BTCUSDT"), but a
+# claim's lead-lag is keyed by entity ("BTC"). Built once from ENTITY_BARS_SYMBOL so the two stay in lock-step.
+_SYMBOL_TO_ENTITY: dict[str, str] = {sym: ent for ent, sym in ENTITY_BARS_SYMBOL.items()}
+
+
+def _load_event_timeline(store: Store, entities: set[str], *, now: datetime) -> list[Event]:
+    """Build the EXTERNAL event timeline that turns each claim's lead-lag from latent to live (assessment §3).
+    A market_events row that PRECEDES a same-entity claim is the claim ECHOING news; one that FOLLOWS it is the
+    claim having FORESIGHT. We read durable `market_events` (news/on-chain/etc.), map each row's affected venue
+    symbols back to a claim entity, and emit one Event per (entity, ts).
+
+    Two deliberate exclusions keep this honest:
+      * provider='voices' is SKIPPED — those rows ARE the voice posts being scored; using them as the event
+        timeline would let a claim be its own evidence (circular). The timeline must be an INDEPENDENT signal.
+      * market-wide rows (no symbols) and rows on unmapped symbols are dropped (named no_data, never guessed).
+    PIT-honest: only events with ts <= now are returned (compute_authority filters again, this just bounds I/O).
+    Offline/degrade-safe: a missing table or empty store yields [] (the pass falls back to lead_lag='none')."""
+    if not entities:
+        return []
+    try:
+        rows = store.rows(
+            "SELECT provider, symbols, ts, title FROM market_events "
+            "WHERE provider <> 'voices' AND ts <= ? ORDER BY ts",
+            (now.isoformat(),),
+        )
+    except Exception:  # noqa: BLE001 — table may not exist on a fresh/legacy store: no timeline this pass
+        return []
+    out: list[Event] = []
+    for r in rows:
+        raw = r.get("symbols")
+        if isinstance(raw, str):
+            try:
+                symbols = json.loads(raw) if raw else []
+            except (TypeError, ValueError):
+                symbols = []
+        else:
+            symbols = list(raw or [])
+        seen_entities: set[str] = set()
+        for sym in symbols:
+            entity = _SYMBOL_TO_ENTITY.get(str(sym))
+            if entity is None or entity not in entities or entity in seen_entities:
+                continue
+            seen_entities.add(entity)
+            ts = datetime.fromisoformat(str(r["ts"]))
+            out.append(Event(ts=ts if ts.tzinfo else ts.replace(tzinfo=UTC), entity=entity,
+                             label=str(r.get("title") or "")[:120]))
     return out
 
 
@@ -257,13 +307,18 @@ def run_voices_pass(
     report.claims_total = len(claims)
     state = None
     if claims:
-        bars = _bars_by_entity({c.entity for c in claims}, bars_provider)
+        entities = {c.entity for c in claims}
+        bars = _bars_by_entity(entities, bars_provider)
         posts_for_graph = [
             claims_mod.VoicePost(handle=p.handle, platform=p.platform, post_id=p.post_id,
                                  text=p.text, ts=p.ts, url=p.url)
             for p in all_pass_posts
         ]
-        state = compute_authority(claims, bars_by_entity=bars, posts=posts_for_graph, as_of=now)
+        # The INDEPENDENT event timeline (news/on-chain) so primacy/lead-lag activates: a claim that PRECEDES a
+        # same-entity event is foresight (evidence); one that FOLLOWS it is an echo. Without this the lead-lag is
+        # latent ('none' for every claim) and the foresight-vs-echo separation proven in the dry-run never fires.
+        events = _load_event_timeline(store, entities, now=now)
+        state = compute_authority(claims, bars_by_entity=bars, posts=posts_for_graph, events=events, as_of=now)
 
         # The two registered PIT features (availability == observation: a credibility judgement is knowable
         # only when made). Appended every pass → the series accrues real recorded-live history for the Gate.

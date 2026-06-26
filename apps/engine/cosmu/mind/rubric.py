@@ -92,6 +92,14 @@ RUBRICS: dict[str, Rubric] = {
         criteria=("news-flow sentiment [-1,1]", "LunarCrush social sentiment", "social volume (attention only)"),
         scale="+1 = strongly positive flow shift; -1 = negative; volume is attention, not direction.",
     ),
+    "Authority": Rubric(
+        pillar="Authority",
+        prior="Price-anchored credibility: voices weighted by whether their PAST dated calls beat the base rate "
+              "(Brier-skill), were FIRST (primacy), and LED vs ECHOED news. Credible voices turning before the "
+              "tape, not loud ones. Influence ≠ authority.",
+        criteria=("authority_weighted_claim_signal [-1,1] (credibility-weighted directional consensus)",),
+        scale="+1 = credible voices lean bullish ahead of the move; -1 = lean bearish; 0 = no credible consensus.",
+    ),
     "Positioning": Rubric(
         pillar="Positioning",
         prior="Funding extremes proxy crowded leverage; OI/basis/netflow confirm the positioning read.",

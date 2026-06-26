@@ -214,6 +214,10 @@ def tick() -> int:
     rc = _run(["cosmu.master.scheduler"])   # discovery: author → gate/FDR → fund SIM survivors
     _run(["cosmu.orchestrator.loop"])        # paper clock: mark held positions to the latest real close
     _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
+    _run(["cosmu.ingest.voices_pass"])       # credibility pass: pull voice timelines → claims → price-anchored
+    #                                          authority scoreboard + the 2 PIT features ($0, observe-only, deduped,
+    #                                          capped). Rides the 4h tick (no 6th Modal schedule) BEFORE agent_run so
+    #                                          the authority signal the Mind panel reads is this pass's fresh value.
     _run(["cosmu.strategy.agent_run"])       # observe-only LLM strategies: reason (Mind panel) + record traces ($0)
     # CAPITAL-GUARD auto-monitor: a reduce-only safety supervisor over the live book (floor liquidation +
     # profit-lock trim). Guarded by live_enabled so it is a strict NO-OP until a venue is armed (with nothing
