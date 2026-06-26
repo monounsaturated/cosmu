@@ -193,6 +193,12 @@ class Settings(BaseSettings):
     # activates with REALTIME_WORKER_ENABLED=1 after local testing (decision 2026-06-11). When off, the
     # Tier-1 crons remain the (slower) data lane; nothing else changes. The worker RECORDS only.
     realtime_worker_enabled: bool = False
+    # The Railway-side cross-monitor of the Modal cron fleet (the watcher's watcher): OFF by default — the
+    # operator flips MODAL_WATCH_ENABLED=1 on the always-on Railway engine. When on, an in-process loop
+    # (cosmu/ops/modal_watch.py) re-runs the shared heartbeat.check() FROM Railway and pages if the Modal-driven
+    # DB signals all go stale (= total Modal death the on-Modal heartbeat can't see itself). Detection only — no
+    # failover/takeover. When off, nothing changes (the on-Modal heartbeat remains the sole watcher).
+    modal_watch_enabled: bool = False
     # Ops toggles (match the existing Railway variable names): the in-process scheduler/autonomy loop
     # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
     scheduler_enabled: bool = True
