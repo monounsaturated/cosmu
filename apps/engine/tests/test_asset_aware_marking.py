@@ -130,6 +130,43 @@ def test_equity_track_return_pct_updates_off_zero(tmp_path):
     assert Decimal(str(row["equity"])) == Decimal("11000.00")
 
 
+def test_versionwide_multileg_arm_track_marks_whole_book_not_one_leg(tmp_path):
+    """REGRESSION (prod 2026-06-26): a LEGACY version-wide arm track (tracks.symbol/venue NULL — the documented
+    multi-leg rotators DAA/PAA/TSMOM/GTAA/RiskParity/Sector) holds N legs across N symbols. The cell resolver
+    re-keys each leg to its OWN cell snapshot, but with no per-cell tracks row to anchor it each cell snapshot was
+    marked to that ONE leg's notional (~capital/N) instead of the whole book — so _update_track_returns read a
+    single fragment as the track equity (DAA $1000 → ~$169 = $1000/6, a phantom -83% forward loss). The fix:
+    a position only adopts the cell key when a real per-cell track owns it; a version-wide track aggregates ALL
+    its legs on the version key. Here 3 equal legs flat at entry must mark the track to its full $1000, not ~$333."""
+    store = _store(tmp_path)
+    pf = Portfolio(store, bankroll=store.settings.sim_bankroll)
+    sv = store.insert("strategies", {"name": "DAA-like multi-leg", "thesis": "x", "origin": "documented",
+                                     "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat()})
+    vid = store.insert(
+        "strategy_versions",
+        {"strategy_id": sv, "parent_id": None, "spec": {}, "generated_code": "", "code_hash": "daa-x",
+         "params": {}, "mutation_operator": None, "mutation_rationale": "x", "origin": "documented",
+         "status": "paper", "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat(),
+         "killed_at": None, "kill_reason": None},
+    )
+    # The legacy VERSION-WIDE track row: symbol/venue NULL (exactly the prod multi-leg arm rows). $1000 capital.
+    store.insert("tracks", {"strategy_version_id": vid, "starting_capital": "1000", "equity": "1000.00",
+                            "return_pct": "0.00", "updated_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC).isoformat()})
+    # Three equal equity legs, ~1/3 of capital each, opened at real basis (the DAA defensive book shape).
+    _open(pf, vid=vid, instrument_id="spy-ibkr", symbol="SPY", venue="ibkr", qty=Decimal("0.5"), price=Decimal("666.67"))
+    _open(pf, vid=vid, instrument_id="agg-ibkr", symbol="AGG", venue="ibkr", qty=Decimal("3.4"), price=Decimal("98.04"))
+    _open(pf, vid=vid, instrument_id="lqd-ibkr", symbol="LQD", venue="ibkr", qty=Decimal("3.08"), price=Decimal("108.23"))
+
+    # Flat: latest close == entry for every leg → the honest track value is exactly its $1000 capital.
+    equity = _FakeProvider({"SPY": 666.67, "AGG": 98.04, "LQD": 108.23})
+    mark_tracks(store, router=PricingRouter(default_catalog(), crypto=_FakeProvider({}), equity=equity))
+
+    row = store.row("SELECT return_pct, equity FROM tracks WHERE strategy_version_id = ?", (vid,))
+    # The bug wrote ~$333 (one leg's notional) and ~-67%. The fix marks the WHOLE book: flat at $1000, 0.00%.
+    assert Decimal(str(row["equity"])) == Decimal("1000.00"), f"version-wide multi-leg track equity={row['equity']} (want 1000.00 — a single-leg fragment is the bug)"
+    assert Decimal(str(row["return_pct"])) == Decimal("0.00")
+
+
 def test_router_resolves_asset_class_for_equity_and_crypto():
     """The router picks the equity provider for an ETF instrument and the crypto provider for a Binance symbol,
     looked up by (symbol, venue) in the catalog — no hardcoded per-symbol routing."""
