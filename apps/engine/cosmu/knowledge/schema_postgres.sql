@@ -414,11 +414,28 @@ create table if not exists gate_verdicts (
   ts text not null, decision text not null, data_source text not null, payload text not null
 );
 
--- Global multiple-testing ledger (trial-count deflation).
+-- Global multiple-testing ledger (trial-count deflation) — the cohort-FAMILY counter the research/FDR gate reads.
 create table if not exists trials (
   id bigint generated always as identity primary key,
   ts text not null, source text not null, label text, sharpe_per_obs numeric not null
 );
+
+-- HONEST TRIAL-COUNT LEDGER: one row per LOOK (every strategy×symbol×venue cell the BRUT finder/loop, seeder,
+-- and exit-envelope sweeps replay). Separate from `trials` (untouched) so the survivor-realness audit deflates
+-- the Deflated Sharpe against the TRUE number of trials, decorrelated per family via the scorer's correlation
+-- haircut (master/trial_ledger.effective_n). `family` = the key looks decorrelate within; `rho_bar` = that
+-- family's measured avg pairwise return corr (NULL ⇒ no haircut). Append-only; never gates/moves money alone.
+create table if not exists trial_ledger (
+  id bigint generated always as identity primary key,
+  ts text not null,
+  lane text not null,
+  family text not null,
+  symbol text,
+  venue text,
+  sharpe_per_obs numeric not null,
+  rho_bar numeric
+);
+create index if not exists idx_trial_ledger_family on trial_ledger(family);
 
 -- Correlation ledger: every correlation_scan finding, TRACKED over time (one row per run × feature × source ×
 -- asset × horizon). PROPOSE-ONLY — a finding is a candidate hypothesis, never an edge (the Gate disposes).

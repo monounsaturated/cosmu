@@ -20,7 +20,12 @@ from decimal import Decimal
 
 from cosmu.config.settings import Settings
 from cosmu.data.alt_join import build_alt_by_symbol, resolve_alt_store
-from cosmu.data.backtest import cell_window_days, equity_curve_points, metrics_for_run, run_strategy_backtest_detailed
+from cosmu.data.backtest import (
+    cell_window_days,
+    equity_curve_points,
+    metrics_for_run,
+    run_strategy_backtest_detailed,
+)
 from cosmu.data.market import (
     Bar,
     EquityOHLCVProvider,
@@ -54,8 +59,14 @@ from cosmu.master.screen_universe import (
     hyperliquid_symbols,
     prediction_markets,
 )
-from cosmu.master.tracks import WATCH_VERDICT, alive_cell_track_exists, is_near_miss_cell, open_paper_track
+from cosmu.master.tracks import (
+    WATCH_VERDICT,
+    alive_cell_track_exists,
+    is_near_miss_cell,
+    open_paper_track,
+)
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
+from cosmu.master.trial_ledger import Look, measure_family_rho, record_looks
 from cosmu.ml.regime import proven_regimes
 from cosmu.spine.universe import enabled_universe
 from cosmu.spine.venue import default_catalog
@@ -143,6 +154,10 @@ class VariantResult:
     # The BRUT per-cell verdicts: {symbol: CellResult}. Each cell is judged independently on its own streams — the
     # unit the funder fans out to a paper track. venue_id carried per cell (the fee axis of the S×A×V triple).
     cells: dict[str, CellResult] = field(default_factory=dict)
+    # This variant's measured cross-cell return correlation (avg pairwise ρ̄ over its symbols' validation streams) —
+    # the decorrelation input the honest trial-count ledger records so a dense correlated family collapses toward
+    # 1/ρ̄ effective trials (master/trial_ledger). None when < 2 streams overlap. Audit-only; never a gate input.
+    rho_bar: float | None = None
 
 
 @dataclass
@@ -606,6 +621,24 @@ class StrategyFinder:
         for r in results:
             r.promoted = r.gate_passed  # brut: a variant "promotes" iff ≥1 of its cells passed (no FDR/cluster gate)
 
+        # HONEST TRIAL-COUNT LEDGER: record EVERY (variant × symbol × venue) cell this family's sweep looked at —
+        # incl. the refine pass and every abandoned tune — so the survivor DSR audit deflates against the TRUE
+        # number of trials, not the per-combo grid count alone (the scariest self-deception flaw). family = the
+        # spec name (one signal family); rho_bar = the family's mean measured cross-cell correlation (the
+        # decorrelation haircut input). Records regardless of `persist` and pass/fail. Best-effort + schema-probe
+        # gated inside record_looks; the locked per-cell BRUT verdict math above is UNCHANGED — only the ledger N
+        # is made honest. A seeder-sweep / exit-envelope-sweep spec is counted here under its own family name.
+        looks = [
+            Look(sharpe_per_obs=float(cell.metrics.sharpe_per_obs), symbol=cell.symbol, venue=cell.venue_id)
+            for r in results
+            for cell in r.cells.values()
+        ]
+        fam_rhos = [r.rho_bar for r in results if r.rho_bar is not None]
+        record_looks(
+            self.store, lane="finder", family=spec.name, looks=looks,
+            rho_bar=(sum(fam_rhos) / len(fam_rhos)) if fam_rhos else None,
+        )
+
         if persist:
             self._persist(spec, results, market, venue, venue_id_by_symbol)
 
@@ -684,6 +717,11 @@ class StrategyFinder:
             per_symbol=detailed.per_symbol,
         )
         result.cells = self._score_cells(detailed, venue, grid_size, venue_id_by_symbol, cell_meta)
+        # Measure this variant's cross-cell return correlation for the honest trial-count ledger (the haircut input
+        # so a correlated family decorrelates instead of inflating the count). Audit-only — never a gate input.
+        result.rho_bar = measure_family_rho(
+            [list(run.bar_returns) for run in detailed.per_symbol_runs.values() if getattr(run, "bar_returns", None)]
+        )
         # The variant's display deflated_sharpe = the BEST cell's deflated Sharpe (a display ranking number; the
         # brut verdict is per cell). gate_passed iff ANY cell passed — a config with one real cell edge qualifies.
         passing = [c for c in result.cells.values() if c.passed]
