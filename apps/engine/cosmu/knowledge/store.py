@@ -611,3 +611,50 @@ def reset_position_exit_state_cache() -> None:
     in prod (the schema is fixed per process)."""
     with _POSITION_EXIT_STATE_LOCK:
         _POSITION_EXIT_STATE_TABLE.clear()
+
+
+# --- schema probe: is the `trial_ledger` table live? -------------------------------------------------
+# Same out-of-band-migration reality as the columns/tables above: `trial_ledger` (the 2026-06-27 migration) is the
+# HONEST trial-count ledger — one row per LOOK the BRUT finder/loop/seeder/exit sweeps take — so the survivor DSR
+# audit can deflate against the TRUE number of trials. Until prod is migrated the table is absent; every ledger
+# write must PROBE and no-op when it is missing (INSERTing into a non-existent table would crash the screen/persist
+# transaction). Absent → the recorders no-op (byte-identical to before this change) and effective_n folds in only
+# the legacy `trials` rows. Memoized per DSN (a migration is an out-of-band, restart-bounded event).
+_TRIAL_LEDGER_TABLE: dict[str, bool] = {}
+_TRIAL_LEDGER_LOCK = threading.Lock()
+
+
+def trial_ledger_available(store: Store) -> bool:
+    """True when the live schema carries the `trial_ledger` table (the honest per-look trial-count ledger).
+
+    Present → the BRUT finder/loop record every look and the survivor audit reads them; absent (pre-migration
+    prod) → the recorders no-op and the effective-N audit falls back to the legacy `trials` rows only, byte-
+    identical to before. Memoized per database_url; tests that ALTER a store's schema in-process call
+    `reset_trial_ledger_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _TRIAL_LEDGER_TABLE.get(key)
+    if cached is not None:
+        return cached
+    with _TRIAL_LEDGER_LOCK:
+        cached = _TRIAL_LEDGER_TABLE.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT table_name FROM information_schema.tables WHERE table_name = 'trial_ledger'"
+            )
+            present = len(rows) > 0
+        else:
+            rows = store.rows(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'trial_ledger'"
+            )
+            present = len(rows) > 0
+        _TRIAL_LEDGER_TABLE[key] = present
+        return present
+
+
+def reset_trial_ledger_cache() -> None:
+    """Clear the per-DSN `trial_ledger` table memo (for tests that create/drop it in-process); never needed in
+    prod (the schema is fixed per process)."""
+    with _TRIAL_LEDGER_LOCK:
+        _TRIAL_LEDGER_TABLE.clear()

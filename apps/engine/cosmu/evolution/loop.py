@@ -37,8 +37,14 @@ from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.master.screen_universe import build_cost_context
-from cosmu.master.tracks import WATCH_VERDICT, alive_cell_track_exists, is_near_miss_cell, open_paper_track
+from cosmu.master.tracks import (
+    WATCH_VERDICT,
+    alive_cell_track_exists,
+    is_near_miss_cell,
+    open_paper_track,
+)
 from cosmu.master.trade_floor import MIN_TRADES_PER_SYMBOL
+from cosmu.master.trial_ledger import Look, measure_family_rho, record_looks
 from cosmu.ml.regime import proven_regimes
 from cosmu.ml.survival import features_from_metrics, load_survival_model
 from cosmu.spine.universe import enabled_universe
@@ -346,6 +352,33 @@ class FarmLoop:
         # killed (the brut equivalent of the old gate-fail), still recording its per-cell rows for visibility.
         for sc in screened:
             sc.cells = self._score_cells(sc)
+
+        # HONEST TRIAL-COUNT LEDGER: record EVERY (candidate × symbol × venue) cell this cohort looked at —
+        # seeds, mutations, wildcards, pine imports, and every abandoned tune — grouped by signal family, with the
+        # family's measured cross-cell return correlation as the decorrelation haircut input. So the survivor DSR
+        # audit deflates against the TRUE number of trials, not the per-combo count of 1 (the scariest self-
+        # deception flaw). Best-effort + schema-probe gated (record_looks); the locked per-cell BRUT verdict math
+        # above is UNCHANGED — only the ledger N is made honest. A seeder-sweep spec is counted under its own
+        # family name; the brut `trials` ledger the research/FDR gate reads is untouched.
+        _fam_looks: dict[str, list[Look]] = {}
+        _fam_rho: dict[str, list[float]] = {}
+        for sc in screened:
+            _fam = sc.cand.spec.name
+            _fam_looks.setdefault(_fam, []).extend(
+                Look(sharpe_per_obs=float(c.metrics.sharpe_per_obs), symbol=c.symbol, venue=c.venue_id)
+                for c in sc.cells.values()
+            )
+            _rho = measure_family_rho(
+                [list(r.bar_returns) for r in (sc.per_symbol_runs or {}).values() if getattr(r, "bar_returns", None)]
+            )
+            if _rho is not None:
+                _fam_rho.setdefault(_fam, []).append(_rho)
+        for _fam, _looks in _fam_looks.items():
+            _rhos = _fam_rho.get(_fam, [])
+            record_looks(
+                self.store, lane="farmloop", family=_fam, looks=_looks,
+                rho_bar=(sum(_rhos) / len(_rhos)) if _rhos else None,
+            )
 
         # CHAMPION-ONLY one-shot holdout, PER CELL (pure compute, before the persist batch). The screen ran
         # include_holdout=False; for each candidate with ≥1 passing cell, re-run WITH the embargoed holdout once and

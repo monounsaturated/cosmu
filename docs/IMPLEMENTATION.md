@@ -30,6 +30,36 @@
   formal **anytime-valid sequential test** (e-process / mixture-SPRT over `live_eligibility.forward_daily_returns`),
   specified in the report §3. No live/money-path code touched.
 
+### Honest trial-count ledger — the DSR deflates against the TRUE number of trials (2026-06-27)
+*Closes the "scariest self-deception flaw" (docs/reports/cross-disciplinary-playbook-2026-06-26.md bridge #2 +
+red-team #1): the DEPLOYED funding path is BRUT (`lab/finder.py` + `evolution/loop.py` → `cohort.promote_brut`),
+which deflated each (strategy×symbol×venue) cell only by its OWN per-combo param-grid count and deliberately
+registered NO global trial. So the N fed into `scorer.expected_max_sharpe` EXCLUDED the seeder sweep, the
+exit-envelope sweep, every cell replayed for a signal family, and abandoned tunes — the Gate was rigorously
+strict on a DISHONEST, undercounted N.*
+- **New `trial_ledger` table** (schema.sql + schema_postgres.sql + migration `2026-06-27_trial_ledger.sql`,
+  schema-probe gated `store.trial_ledger_available` so a pre-migration prod table no-ops): one row per LOOK,
+  tagged `lane` · `family` (the signal family looks decorrelate within) · `symbol` · `venue` · `sharpe_per_obs`
+  · `rho_bar` (the family's measured avg pairwise return corr). Separate from the legacy `trials` family-counter
+  the research/FDR gate reads, so **no existing gate verdict or funding decision changes** — only an audit table
+  is added. Append-only, out of any LLM's reach.
+- **The BRUT finder + loop now record every look** (`record_looks`, best-effort) under their spec's family with
+  the family's measured `rho_bar` — seeds, mutations, wildcards, the exit-envelope fan, AND every abandoned tune.
+  The locked per-cell BRUT verdict math is UNCHANGED (`test_finder_registers_no_trials_brut` still holds — the
+  legacy `trials` count stays 0; the per-cell DSR invariance/parity tests stay green).
+- **Decorrelated EFFECTIVE-N** (`master/trial_ledger.effective_n`) = Σ over families of
+  `scorer.effective_trials(K_family, ρ̄_family)` — REUSES the locked correlation haircut N/(1+(N-1)·ρ̄). A dense
+  correlated family collapses toward 1/ρ̄; across families looks are independent and summed (no cross-family
+  haircut ⇒ N errs HIGHER = stricter = honest). Folds in the legacy `trials` rows for the whole-machine count.
+- **Survivor recompute** (`recompute_dsr_at_honest_n` + CLI `scripts/research/recompute_survivor_dsr.py`):
+  recomputes a survivor's Deflated Sharpe at the honest effective-N and reports whether it STILL clears the
+  LOCKED DSR 0.95 gate. Only N changes — DSR 0.95 / min-trades / PBO / FDR-q are untouched. On the offline
+  fixture the seeded survivor still cleared (synthetic correlated symbols → tiny decorrelated N; synthetic
+  sharpe_per_obs=0.73 → DSR pinned at 1.0), but for a REALISTIC modest survivor (sharpe_per_obs=0.12, n_obs=250)
+  the same real math flips it: DSR 0.970 (clears) at the dishonest N=1 → 0.546 (fails) once N is made honest.
+- 16 new tests (`tests/test_trial_ledger.py`). Compute stays bounded (SQL group-by + arithmetic; recording rides
+  the existing screens — no new backtests).
+
 ### Realtime-data-lane P0+P1 — closed-candle guard, Tier-1 cadences, the event-study machine (2026-06-11)
 *Operator-approved epic (`docs/epics/realtime-data-lane.md`): cut reaction latency from ~24h toward minutes AND
 open the orthogonal-data axis the search campaign demanded — backtesting unstructured events (news/tweets/

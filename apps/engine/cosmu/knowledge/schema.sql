@@ -478,6 +478,27 @@ CREATE TABLE IF NOT EXISTS trials (
   sharpe_per_obs NUMERIC NOT NULL
 );
 
+-- HONEST TRIAL-COUNT LEDGER: one row per LOOK the machine ever took — every (strategy × symbol × venue) cell
+-- replayed by the BRUT finder/loop sweeps, the seeder sweep, and the exit-envelope sweep. The legacy `trials`
+-- table above stays the cohort-FAMILY counter the research/FDR gate reads (untouched); THIS table is the
+-- complete record the survivor-realness audit deflates against, so the Deflated Sharpe sees the TRUE number of
+-- trials, not the per-combo grid count alone. `family` is the key looks DECORRELATE within (the spec/signal
+-- family — a dense correlated grid of one family is NOT K independent tests); `rho_bar` is that family's
+-- measured average pairwise return correlation (NULL = unmeasured ⇒ no haircut ⇒ counted as full independent
+-- trials, the conservative direction). Append-only; out of any LLM's reach; never gates/moves money on its own —
+-- it feeds master/trial_ledger.effective_n (reuses the scorer's correlation haircut) for the honest deflation.
+CREATE TABLE IF NOT EXISTS trial_ledger (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  lane TEXT NOT NULL,            -- 'finder' | 'farmloop' | 'seeder' | 'exit_sweep' | 'research' ...
+  family TEXT NOT NULL,          -- the signal-family key looks decorrelate within (spec name / signal family)
+  symbol TEXT,                   -- the cell's canonical symbol (NULL for a non-cell look)
+  venue TEXT,                    -- the cell's venue (NULL for a non-cell look)
+  sharpe_per_obs NUMERIC NOT NULL,
+  rho_bar NUMERIC                -- the family's measured avg pairwise return corr (NULL ⇒ no haircut)
+);
+CREATE INDEX IF NOT EXISTS idx_trial_ledger_family ON trial_ledger(family);
+
 -- Correlation ledger: every correlation_scan finding, TRACKED over time (one row per run × feature × source ×
 -- asset × horizon). PROPOSE-ONLY — a finding is a candidate hypothesis, never an edge (the Gate disposes). Lets the
 -- UI + decay-tracking read how a PIT IC moves run-over-run; deflated_note honestly flags known non-causal features.
