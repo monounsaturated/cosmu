@@ -17,8 +17,14 @@
 #              keeping gate-verified physics. DO NOT thread vol through size_series/_size_at
 #              (that seam MULTIPLIES → double-count trap).
 #
-# T2  DEFERRED — fractional Kelly × √N shrink as a frozen funding-time multiplier on the T1 envelope.
-#     Needs per-trade μ/σ in BacktestMetrics (2 cols). Do NOT reuse sharpe_per_obs (per-bar, wrong base).
+# T2  SHIPPED (this module): fractional-Kelly self-sizing from the Gate's DEFLATED edge, as a FROZEN funding-time
+#     multiplier MULTIPLIED ON TOP of the T1 envelope (exactly like tracks.exposure_factor) — see
+#     `kelly_size_multiplier`. NOT threaded inside size_fraction, so size_fraction stays the gate-verified physics
+#     and backtest==forward parity holds. Derived from the deflated-Sharpe PROBABILITY (not the raw, overfit-prone
+#     Sharpe — that is the whole point) and applied PER CELL on the cell's OWN standalone slice. This is NOT the
+#     removed pooled `rotate`/capped-Kelly-pool allocator (which competed capital ACROSS strategies); it only
+#     decides how much of a single cell's own slice to deploy. The portfolio-axis SIGNAL-crowding clamp that pairs
+#     with it (Khandani-Lo) lives in master/signal_crowding.py and reuses this multiplier.
 #
 # T3  PREMATURE — book-level ERC across the bankroll. Blocker: no starting_capital in loop.register_track.
 #
@@ -33,9 +39,49 @@ _EWMA_LAMBDA: float = 0.94
 _VOL_FLOOR: float = 1e-6   # prevents division by zero; never binds in real assets
 _SIZING_FLOOR: float = 0.001  # floor: never below 0.1% of the track slice
 
+# ── T2 fractional-Kelly constants (LOCKED — sizing constants are NEVER survival knobs / never in param_space) ──
+# Half-Kelly is the prudent fractional-Kelly standard: full Kelly maximises long-run log-growth but is famously
+# fragile to a mis-estimated edge (one bad μ/σ and it over-bets into ruin); half-Kelly keeps ~3/4 of the growth at
+# far lower drawdown. We compound the prudence by deriving the edge from the DEFLATED Sharpe (below), because the
+# raw Sharpe is exactly the number overfitting inflates.
+_KELLY_SCALE: float = 0.5
+# A gate-passed cell never sizes below 10% of its T1 envelope — it must keep deploying a real, scoreable forward
+# stream (the forward/paper test is the fluke safeguard; a cell sized to dust can't prove or disprove itself).
+_KELLY_FLOOR: float = 0.10
+
 
 def _clamp01(x: float) -> float:
     return max(0.0, min(float(x), 1.0))
+
+
+def kelly_size_multiplier(
+    deflated_edge: float,
+    *,
+    kelly_scale: float = _KELLY_SCALE,
+    floor: float = _KELLY_FLOOR,
+) -> float:
+    """Fractional-Kelly capital multiplier in [floor, kelly_scale] derived from the Gate's DEFLATED edge.
+
+    `deflated_edge` is the deflated-Sharpe PROBABILITY in [0, 1] (master/scorer.deflated_sharpe_prob — persisted as
+    backtests.deflated_sharpe and carried as Track.rolling_dsr): P(true per-obs Sharpe > the trial-count-inflated
+    benchmark). It already prices in non-normality AND how hard we searched (the effective trial count), so sizing
+    on it — never on the raw in-sample Sharpe — refuses to bet big on an edge that only looks good because we looked
+    a lot. Deriving Kelly from the DEFLATED edge is the entire point: the un-deflated Sharpe is the quantity that
+    overfitting inflates, so it is the worst possible thing to lever on.
+
+    Fractional (half-)Kelly: a maximal-confidence edge (deflated_edge → 1) deploys `kelly_scale` (default 0.5) of
+    its T1 vol-target envelope; a barely-confirmed edge deploys proportionally less, floored at `floor` so a passed
+    cell still produces a scoreable forward stream. Monotone non-decreasing in the edge.
+
+    Applied as a FROZEN funding-time scalar MULTIPLIED ON TOP of `size_fraction` (the same seam as
+    tracks.exposure_factor) — NOT threaded inside it — so size_fraction stays the exact gate-verified physics and
+    the backtest==forward==live parity (audit #7) is preserved. PER-CELL + self-funding: this scales a cell's OWN
+    standalone slice from ITS OWN edge; it is NOT a pooled cross-strategy allocator (the removed `rotate` /
+    capped-Kelly-pool concept that competed capital across strategies). PURE: no I/O, no DB, deterministic.
+    """
+    edge = _clamp01(deflated_edge)
+    scale = max(0.0, float(kelly_scale))
+    return max(float(floor), scale * edge)
 
 
 def compute_target_vol(price_returns: list[float]) -> float | None:
