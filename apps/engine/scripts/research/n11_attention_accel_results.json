@@ -1,0 +1,219 @@
+{
+  "summary": {
+    "N_events": 298,
+    "N_shuffle_events": 4327,
+    "tokens_seen": 26,
+    "tokens_with_bars": 26,
+    "tokens_with_wiki": 22,
+    "tokens_used": 22,
+    "z_thresh": 2.5,
+    "z_window": 60,
+    "h_fwd": 5,
+    "net_cost_roundtrip": 0.005,
+    "forward": {
+      "real_mean": -0.0018957312095058006,
+      "real_per_day": -0.00037914624190116015,
+      "shuffle_mean": -0.0021747232743391737,
+      "shuffle_p": 0.4392
+    },
+    "lead_lag": {
+      "reverse_mean_minus1": -0.0015204537307557551,
+      "forward_mean_plus1": 0.003506137837834131,
+      "forward_per_day": -0.00037914624190116015,
+      "symmetry_ratio_abs": 4.010203881045254,
+      "symmetry_ratio_matched_1d": 0.43365486500524886
+    },
+    "net_forward_leg": {
+      "n": 298,
+      "mean_net": -0.006895731209505802,
+      "std": 0.11590165346066728,
+      "t_stat": -1.027067117315147,
+      "sharpe_per_event": -0.0594964006432053,
+      "psr_vs_zero": 0.16648621891475385
+    }
+  },
+  "verdict": "KILL",
+  "reasons": [
+    "forward mean does NOT beat the shuffle-null band: real -0.0019 vs shuffle -0.0022, shuffle_p=0.4392 (>=0.05 => price autocorrelation, not attention)",
+    "lead-lag is SYMMETRIC: |reverse(-1) -0.0015| vs per-day forward -0.0004, ratio=4.010203881045254 (>=0.5 => attention is COINCIDENT, not predictive)",
+    "net forward leg mean -0.006895731209505802 <= 0 after 50bps round-trip cost"
+  ],
+  "per_token": {
+    "ADAUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1886,
+      "bars": 999,
+      "events": 15,
+      "mean_fwd": 0.030139343175431533,
+      "shuffle_events_total": 71
+    },
+    "ALGOUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1837,
+      "bars": 999,
+      "events": 16,
+      "mean_fwd": -0.020715255655475467,
+      "shuffle_events_total": 386
+    },
+    "AVAXUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1651,
+      "bars": 999,
+      "events": 17,
+      "mean_fwd": -0.03346588866427365,
+      "shuffle_events_total": 131
+    },
+    "BTCUSDT": {
+      "venue": "bybit",
+      "wiki_days": 4000,
+      "bars": 999,
+      "events": 14,
+      "mean_fwd": -0.010578684584801138,
+      "shuffle_events_total": 135
+    },
+    "DOGEUSDT": {
+      "venue": "bybit",
+      "wiki_days": 4000,
+      "bars": 999,
+      "events": 15,
+      "mean_fwd": -0.017030483943323335,
+      "shuffle_events_total": 172
+    },
+    "DOTUSDT": {
+      "venue": "bybit",
+      "wiki_days": 2000,
+      "bars": 999,
+      "events": 15,
+      "mean_fwd": -0.016352061329683087,
+      "shuffle_events_total": 119
+    },
+    "EOSUSDT": {
+      "venue": "bybit",
+      "wiki_days": 3060,
+      "bars": 1000,
+      "events": 15,
+      "mean_fwd": 0.01385722278226791,
+      "shuffle_events_total": 61
+    },
+    "ETHUSDT": {
+      "venue": "bybit",
+      "wiki_days": 4000,
+      "bars": 999,
+      "events": 19,
+      "mean_fwd": -0.039779367056268666,
+      "shuffle_events_total": 128
+    },
+    "FILUSDT": {
+      "venue": "bybit",
+      "wiki_days": 3242,
+      "bars": 999,
+      "events": 14,
+      "mean_fwd": -0.07840222908363129,
+      "shuffle_events_total": 213
+    },
+    "INJUSDT": {
+      "venue": "bybit",
+      "wiki_days": 656,
+      "bars": 999,
+      "events": 14,
+      "mean_fwd": -0.009701886388951517,
+      "shuffle_events_total": 119
+    },
+    "LINKUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1818,
+      "bars": 999,
+      "events": 14,
+      "mean_fwd": 0.05620943608433476,
+      "shuffle_events_total": 227
+    },
+    "LTCUSDT": {
+      "venue": "bybit",
+      "wiki_days": 4000,
+      "bars": 999,
+      "events": 23,
+      "mean_fwd": -0.010457015196923044,
+      "shuffle_events_total": 112
+    },
+    "MATICUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1413,
+      "bars": 1000,
+      "events": 1,
+      "mean_fwd": -0.10676797542570618,
+      "shuffle_events_total": 429
+    },
+    "MKRUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1313,
+      "bars": 1000,
+      "events": 10,
+      "mean_fwd": -0.007989220748080951,
+      "shuffle_events_total": 121
+    },
+    "OPUSDT": {
+      "venue": "bybit",
+      "wiki_days": 711,
+      "bars": 999,
+      "events": 3,
+      "mean_fwd": -0.22635292308974927,
+      "shuffle_events_total": 78
+    },
+    "PEPEUSDT": {
+      "venue": "bybit",
+      "wiki_days": 4000,
+      "bars": 999,
+      "events": 16,
+      "mean_fwd": 0.1400963476207068,
+      "shuffle_events_total": 716
+    },
+    "SOLUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1751,
+      "bars": 999,
+      "events": 11,
+      "mean_fwd": -0.03988175214807818,
+      "shuffle_events_total": 121
+    },
+    "TRXUSDT": {
+      "venue": "bybit",
+      "wiki_days": 1843,
+      "bars": 999,
+      "events": 19,
+      "mean_fwd": 0.031303879619814644,
+      "shuffle_events_total": 141
+    },
+    "UNIUSDT": {
+      "venue": "bybit",
+      "wiki_days": 2037,
+      "bars": 999,
+      "events": 15,
+      "mean_fwd": 0.05479603428280432,
+      "shuffle_events_total": 83
+    },
+    "XLMUSDT": {
+      "venue": "bybit",
+      "wiki_days": 4000,
+      "bars": 999,
+      "events": 16,
+      "mean_fwd": -0.0165000783412779,
+      "shuffle_events_total": 232
+    },
+    "XRPUSDT": {
+      "venue": "bybit",
+      "wiki_days": 404,
+      "bars": 999,
+      "events": 2,
+      "mean_fwd": 0.1358797238361806,
+      "shuffle_events_total": 18
+    },
+    "XTZUSDT": {
+      "venue": "bybit",
+      "wiki_days": 2918,
+      "bars": 999,
+      "events": 14,
+      "mean_fwd": -0.04245881078992747,
+      "shuffle_events_total": 514
+    }
+  }
+}
