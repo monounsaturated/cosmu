@@ -1,6 +1,6 @@
 ---
 name: wallet-live
-description: Review + summarise the LIVE (real-money) wallet — the arming interlock (toggle · resolved mode · caps · configured venues), the live cohort (status='live' versions), real-money positions (venue ≠ sim), invested / realized P&L / budget headroom, and live fills. Degrades gracefully to "no live wallet yet — here's the arming state + armable candidates" when nothing is armed (the usual case). Read-only; NEVER places, cancels, or sizes an order. Use when the operator says "wallet live", "live wallet", "are we live", or wants a real-money summary.
+description: Review the live (real-money) wallet — arming interlock, live positions, P&L and budget headroom; degrades to "no live yet + armable candidates". Read-only, never trades. Use for "wallet live" / "are we live".
 ---
 
 # wallet-live

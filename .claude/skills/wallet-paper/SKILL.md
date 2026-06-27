@@ -1,6 +1,6 @@
 ---
 name: wallet-paper
-description: Review + summarise the PAPER (forward-test) wallet — the aggregate book (Σ allocated + P&L, mirrors /overview) and every paper cell ranked by OUTLIER (seed → marked value → P&L%, mirrors /leaderboard), plus open positions, fees paid, and the killed/screened funnel. Read-only diagnostic; never moves money. Use when the operator says "wallet paper", "paper wallet", "how's paper doing", or wants a forward-test P&L summary.
+description: Review the paper (forward-test) wallet — aggregate book, per-cell P&L ranked by outlier, open positions, fees, lifecycle funnel. Read-only, never moves money. Use for "wallet paper" / "how's paper doing".
 ---
 
 # wallet-paper
