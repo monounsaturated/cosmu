@@ -100,6 +100,11 @@ class StratStreams:
     net: list[float]          # monthly NET-of-fee total return of the strategy
     bench: list[float]        # Buy&Hold SPY total return over the SAME months (the risk-adjusted reference)
     is_disconfirmer: bool = False
+    # GROSS (pre-fee) monthly total return, parallel to `net`. Read ONLY by the worst-regime stress harness
+    # (research/equity_taa_stress) to recover each month's realized rebalance cost as (gross - net) for the
+    # LTCM forced-exit re-pricing. The Gate path NEVER reads this — _metrics()/metrics_with_holdout score the
+    # `net` stream only — so it is inert to disposition. Empty for streams whose loader has no gross series.
+    gross: list[float] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -113,7 +118,8 @@ def _s_gem() -> StratStreams:
     start = gem.first_investable_month(series, gem.LOOKBACK_MONTHS)
     r = gem.run_gem(series, lookback=gem.LOOKBACK_MONTHS, fee_bps_per_side=gem.IBKR_ETF_BPS_PER_SIDE,
                     start=start, end=_last_complete_month())
-    return StratStreams("gem", "Global Equities Momentum (GEM, Antonacci)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("gem", "Global Equities Momentum (GEM, Antonacci)", r.months, r.net_returns, r.spy_returns,
+                        gross=r.gross_returns)
 
 
 def _s_gtaa() -> StratStreams:
@@ -121,7 +127,8 @@ def _s_gtaa() -> StratStreams:
     start = gtaa.first_investable_month(series, gtaa.SMA_MONTHS)
     r = gtaa.run_gtaa(series, window=gtaa.SMA_MONTHS, fee_bps_per_side=gtaa.IBKR_ETF_BPS_PER_SIDE,
                       start=start, end=_last_complete_month())
-    return StratStreams("faber_gtaa", "Faber GTAA (5-asset, 10mo SMA)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("faber_gtaa", "Faber GTAA (5-asset, 10mo SMA)", r.months, r.net_returns, r.spy_returns,
+                        gross=r.gross_returns)
 
 
 def _s_adm() -> StratStreams:
@@ -130,7 +137,8 @@ def _s_adm() -> StratStreams:
     start = adm._first_investable_month(series, bonds)
     r = adm.run_adm(series, bonds=bonds, fee_bps_per_side=adm.IBKR_ETF_BPS_PER_SIDE,
                     start=start, end=_last_complete_month())
-    return StratStreams("accel_dual_momentum", "Accelerating Dual Momentum (ADM)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("accel_dual_momentum", "Accelerating Dual Momentum (ADM)", r.months, r.net_returns,
+                        r.spy_returns, gross=r.gross_returns)
 
 
 def _s_risk_parity() -> StratStreams:
@@ -141,14 +149,16 @@ def _s_risk_parity() -> StratStreams:
     # SPY is in the basket, so its realized return exists for every month the strategy traded -> aligned, no None.
     spy = data[rp.BENCH_SPY]
     bench = [rp.month_return(spy, m, rp._add_months(m, -1)) for m in r.months]
-    return StratStreams("risk_parity", "Risk Parity (inverse-vol SPY/AGG/GLD)", r.months, r.net_returns, bench)
+    return StratStreams("risk_parity", "Risk Parity (inverse-vol SPY/AGG/GLD)", r.months, r.net_returns, bench,
+                        gross=r.gross_returns)
 
 
 def _s_vaa() -> StratStreams:
     series = {s: vaa.load_monthly(s) for s in vaa.VAA_SERIES}
     start = vaa.first_investable_month(series)
     r = vaa.run_vaa(series, fee_bps_per_side=vaa.IBKR_ETF_BPS_PER_SIDE, start=start, end=_last_complete_month())
-    return StratStreams("vaa", "Vigilant Asset Allocation (VAA-G4, Keller)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("vaa", "Vigilant Asset Allocation (VAA-G4, Keller)", r.months, r.net_returns, r.spy_returns,
+                        gross=r.gross_returns)
 
 
 def _s_tsmom() -> StratStreams:
@@ -156,7 +166,8 @@ def _s_tsmom() -> StratStreams:
     start = tsmom.first_investable_month(series, tsmom.LOOKBACK_MONTHS)
     r = tsmom.run_tsmom(series, lookback=tsmom.LOOKBACK_MONTHS, fee_bps_per_side=tsmom.IBKR_ETF_BPS_PER_SIDE,
                         start=start, end=_last_complete_month())
-    return StratStreams("tsmom_trend", "Time-Series Momentum (TSMOM 5-ETF)", r.months, r.net_returns, r.bench_returns)
+    return StratStreams("tsmom_trend", "Time-Series Momentum (TSMOM 5-ETF)", r.months, r.net_returns, r.bench_returns,
+                        gross=r.gross_returns)
 
 
 def _s_qqq() -> StratStreams:
@@ -165,7 +176,8 @@ def _s_qqq() -> StratStreams:
     start = qqq.first_investable_month(series, qqq.LOOKBACK_MONTHS)
     r = qqq.run(series, lookback=qqq.LOOKBACK_MONTHS, fee_bps_per_side=qqq.IBKR_ETF_BPS_PER_SIDE,
                 start=start, end=_last_complete_month())
-    return StratStreams("dual_momentum_qqq", "Dual Momentum QQQ (tech-tilt)", r.months, r.net_returns, r.bench_returns)
+    return StratStreams("dual_momentum_qqq", "Dual Momentum QQQ (tech-tilt)", r.months, r.net_returns, r.bench_returns,
+                        gross=r.gross_returns)
 
 
 def _s_sector() -> StratStreams:
@@ -174,7 +186,8 @@ def _s_sector() -> StratStreams:
     start = sector.first_investable_month(me, sector.LOOKBACK_MONTHS, sector.SMA_DAYS, series)
     r = sector.run_rotation(series, me, top_k=sector.TOP_K, lookback=sector.LOOKBACK_MONTHS, sma_days=sector.SMA_DAYS,
                             fee_bps_per_side=sector.ETF_BPS_PER_SIDE, start=start, end=_last_complete_month())
-    return StratStreams("sector_rotation", "Sector-Momentum Rotation (TAA Top-3)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("sector_rotation", "Sector-Momentum Rotation (TAA Top-3)", r.months, r.net_returns,
+                        r.spy_returns, gross=r.gross_returns)
 
 
 def _s_paa() -> StratStreams:
@@ -182,21 +195,24 @@ def _s_paa() -> StratStreams:
     start = paa.first_investable_month(series, paa.SMA_MONTHS)
     r = paa.run_paa(series, window=paa.SMA_MONTHS, fee_bps_per_side=paa.IBKR_ETF_BPS_PER_SIDE,
                     start=start, end=_last_complete_month())
-    return StratStreams("paa", "Protective Asset Allocation (PAA, Keller)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("paa", "Protective Asset Allocation (PAA, Keller)", r.months, r.net_returns, r.spy_returns,
+                        gross=r.gross_returns)
 
 
 def _s_daa() -> StratStreams:
     series = {s: daa.load_monthly(s) for s in daa.DAA_SERIES}
     start = daa.first_investable_month(series)
     r = daa.run_daa(series, fee_bps_per_side=daa.IBKR_ETF_BPS_PER_SIDE, start=start, end=_last_complete_month())
-    return StratStreams("daa", "Defensive Asset Allocation (DAA, Keller)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("daa", "Defensive Asset Allocation (DAA, Keller)", r.months, r.net_returns, r.spy_returns,
+                        gross=r.gross_returns)
 
 
 def _s_haa() -> StratStreams:
     series = {s: haa.load_monthly(s) for s in haa.HAA_SERIES}
     start = haa.first_investable_month(series)
     r = haa.run_haa(series, fee_bps_per_side=haa.IBKR_ETF_BPS_PER_SIDE, start=start, end=_last_complete_month())
-    return StratStreams("haa", "Hybrid Asset Allocation (HAA, Keller 2023)", r.months, r.net_returns, r.spy_returns)
+    return StratStreams("haa", "Hybrid Asset Allocation (HAA, Keller 2023)", r.months, r.net_returns, r.spy_returns,
+                        gross=r.gross_returns)
 
 
 # --- disconfirmers (ride in the cohort so FDR/CSCV see them; both EXPECTED to fail) ---------------------------
