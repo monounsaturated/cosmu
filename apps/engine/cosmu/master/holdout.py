@@ -35,3 +35,14 @@ class HoldoutLedger:
         )
         self.store.append_event(actor="master", kind="holdout_consumed", ref_type="strategy_version", ref_id=version_id, payload={"verdict": verdict})
         return verdict
+
+    def invalidate(self, version_id: str) -> bool:
+        """Re-arm the one-shot exam: drop this version's spent verdict so the holdout may be read ONCE more. The
+        ONLY caller is a blinding RE-BLIND (cosmu/master/blinding) — the recipe changed after the box was opened,
+        so the verdict on the books belongs to a different recipe and must be re-earned. Never called from the
+        ordinary loop (that would defeat the one-shot invariant). Returns True iff a stored verdict was cleared."""
+        if not self.consumed(version_id):
+            return False
+        self.store.rows("DELETE FROM holdout_ledger WHERE version_id = ?", (version_id,))
+        self.store.append_event(actor="master", kind="holdout_rearmed", ref_type="strategy_version", ref_id=version_id, payload={})
+        return True

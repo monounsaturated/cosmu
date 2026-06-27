@@ -394,6 +394,20 @@ create table if not exists holdout_ledger (
   evaluated_at text not null
 );
 
+-- Hidden-box BLINDING commit (particle-physics discipline): freeze a version's RECIPE hash before its untouched
+-- holdout/forward set is first read, so the holdout is blind by CONSTRUCTION. The Gate refuses to score a version
+-- whose recipe_hash drifted past its LATEST commit until a FRESH commit re-blinds it (which also invalidates the
+-- spent holdout, forcing a re-exam). recipe_hash covers the scientific spec + fitted params, NOT routing labels.
+create table if not exists blinding_commits (
+  id text primary key,
+  version_id text not null,
+  recipe_hash text not null,
+  reason text not null,
+  committed_at text not null,
+  unique (version_id, recipe_hash)
+);
+create index if not exists idx_blinding_commits_version on blinding_commits(version_id);
+
 -- Edge-gate verdicts (monitoring).
 create table if not exists gate_verdicts (
   id bigint generated always as identity primary key,

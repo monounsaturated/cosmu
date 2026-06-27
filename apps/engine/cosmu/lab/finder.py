@@ -41,6 +41,7 @@ from cosmu.knowledge.store import (
     tracks_has_cell_columns,
     utcnow,
 )
+from cosmu.master.blinding import BlindingLedger
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.holdout import HoldoutLedger
@@ -914,8 +915,13 @@ class StrategyFinder:
         # the ledger (separate transaction; idempotent on version_id) so the finder can never re-pick on the
         # holdout. Only variants with a passing cell ever took the exam (champion-only holdout).
         ledger = HoldoutLedger(self.store)
+        blinding = BlindingLedger(self.store)
         for r in results:
             if r.version_id and r.gate_passed and not ledger.consumed(r.version_id):
+                # Hidden-box discipline: FREEZE the recipe hash (blinding commit) BEFORE opening the box, so the
+                # holdout verdict below is pinned to exactly this recipe. A later in-place spec edit then drifts the
+                # recipe_hash past this commit and the Gate refuses to re-score it without a fresh re-blind.
+                blinding.commit(r.version_id, reason="holdout_first_read")
                 ledger.evaluate_once(
                     r.version_id,
                     lambda r=r: {"passed": r.holdout_passed, "deflated_sharpe": round(r.deflated_sharpe, 6)},

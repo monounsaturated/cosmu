@@ -444,6 +444,22 @@ CREATE TABLE IF NOT EXISTS holdout_ledger (
   evaluated_at TEXT NOT NULL
 );
 
+-- Hidden-box BLINDING commit (particle-physics discipline): freeze a version's RECIPE hash before its untouched
+-- holdout/forward set is first read, so the holdout is blind by CONSTRUCTION, not convention. The Gate refuses to
+-- score a version whose recipe_hash drifted past its LATEST commit (a post-unblinding edit) until a FRESH commit
+-- re-blinds it (which also invalidates the spent holdout, so a re-blind forces a re-exam). recipe_hash covers the
+-- scientific spec (entry/exit/universe/param_space/...) + the fitted numeric params — NOT routing labels. One row
+-- per (version_id, recipe_hash): the first read commits the recipe; an honest re-blind appends a new row.
+CREATE TABLE IF NOT EXISTS blinding_commits (
+  id TEXT PRIMARY KEY,
+  version_id TEXT NOT NULL,
+  recipe_hash TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  committed_at TEXT NOT NULL,
+  UNIQUE (version_id, recipe_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_blinding_commits_version ON blinding_commits(version_id);
+
 -- Edge-gate verdicts: each run of the stop-or-go research gate, for monitoring from the UI.
 CREATE TABLE IF NOT EXISTS gate_verdicts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
