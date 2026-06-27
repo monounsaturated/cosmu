@@ -13,7 +13,7 @@ from cosmu.api._shared import (
     settings,
     store,
 )
-from cosmu.knowledge.store import backtest_symbols_has_oos_window
+from cosmu.knowledge.store import backtest_symbols_has_oos_window, backtest_symbols_has_timeframe
 from cosmu.api.models import (
     AuthorRequest,
     AuthorResponse,
@@ -78,7 +78,7 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
 _CELL_SELECT_BASE = (
     "SELECT bs.strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
     "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, "
-    "{cell_window}b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at "
+    "{cell_window}{cell_timeframe}b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at "
     "FROM backtest_symbols bs "
     "JOIN strategy_versions sv ON sv.id = bs.strategy_version_id "
     "JOIN strategies s ON s.id = sv.strategy_id "
@@ -88,11 +88,13 @@ _CELL_SELECT_BASE = (
 
 def _cell_select() -> str:
     """The per-cell SELECT, schema-adaptive: includes `bs.oos_window_days AS cell_window_days` (each cell's OWN
-    validation window) ONLY when the live `backtest_symbols` table carries the column. On a pre-migration prod
-    table the column is OMITTED entirely (SELECTing it would raise UndefinedColumn) and `_cell_row` falls back to
-    the parent backtest's shared window. The probe is memoized per DSN (see knowledge/store.py)."""
+    validation window) AND `bs.timeframe AS cell_timeframe` (the LOT-C 4th axis) ONLY when the live
+    `backtest_symbols` table carries each column. On a pre-migration prod table a missing column is OMITTED entirely
+    (SELECTing it would raise UndefinedColumn) and `_cell_row` falls back (the window → the parent backtest's shared
+    window; the timeframe → NULL, resolved client-side to the spec's single bar_size). Probes memoized per DSN."""
     cell_window = "bs.oos_window_days AS cell_window_days, " if backtest_symbols_has_oos_window(store) else ""
-    return _CELL_SELECT_BASE.format(cell_window=cell_window)
+    cell_timeframe = "bs.timeframe AS cell_timeframe, " if backtest_symbols_has_timeframe(store) else ""
+    return _CELL_SELECT_BASE.format(cell_window=cell_window, cell_timeframe=cell_timeframe)
 
 
 def _cell_row(r: dict) -> LabSymbolRow:
@@ -123,6 +125,7 @@ def _cell_row(r: dict) -> LabSymbolRow:
         status=r.get("status") or "",
         symbol=r["symbol"],
         venue_id=r.get("venue_id"),
+        timeframe=r.get("cell_timeframe"),  # the LOT-C 4th axis; NULL for legacy/pre-migration cells (one bar_size)
         return_pct=_metric(r["return_pct"]),
         return_pct_annualized=ann,
         return_pct_annualized_lo=ann_lo,
@@ -144,11 +147,13 @@ def _dedup_cells(rows: list[dict]) -> list[dict]:
     them to one. Rows arrive created_at DESC, so the FIRST seen wins → the LATEST version's cell. This is HONEST:
     latest, never the best-RETURN version (best-of-N selection bias). Crucially the key still carries venue_id: the
     SAME edge on the SAME symbol at two venues is two DISTINCT combos (the fee axis differs) and must NEVER be
-    collapsed into one — that was the older bug that hid a venue's P&L behind its sibling's."""
-    seen: set[tuple[str, str, str]] = set()
+    collapsed into one — that was the older bug that hid a venue's P&L behind its sibling's. The key ALSO carries the
+    timeframe (the LOT-C 4th axis): the SAME edge on the SAME symbol+venue at two timeframes (1h vs 1d) is likewise two
+    DISTINCT combos and must not collapse (a NULL/legacy timeframe normalises to "" so single-tf cells are unchanged)."""
+    seen: set[tuple[str, str, str, str]] = set()
     deduped: list[dict] = []
     for r in rows:
-        key = (r["strategy_id"], r["symbol"], r.get("venue_id") or "")
+        key = (r["strategy_id"], r["symbol"], r.get("venue_id") or "", r.get("cell_timeframe") or "")
         if key in seen:
             continue
         seen.add(key)
@@ -202,6 +207,7 @@ def _track_only_row(r: dict) -> LabSymbolRow:
 @router.get("/lab/symbols", response_model=LabSymbolsResponse)
 def lab_symbols(symbol: str | None = None, venue: str | None = None,
                 verdict: str | None = None, version_id: str | None = None,
+                timeframe: str | None = None,
                 limit: int = 500) -> LabSymbolsResponse:
     """Per-symbol backtest cells — one row per (strategy × symbol × venue) TRIPLET, the granular truth the pooled
     leaderboard averages away. ONE row per combo (algo × asset × venue): a strategy's many versions on the SAME
@@ -229,10 +235,15 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
     if version_id:
         conds.append("bs.strategy_version_id = ?")
         params.append(version_id)
+    # The timeframe filter (LOT-C 4th axis) is applied ONLY when the column is live — a pre-migration prod table has no
+    # `timeframe` column, so the predicate would raise UndefinedColumn. Absent → the filter is silently a no-op.
+    if timeframe and backtest_symbols_has_timeframe(store):
+        conds.append("bs.timeframe = ?")
+        params.append(timeframe)
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
-    # Track-only rows only make sense unfiltered (or filtered to a specific version_id) — a symbol/venue/verdict
-    # filter is asking for cells, which a track-only (uncomputed) version has none of.
-    include_track_only = not (symbol or venue or verdict)
+    # Track-only rows only make sense unfiltered (or filtered to a specific version_id) — a symbol/venue/verdict/
+    # timeframe filter is asking for cells, which a track-only (uncomputed) version has none of.
+    include_track_only = not (symbol or venue or verdict or timeframe)
     with store.reading():
         # Fetch latest-first so the per-triplet dedup below keeps the most recent version's cell, then we
         # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
@@ -242,6 +253,17 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
             r["venue_id"]
             for r in store.rows("SELECT DISTINCT venue_id FROM backtest_symbols WHERE venue_id IS NOT NULL ORDER BY venue_id")
         ]
+        # Distinct timeframes present (the LOT-C 4th-axis filter chip) — queried ONLY when the column is live (a
+        # pre-migration prod table has no `timeframe` column → empty list, no crash, no chip). Today's single-tf world
+        # surfaces at most one value, so the filter is invisible until multi-tf is deliberately enabled.
+        timeframes = (
+            [
+                r["timeframe"]
+                for r in store.rows("SELECT DISTINCT timeframe FROM backtest_symbols WHERE timeframe IS NOT NULL ORDER BY timeframe")
+            ]
+            if backtest_symbols_has_timeframe(store)
+            else []
+        )
         track_only: list[dict] = []
         if include_track_only:
             vsql = _TRACK_ONLY_SELECT
@@ -260,7 +282,7 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
         seen_strategies = {r["strategy_id"] for r in deduped}
         fresh = [r for r in track_only if r["strategy_id"] not in seen_strategies]
         out += [_track_only_row(r) for r in fresh[: max(1, limit) - len(out)]]
-    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, min_trades=int(settings.gates.min_trades))
+    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, timeframes=timeframes, min_trades=int(settings.gates.min_trades))
 
 
 @router.post("/lab/author/run", response_model=CohortSummaryResponse)

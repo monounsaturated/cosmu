@@ -43,9 +43,11 @@ from cosmu.knowledge.store import (
     Writer,
     backtest_symbols_has_equity_curve,
     backtest_symbols_has_oos_window,
+    backtest_symbols_has_timeframe,
     tracks_has_cell_columns,
     utcnow,
 )
+from cosmu.lab.depth import screen_depth
 from cosmu.master.blinding import BlindingLedger
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
@@ -158,6 +160,10 @@ class VariantResult:
     # the decorrelation input the honest trial-count ledger records so a dense correlated family collapses toward
     # 1/ρ̄ effective trials (master/trial_ledger). None when < 2 streams overlap. Audit-only; never a gate input.
     rho_bar: float | None = None
+    # The TIMEFRAME (bar size) this variant was screened on — the LOT-C 4th axis. It is the spec's own bar_size for a
+    # single-tf spec (the default), or the per-tf value when an author opted into Horizon.bar_sizes. Stamped onto each
+    # backtest_symbols cell at persist time so two timeframes of one (strat, symbol, venue) are DISTINCT combos.
+    timeframe: str = ""
 
 
 @dataclass
@@ -431,7 +437,10 @@ class StrategyFinder:
         venue is the asset-class venue). Prediction markets stay conditionId-keyed (each its own Polymarket cell).
         cell_meta is what stamps the canonical pair + the real venue on each backtest_symbols row + the per-cell
         paper track."""
-        limit = 1500 if spec.horizon.bar_size == "1h" else 1000
+        # The per-screen bar limit routes through the LOT-C depth helper: deep=None → the env knob (default OFF) gives
+        # TODAY's 1500-if-1h-else-1000 mapping, so a normal production screen passes the IDENTICAL limit. A deep screen
+        # (env COSMU_SCREEN_DEEP or the re-screen harness) serves the whole merged cache instead.
+        limit = screen_depth(spec)
         out: dict[str, list[Bar]] = {}
         cell_meta: dict[str, tuple[str, str]] = {}
         # Crypto panel — per-venue cells from the venue-tagged universe_pairs (de-collapses the venue axis). When
@@ -503,6 +512,55 @@ class StrategyFinder:
         CSCV-PBO inject, the cluster-representative dedupe + rep gating, and BH-FDR. The fluke safeguard is the
         forward/paper test (live stays human-only)."""
         spec = spec or seed_orb_fvg_spec()
+
+        # TIMEFRAME AXIS (LOT C): screen the spec ONCE PER timeframe. The default (Horizon.bar_sizes None) yields a
+        # single-element list [bar_size] → the loop runs exactly once with the original spec → byte-identical. When an
+        # author opted into bar_sizes, each tf is a shallow model_copy with horizon.bar_size set to that tf, so ALL
+        # downstream code (spec.horizon.bar_size: _market, build_grid, cost context, backtest annualization) is correct
+        # per-tf and untouched. Each (variant × symbol × venue × tf) is its OWN brut cell; grid_size is recomputed per
+        # tf so the per-cell DSR/PBO deflation stays correct PER cell (trying N timeframes is paid by the forward gate,
+        # exactly like trying N assets — the locked Gate constants are never touched).
+        timeframes = spec.horizon.timeframes()
+        all_results: list[VariantResult] = []
+        grid_total = 0
+        for tf in timeframes:
+            spec_tf = spec if tf == spec.horizon.bar_size and spec.horizon.bar_sizes is None else spec.model_copy(
+                update={"horizon": spec.horizon.model_copy(update={"bar_size": tf, "bar_sizes": None})}
+            )
+            tf_results, tf_grid = self._screen_timeframe(
+                spec_tf, max_variants=max_variants, two_pass=two_pass, persist=persist
+            )
+            for r in tf_results:
+                r.timeframe = tf
+            all_results.extend(tf_results)
+            grid_total += len(tf_grid)
+
+        gate_passers = [r for r in all_results if r.gate_passed]
+        leaderboard = sorted(gate_passers, key=lambda r: (r.profit_factor, r.deflated_sharpe), reverse=True)
+        # A SURVIVOR is a variant with at least one cell that passed the gate AND confirmed on its own holdout.
+        survivors = [r for r in all_results if r.promoted and r.holdout_passed]
+        return FinderReport(
+            strategy_name=spec.name,
+            grid_size=grid_total,
+            screened=len(all_results),
+            gate_passed=len(gate_passers),
+            promoted=len(survivors),
+            leaderboard=leaderboard[:24],
+            survivors=survivors,
+        )
+
+    def _screen_timeframe(
+        self,
+        spec: StrategySpec,
+        *,
+        max_variants: int,
+        two_pass: bool,
+        persist: bool,
+    ) -> tuple[list[VariantResult], list[Variant]]:
+        """Run ONE timeframe's screen pass for `spec` (whose horizon.bar_size is already the target tf): build the
+        market + grid, screen + brut-score every cell, two-pass refine, champion-only per-cell holdout, then persist
+        this tf's results + log experiments. Returns (results, grid) so find() can aggregate across timeframes. For a
+        single-timeframe spec (the default) find() calls this exactly once with the original spec → byte-identical."""
         market, cell_meta = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
         # trials = the per-combo param-grid count — the number of param variants of THIS algorithm tried (the
@@ -644,20 +702,7 @@ class StrategyFinder:
 
         # Experiment-tracking hook (thin, best-effort): log EVERY screened variant to the registry.
         self._log_experiments(spec, results, market)
-
-        gate_passers = [r for r in results if r.gate_passed]
-        leaderboard = sorted(gate_passers, key=lambda r: (r.profit_factor, r.deflated_sharpe), reverse=True)
-        # A SURVIVOR is a variant with at least one cell that passed the gate AND confirmed on its own holdout.
-        survivors = [r for r in results if r.promoted and r.holdout_passed]
-        return FinderReport(
-            strategy_name=spec.name,
-            grid_size=len(grid),
-            screened=len(results),
-            gate_passed=len(gate_passers),
-            promoted=len(survivors),
-            leaderboard=leaderboard[:24],
-            survivors=survivors,
-        )
+        return results, grid
 
     # ------------------------------------------------------------------ screening + honest scoring
 
@@ -865,6 +910,10 @@ class StrategyFinder:
                 # so the screener annualizes the per-cell return over THIS cell's window, not the parent backtest's
                 # shared (longest-cell) window. Schema-adaptive (pre-migration prod lacks it → skip, never crash).
                 _window_col = backtest_symbols_has_oos_window(self.store)
+                # Persist each cell's TIMEFRAME (the LOT-C 4th axis) ONLY when the live schema carries the column —
+                # so two timeframes of one (strat, symbol, venue) are DISTINCT combos, not collapsed. Schema-adaptive
+                # (pre-migration prod lacks it → skip, never crash; the read falls back to the version's spec bar_size).
+                _tf_col = backtest_symbols_has_timeframe(self.store)
                 # `_key` is the market/cell key (bare symbol for the Binance reference, 'PAIR@venue' otherwise). The
                 # PERSISTED `symbol` is the cell's CANONICAL pair (cell.symbol) — never the namespaced cell key — and
                 # `venue_id` is the cell's REAL venue, so backtest_symbols carries the honest S×A×V triple and CAN now
@@ -891,6 +940,10 @@ class StrategyFinder:
                         _bs_row["equity_curve_json"] = json.dumps(cell.equity_curve)
                     if _window_col and cell is not None and cell.oos_window_days is not None:
                         _bs_row["oos_window_days"] = cell.oos_window_days
+                    # The cell's timeframe = this variant's screened tf (LOT C), falling back to the spec's bar_size
+                    # for a legacy single-tf result whose timeframe was never stamped.
+                    if _tf_col:
+                        _bs_row["timeframe"] = r.timeframe or spec.horizon.bar_size
                     b.insert("backtest_symbols", _bs_row)
                 # PER-CELL TRACKS, TWO generous-paper lanes:
                 #   • GATE lane (lane='finder'): a cell that passed the gate AND confirmed on its OWN holdout.

@@ -3931,6 +3931,17 @@
             "title": "Thin",
             "type": "boolean"
           },
+          "timeframe": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeframe"
+          },
           "trades": {
             "title": "Trades",
             "type": "integer"
@@ -3995,6 +4006,14 @@
               "type": "string"
             },
             "title": "Symbols",
+            "type": "array"
+          },
+          "timeframes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Timeframes",
             "type": "array"
           },
           "venues": {
@@ -6988,6 +7007,7 @@
             "type": "string"
           },
           "notes_md": {
+            "default": "",
             "title": "Notes Md",
             "type": "string"
           },
@@ -7109,7 +7129,6 @@
           "params",
           "trades",
           "backtests",
-          "notes_md",
           "holdout"
         ],
         "title": "StrategyDetailResponse",
@@ -8751,6 +8770,22 @@
                 }
               ],
               "title": "Version Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeframe",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Timeframe"
             }
           },
           {
