@@ -121,6 +121,46 @@ def test_reddit_empty_user_returns_empty() -> None:
     assert p.fetch_timeline("u/ghost", limit=10) == []
 
 
+def test_reddit_subreddit_handle_fetches_subreddit_listing_not_user() -> None:
+    # An 'r/<sub>' handle must hit the SUBREDDIT listing (r/<sub>/hot.json), NOT the user endpoint — otherwise a
+    # subreddit voice 404s. Submissions (title + selftext) are the crowd's posts; there is no comments timeline.
+    seen: dict[str, str] = {}
+    subs = [{"id": "x1", "title": "BTC strong", "selftext": "accumulate", "created_utc": 1704067200,
+             "permalink": "/r/Bitcoin/comments/x1"}]
+
+    def fetcher(url: str) -> dict:
+        seen["url"] = url
+        return _reddit_listing("hot", subs)
+
+    p = RedditVoiceProvider(_fetcher=fetcher)
+    posts = p.fetch_timeline("r/Bitcoin", limit=10, now=_READ_AT)
+    assert "/r/Bitcoin/hot.json" in seen["url"] and "/user/" not in seen["url"]
+    assert [x.post_id for x in posts] == ["x1"]
+    assert "BTC strong" in posts[0].text and "accumulate" in posts[0].text
+    assert posts[0].platform == "reddit" and posts[0].available_at == _READ_AT
+
+
+def test_reddit_subreddit_history_paginates_new_and_respects_since() -> None:
+    # A subreddit backfill paginates `new.json` and stops at `since` (available_at == ts, retrospective PIT).
+    _MAR = 1709251200  # 2024-03-01
+    _DEC_2023 = 1701388800  # 2023-12-01
+    rows = [
+        {"id": "new", "title": "March post", "selftext": "", "created_utc": _MAR, "permalink": "/r/Bitcoin/new"},
+        {"id": "old", "title": "Dec post", "selftext": "", "created_utc": _DEC_2023, "permalink": "/r/Bitcoin/old"},
+    ]
+    seen: dict[str, str] = {}
+
+    def fetcher(url: str) -> dict:
+        seen["url"] = url
+        return _reddit_listing("new", rows)
+
+    p = RedditVoiceProvider(_fetcher=fetcher)
+    posts = p.fetch_timeline_history("r/Bitcoin", since=datetime(2024, 1, 1, tzinfo=UTC))
+    assert "/r/Bitcoin/new.json" in seen["url"]
+    assert [x.post_id for x in posts] == ["new"]  # the Dec post pre-dates `since` → excluded
+    assert posts[0].available_at == posts[0].ts  # retrospective PIT stamp
+
+
 # ---------------------------------------------------------------------------
 # RSS / Atom provider
 # ---------------------------------------------------------------------------

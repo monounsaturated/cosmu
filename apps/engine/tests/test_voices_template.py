@@ -79,15 +79,26 @@ def test_mock_scoreboard_separates_sniper_from_spammer(tmp_path):
 # --------------------------------------------------------------------------- 3. the pre-registered starter panel
 
 
-def test_starter_panel_is_minimal_keyless_and_well_formed():
-    # MINIMAL: exactly the two starter voices (small + cheap + easy to extend).
-    assert len(VOICE_PANEL) == 2
+def test_starter_panel_is_small_keyless_and_well_formed():
+    # SMALL: a handful of pre-registered voices (cheap + easy to extend), at least the original two.
+    assert 2 <= len(VOICE_PANEL) <= 12
     # KEYLESS: reddit + rss only — NO X (which would need XAI_API_KEY). The whole lane runs at $0 with no key.
     platforms = {v.platform for v in VOICE_PANEL}
     assert platforms <= {"reddit", "rss"} and "x" not in platforms
-    # Well-formed: every voice carries a non-empty registration `why` (the pre-registered, falsifiable hypothesis).
+    # Well-formed: every voice carries a non-empty registration `why` (the pre-registered, falsifiable hypothesis)
+    # and a non-empty handle; handles are unique (no double-counting one source).
+    handles = [v.handle for v in VOICE_PANEL]
+    assert len(handles) == len(set(handles)), "duplicate voice handle in the panel"
     for v in VOICE_PANEL:
+        assert v.handle.strip(), "a voice is missing its handle"
         assert v.why.strip(), f"voice {v.handle} missing its registration rationale"
+    # Reddit handles are subreddits ('r/…') or users ('u/…'/'@…'); RSS handles are feed URLs. Keeps the panel
+    # well-formed for the keyless providers (subreddit support added alongside this extension).
+    for v in VOICE_PANEL:
+        if v.platform == "reddit":
+            assert v.handle.lstrip("@").startswith(("r/", "/r/", "u/", "/u/")), f"odd reddit handle {v.handle}"
+        if v.platform == "rss":
+            assert v.handle.startswith(("http://", "https://")), f"rss handle must be a feed URL: {v.handle}"
     # The entity-routing map covers the majors the panel speaks on (BTC/ETH at minimum).
     assert {"BTC", "ETH"} <= set(ENTITY_BARS_SYMBOL)
 
