@@ -147,11 +147,12 @@ async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: stri
               rows={comparison.rows}
               symbols={comparison.symbols}
               venues={comparison.venues}
+              timeframes={comparison.timeframes}
               minTrades={comparison.min_trades}
               title="Comparison"
               caption={false}
               navigateOnClick
-              highlight={triplet.cell ? { strategy_version_id: triplet.cell.strategy_version_id, symbol: triplet.cell.symbol, venue_id: triplet.cell.venue_id } : undefined}
+              highlight={triplet.cell ? { strategy_version_id: triplet.cell.strategy_version_id, symbol: triplet.cell.symbol, venue_id: triplet.cell.venue_id, timeframe: triplet.cell.timeframe } : undefined}
             />
           </div>
         </div>

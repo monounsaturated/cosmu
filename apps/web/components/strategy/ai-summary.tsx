@@ -78,7 +78,6 @@ export function AiSummary({
   summaryMd,
   stale,
   updatedAt,
-  model,
   specRationale,
   stage,
   gate
@@ -86,8 +85,6 @@ export function AiSummary({
   summaryMd?: string | null;
   stale?: boolean | null;
   updatedAt?: string | null;
-  // Real recorded model id, when the source provides one. Falls back to the honest source label.
-  model?: string | null;
   // The strategy's OWN recorded spec rationale — the honest "what this does" fallback before an agent summary
   // is written. Lifted verbatim from the spec; never generated here.
   specRationale?: string | null;
@@ -99,7 +96,8 @@ export function AiSummary({
   // source so the reader always knows where the text came from — never invented.
   const rationale = specRationale?.trim() || null;
   const usingRationale = !summaryMd && Boolean(rationale);
-  const badge = model ?? (usingRationale ? "from the spec" : "operator's agent");
+  // Badge names the real source so the reader always knows where the text came from — never invented.
+  const badge = usingRationale ? "from the spec" : "operator's agent";
 
   return (
     <div className="psec ai-sec">

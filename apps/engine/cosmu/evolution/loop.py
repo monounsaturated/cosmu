@@ -29,9 +29,11 @@ from cosmu.knowledge.store import (
     Writer,
     backtest_symbols_has_equity_curve,
     backtest_symbols_has_oos_window,
+    backtest_symbols_has_timeframe,
     tracks_has_cell_columns,
     utcnow,
 )
+from cosmu.lab.depth import screen_depth
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
@@ -720,6 +722,12 @@ class FarmLoop:
         # screener annualizes the per-cell return over THIS cell's window, not the parent backtest's shared
         # (longest-cell) window. Schema-adaptive (pre-migration prod lacks it → skip, never crash).
         _window_col = backtest_symbols_has_oos_window(self.store)
+        # Persist each cell's TIMEFRAME (the LOT-C 4th axis) when the live schema carries the column — so two
+        # timeframes of one (strat, symbol, venue) are DISTINCT combos. Schema-adaptive (pre-migration prod lacks it →
+        # skip, never crash; the read falls back to the version's spec bar_size). The FarmLoop screens each candidate at
+        # its own single bar_size, so the cell's timeframe IS the candidate spec's bar_size.
+        _tf_col = backtest_symbols_has_timeframe(self.store)
+        _cell_timeframe = sc.cand.spec.horizon.bar_size
         for _key, _pm in (sc.per_symbol or {}).items():
             cell = sc.cells.get(_key)
             cell_symbol = cell.symbol if cell else _key
@@ -740,6 +748,8 @@ class FarmLoop:
                 _bs_row["equity_curve_json"] = json.dumps(cell.equity_curve)
             if _window_col and cell is not None and cell.oos_window_days is not None:
                 _bs_row["oos_window_days"] = cell.oos_window_days
+            if _tf_col:
+                _bs_row["timeframe"] = _cell_timeframe
             b.insert("backtest_symbols", _bs_row)
         # PER-CELL TRACKS: one standalone paper track per cell that passed the gate AND confirmed on its OWN
         # holdout. Born HONEST (equity=starting_capital, return_pct=0); the paper clock advances forward columns
@@ -1023,8 +1033,7 @@ def _binance_symbols(spec: StrategySpec, enabled_venues: set[str], enabled_class
 
 
 def _bar_limit(spec: StrategySpec) -> int:
-    if spec.horizon.bar_size == "1d":
-        return 1000
-    if spec.horizon.bar_size == "4h":
-        return 1000
-    return 1500
+    # The per-screen bar limit routes through the LOT-C depth helper so the autonomous cron honours the SAME default
+    # (1500/1000) and the SAME explicit opt-in (env COSMU_SCREEN_DEEP) as the finder. deep=None → the env knob (default
+    # OFF) gives today's 1500-if-1h-else-1000 mapping → byte-identical for a normal cron screen.
+    return screen_depth(spec)

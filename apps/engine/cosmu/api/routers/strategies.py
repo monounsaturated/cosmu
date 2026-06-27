@@ -145,7 +145,9 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             Backtest(id=bt["id"], kind=bt["kind"], oos_return=float(bt["oos_return"]), deflated_sharpe=float(bt["deflated_sharpe"]), deflated_sharpe_prob=_deflated_sharpe_prob(bt), max_dd=float(bt["max_dd"]), win_rate=float(bt["win_rate"]), num_trades=int(bt["num_trades"]), pbo=float(bt["pbo"]), passed_gates=bool(bt["passed_gates"]), oos_window_days=oos_window_days(bt["oos_start"], bt["oos_end"]), oos_return_annualized=annualized_return(bt["oos_return"], oos_window_days(bt["oos_start"], bt["oos_end"])))
             for bt in backtests
         ],
-        notes_md="Deterministic WFO accepted this version for the standardized track. Live capital remains gated by the global toggle, sim survival, regime fit, and caps.",
+        # No hardcoded agent-notes boilerplate — the standalone page falls back to its own EmptyState when empty
+        # (real per-version notes are not yet recorded). An honest empty string, never a fabricated narrative.
+        notes_md="",
         holdout=holdout,
         summary_md=summary_md,
         summary_stale=summary_stale,
@@ -489,4 +491,7 @@ def strategy_comparison(version_id: str, limit: int = 500) -> LabSymbolsResponse
     # offers triplets that actually exist for this strategy.
     symbols = sorted({r["symbol"] for r in deduped})
     venues = sorted({r["venue_id"] for r in deduped if r.get("venue_id")})
-    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, min_trades=int(settings.gates.min_trades))
+    # Distinct timeframes (LOT-C 4th axis) for THIS algo's cells — drives the comparison grid's Timeframe filter.
+    # Empty until cells carry a timeframe (pre-migration / single-tf), so the chip stays hidden in today's world.
+    timeframes = sorted({r["cell_timeframe"] for r in deduped if r.get("cell_timeframe")})
+    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, timeframes=timeframes, min_trades=int(settings.gates.min_trades))

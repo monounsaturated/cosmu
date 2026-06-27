@@ -519,6 +519,52 @@ def reset_backtest_symbols_oos_window_cache() -> None:
         _BACKTEST_SYMBOLS_OOS_WINDOW_COLUMN.clear()
 
 
+# --- schema probe: is the per-cell TIMEFRAME column live on `backtest_symbols`? -----------------------
+# Same out-of-band-migration reality as the columns above: `backtest_symbols.timeframe` (the 2026-06-27 migration, LOT
+# C) stamps each cell's OWN bar size so the TIMEFRAME becomes a 4th axis of the (strat × symbol × venue) triple — two
+# timeframes of the same triple are then DISTINCT combos, not siblings collapsed into one. Until prod is migrated the
+# column is absent; the finder/loop persist must PROBE and only write it when present (INSERTing `timeframe` against a
+# pre-migration prod table raises `UndefinedColumn` and would crash the WHOLE cohort/finder persist transaction). The
+# read layer falls back to the version's spec.horizon.bar_size when the cell column is missing/NULL. Memoized per DSN.
+_BACKTEST_SYMBOLS_TIMEFRAME_COLUMN: dict[str, bool] = {}
+_BACKTEST_SYMBOLS_TIMEFRAME_LOCK = threading.Lock()
+
+
+def backtest_symbols_has_timeframe(store: Store) -> bool:
+    """True when the live `backtest_symbols` table carries `timeframe` (the per-cell bar size, the LOT-C 4th axis).
+
+    Present → the finder/loop persist stamps each cell's bar size AND the read layer surfaces it; absent (pre-migration
+    prod) → the write SKIPS the column byte-for-byte (no crash) and the read falls back to the version's spec bar_size.
+    Result is memoized per database_url; tests that ALTER a store's schema in-process call
+    `reset_backtest_symbols_timeframe_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _BACKTEST_SYMBOLS_TIMEFRAME_COLUMN.get(key)
+    if cached is not None:
+        return cached
+    with _BACKTEST_SYMBOLS_TIMEFRAME_LOCK:
+        cached = _BACKTEST_SYMBOLS_TIMEFRAME_COLUMN.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'backtest_symbols'"
+            )
+            names = {r["column_name"] for r in rows}
+        else:
+            rows = store.rows("PRAGMA table_info(backtest_symbols)")
+            names = {r["name"] for r in rows}
+        present = "timeframe" in names
+        _BACKTEST_SYMBOLS_TIMEFRAME_COLUMN[key] = present
+        return present
+
+
+def reset_backtest_symbols_timeframe_cache() -> None:
+    """Clear the per-DSN `backtest_symbols.timeframe` column memo (for tests that ALTER a store's schema in-process);
+    never needed in prod (the schema is fixed per process)."""
+    with _BACKTEST_SYMBOLS_TIMEFRAME_LOCK:
+        _BACKTEST_SYMBOLS_TIMEFRAME_COLUMN.clear()
+
+
 # --- schema probe: is the CROWDING exposure-cap column live on `tracks`? -----------------------------
 # Same out-of-band-migration reality as the columns above: `tracks.exposure_factor` (the 2026-06-19 migration)
 # carries the crowding overlay's per-cell capital cap. Until prod is migrated the column is absent; the funder's

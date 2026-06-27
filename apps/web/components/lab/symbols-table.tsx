@@ -28,32 +28,35 @@ import { cn, formatPct, formatVenue, isKilled, isPaper } from "@/lib/utils";
 const PAGE_SIZE = 100;
 
 // The fiche-triplet URL for a cell (deep-link target; kept for the comparison grid's navigate mode). venue_id is
-// carried as "" for a NULL-venue cell so the sibling stays addressable.
-export function tripletHref(r: { strategy_version_id: string; symbol: string; venue_id: string | null }): string {
-  const qs = new URLSearchParams({ symbol: r.symbol, venue: r.venue_id ?? "" });
+// carried as "" for a NULL-venue cell so the sibling stays addressable. timeframe (the LOT-C 4th axis) rides along
+// so a deep-link resolves the exact (algo × symbol × venue × tf) cell, not a collapsed sibling.
+export function tripletHref(r: { strategy_version_id: string; symbol: string; venue_id: string | null; timeframe?: string | null }): string {
+  const qs = new URLSearchParams({ symbol: r.symbol, venue: r.venue_id ?? "", timeframe: r.timeframe ?? "" });
   return `/strategy/${r.strategy_version_id}?${qs.toString()}`;
 }
 
-export type TripletKey = { strategy_version_id: string; symbol: string; venue_id: string | null };
+export type TripletKey = { strategy_version_id: string; symbol: string; venue_id: string | null; timeframe?: string | null };
 
-// The canonical (algo × symbol × venue) identity of a cell — the unit the operator tracks. Keyed on the ALGO
-// (strategy_id), NOT the version: a strategy's many near-identical versions on the SAME (symbol, venue) are ONE
-// combo, so one triplet = one combo number (the engine already dedups cells to the latest version per triplet).
-// venue_id is normalised to "" so a NULL-venue cell has ONE stable key everywhere (the combo-number map). Single
-// source of triplet identity.
-function comboKeyOf(r: { strategy_id: string; symbol: string; venue_id: string | null }): string {
-  return `${r.strategy_id} ${r.symbol} ${r.venue_id ?? ""}`;
+// The canonical (algo × symbol × venue × timeframe) identity of a cell — the unit the operator tracks. Keyed on the
+// ALGO (strategy_id), NOT the version: a strategy's many near-identical versions on the SAME (symbol, venue, tf) are
+// ONE combo, so one quadruplet = one combo number (the engine already dedups cells to the latest version per cell).
+// venue_id and timeframe are normalised to "" so a NULL-venue / legacy-single-tf cell has ONE stable key everywhere
+// (the combo-number map). Two timeframes of one (algo, symbol, venue) are DISTINCT combos and must NEVER collapse
+// (the same venue-collapse bug the codebase already fixed once, now on the timeframe axis).
+function comboKeyOf(r: { strategy_id: string; symbol: string; venue_id: string | null; timeframe?: string | null }): string {
+  return `${r.strategy_id} ${r.symbol} ${r.venue_id ?? ""} ${r.timeframe ?? ""}`;
 }
 
 // Triplet equality — the FULL (version × symbol × venue) compare with the same `?? ""` NULL-venue normalisation
 // on both sides. Used for BOTH the comparison-grid highlight and the screener's per-cell self-selection so the
 // two never drift (the prior bug: selection compared version-id only, lighting every sibling cell of the algo).
-function sameTriplet(a: TripletKey | null | undefined, b: { strategy_version_id: string; symbol: string; venue_id: string | null }): boolean {
+function sameTriplet(a: TripletKey | null | undefined, b: { strategy_version_id: string; symbol: string; venue_id: string | null; timeframe?: string | null }): boolean {
   return (
     a != null &&
     a.strategy_version_id === b.strategy_version_id &&
     a.symbol === b.symbol &&
-    (a.venue_id ?? "") === (b.venue_id ?? "")
+    (a.venue_id ?? "") === (b.venue_id ?? "") &&
+    (a.timeframe ?? "") === (b.timeframe ?? "")
   );
 }
 
@@ -110,7 +113,7 @@ function LifeBadge({ row }: { row: LabSymbolRow }) {
 
 // Sortable column keys. "combo" and "strategy" are the two identity columns (always shown); the rest are pickable.
 // The legacy "verdict" column is gone; "status" is the per-row lifecycle stage.
-type ColKey = "status" | "return" | "venue" | "symbol" | "trades" | "dd" | "sharpe";
+type ColKey = "status" | "return" | "venue" | "symbol" | "timeframe" | "trades" | "dd" | "sharpe";
 type SortKey = "combo" | "strategy" | ColKey;
 type SortDir = "asc" | "desc";
 
@@ -120,6 +123,7 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
   strategy: (r) => r.strategy_name.toLowerCase(),
   symbol: (r) => r.symbol.toLowerCase(),
   venue: (r) => (r.venue_id ?? "").toLowerCase(),
+  timeframe: (r) => (r.timeframe ?? "").toLowerCase(),
   // The ONE return axis is ANNUALIZED (CAGR) — comparing total returns over different windows is meaningless, so
   // there is no total-return column to sort on. Cells with no recorded window sort last (-Infinity).
   return: (r) => (typeof r.return_pct_annualized === "number" ? r.return_pct_annualized : -Infinity),
@@ -133,14 +137,17 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
 // Sharpe is HIDDEN by default; everything else is visible.
 const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
   { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
-  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. The muted '≥ x%/yr' below is a CONFIDENCE FLOOR (Sharpe standard-error shrinkage) — the estimate net of noise, so a short/thin window isn't read as fact. Short windows amplify — read with Trades/Sharpe and the strat sheet's OOS duration. — = window not yet recorded (re-screened cells fill in)." },
+  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. The muted '≥ x%/yr' below is a CONFIDENCE FLOOR (Sharpe standard-error shrinkage) — the estimate net of noise, so a short/thin window isn't read as fact. Short windows amplify — read with Trades/Sharpe and the strat sheet's validation window. — = window not yet recorded (re-screened cells fill in)." },
   { key: "venue", label: "Venue" },
   { key: "symbol", label: "Symbol" },
+  { key: "timeframe", label: "Timeframe", tip: "The bar size (1h · 4h · 1d) this cell was screened on — the 4th axis of the combo (algo × asset × venue × timeframe). The same edge on two timeframes is two DISTINCT combos. — = not recorded (legacy/single-timeframe cell)." },
   { key: "trades", label: "Trades", align: "right" },
   { key: "dd", label: "Max DD", align: "right" },
   { key: "sharpe", label: "Sharpe", align: "right" },
 ];
-const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, trades: true, dd: true, sharpe: false };
+// Timeframe is HIDDEN by default (in today's single-timeframe world every cell shows the same value, so the column
+// adds no signal); it becomes useful once multi-tf is enabled and is then pickable from the Columns menu.
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, timeframe: false, trades: true, dd: true, sharpe: false };
 const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
 
 // Per-column CSS width class (table-layout:fixed honours these). The identity columns (.col-combo, .col-strat)
@@ -150,6 +157,7 @@ const COL_CLASS: Record<ColKey, string> = {
   return: "col-num",
   venue: "col-venue",
   symbol: "col-sym",
+  timeframe: "col-venue",
   trades: "col-num-sm",
   dd: "col-num",
   sharpe: "col-num",
@@ -181,6 +189,7 @@ export function SymbolsTable({
   rows,
   symbols,
   venues,
+  timeframes = [],
   minTrades = 0,
   title = "Strategies",
   caption = true,
@@ -191,6 +200,7 @@ export function SymbolsTable({
   rows: LabSymbolRow[];
   symbols: string[];
   venues: string[];
+  timeframes?: string[]; // the distinct timeframes present (LOT-C 4th axis) — drives the Timeframe filter chip
   minTrades?: number; // the engine's REAL gate trade floor — a cell below it is "thin" (too few trades to judge)
   title?: string;
   caption?: boolean;
@@ -206,7 +216,7 @@ export function SymbolsTable({
   const deepLink = useMemo(() => {
     const v = searchParams.get("v");
     if (!v) return null;
-    return { version_id: v, symbol: searchParams.get("symbol"), venue: searchParams.get("venue") };
+    return { version_id: v, symbol: searchParams.get("symbol"), venue: searchParams.get("venue"), timeframe: searchParams.get("timeframe") };
     // Read once at mount (the URL is the initial intent). No re-sync effect — consistent with the prior code.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -214,6 +224,7 @@ export function SymbolsTable({
   const [strategySel, setStrategySel] = useState<Set<string>>(new Set());
   const [symbolSel, setSymbolSel] = useState<Set<string>>(new Set());
   const [venueSel, setVenueSel] = useState<Set<string>>(new Set());
+  const [timeframeSel, setTimeframeSel] = useState<Set<string>>(new Set());
   const [statusSel, setStatusSel] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "return", dir: "desc" });
@@ -229,7 +240,7 @@ export function SymbolsTable({
   const [sheetCell, setSheetCell] = useState<LabSymbolRow | null>(null);
   const [selectedTriplet, setSelectedTriplet] = useState<TripletKey | null>(
     deepLink && deepLink.symbol != null
-      ? { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "" }
+      ? { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "", timeframe: deepLink.timeframe ?? "" }
       : null,
   );
   const [page, setPage] = useState(0);
@@ -313,6 +324,7 @@ export function SymbolsTable({
       if (strategySel.size && !strategySel.has(r.strategy_name)) return false;
       if (symbolSel.size && !symbolSel.has(r.symbol)) return false;
       if (venueSel.size && !venueSel.has(r.venue_id ?? "")) return false;
+      if (timeframeSel.size && !timeframeSel.has(r.timeframe ?? "")) return false;
       if (statusSel.size && !statusSel.has(rowLifeStatus(r))) return false;
       if (q && !r.strategy_name.toLowerCase().includes(q) && !r.symbol.toLowerCase().includes(q)) return false;
       return true;
@@ -325,14 +337,14 @@ export function SymbolsTable({
       return sort.dir === "asc" ? cmp : -cmp;
     });
     return out;
-  }, [rows, strategySel, symbolSel, venueSel, statusSel, query, sort, comboNumber]);
+  }, [rows, strategySel, symbolSel, venueSel, timeframeSel, statusSel, query, sort, comboNumber]);
 
   // ── Pagination: clamp to a max of PAGE_SIZE rows on screen; reset to page 1 whenever the filtered set changes
   // (any filter, search or sort change) so the operator never lands on an out-of-range / stale page. ──
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   useEffect(() => {
     setPage(0);
-  }, [strategySel, symbolSel, venueSel, statusSel, query, sort]);
+  }, [strategySel, symbolSel, venueSel, timeframeSel, statusSel, query, sort]);
 
   // The position (in the global filtered+sorted order) of the deep-linked combo, so we can jump to its PAGE and
   // scroll it into view. Pin precision degrades gracefully with what the link carries:
@@ -343,7 +355,7 @@ export function SymbolsTable({
   const deepLinkIndex = useMemo(() => {
     if (!deepLink) return -1;
     if (deepLink.symbol != null) {
-      const want: TripletKey = { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "" };
+      const want: TripletKey = { strategy_version_id: deepLink.version_id, symbol: deepLink.symbol, venue_id: deepLink.venue ?? "", timeframe: deepLink.timeframe ?? "" };
       return filtered.findIndex((r) => sameTriplet(want, r));
     }
     if (deepLink.venue) {
@@ -364,7 +376,7 @@ export function SymbolsTable({
     setPage(Math.floor(deepLinkIndex / PAGE_SIZE));
     const r = filtered[deepLinkIndex];
     if (r) {
-      setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
+      setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id, timeframe: r.timeframe });
       // A deep-linked sheet (opened via ?v= on load) also reads the resolved cell's standalone truth (unless the
       // resolved row is uncomputed — then no per-cell numbers exist, keep the sheet on its honest fallbacks).
       if (sheetVersionId === r.strategy_version_id) setSheetCell(isUncomputed(r) ? null : r);
@@ -403,7 +415,7 @@ export function SymbolsTable({
     }
     // Per-cell selection (the highlight) + per-version sheet (the side panel shows the whole Version). The two
     // are DISTINCT: clicking one cell highlights only THAT row, never every sibling cell of the same algo.
-    setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id });
+    setSelectedTriplet({ strategy_version_id: r.strategy_version_id, symbol: r.symbol, venue_id: r.venue_id, timeframe: r.timeframe });
     setSheetVersionId(r.strategy_version_id);
     // An uncomputed (cell-less) row carries zeroed synthetic metrics — never feed those to the sheet as a "cell"
     // (it would read +0.0% / 0 trades as if real). The sheet then falls back to its honest pooled/empty states.
@@ -420,6 +432,8 @@ export function SymbolsTable({
         return <td key={key} className={uncomputed ? "quiet" : undefined}>{uncomputed ? "—" : r.symbol}</td>;
       case "venue":
         return <td key={key} className={r.venue_id ? undefined : "quiet"}>{uncomputed ? "—" : formatVenue(r.venue_id)}</td>;
+      case "timeframe":
+        return <td key={key} className={r.timeframe ? undefined : "quiet"}>{uncomputed || !r.timeframe ? "—" : r.timeframe}</td>;
       case "return": {
         // The ONE return column = ANNUALIZED (CAGR). "—" when no OOS window is recorded for the cell (can't annualize).
         if (uncomputed || typeof r.return_pct_annualized !== "number") {
@@ -483,6 +497,11 @@ export function SymbolsTable({
         />
         <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
         <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} renderOption={(v) => formatVenue(v)} formatValue={(v) => formatVenue(v)} />
+        {/* Timeframe filter (LOT-C 4th axis) — shown ONLY when more than one timeframe is present, so today's
+            single-timeframe world keeps the toolbar unchanged (no chip with a lone option). */}
+        {timeframes.length > 1 ? (
+          <MultiSelect label="timeframes" options={timeframes} selected={timeframeSel} onChange={setTimeframeSel} />
+        ) : null}
         <MultiSelect
           label="status"
           options={statusOptions}
@@ -561,7 +580,7 @@ export function SymbolsTable({
                 const stratNum = strategyNumber.get(r.strategy_name);
                 return (
                   <tr
-                    key={`${r.strategy_version_id}-${r.symbol}-${r.venue_id ?? ""}-${pageStart + i}`}
+                    key={`${r.strategy_version_id}-${r.symbol}-${r.venue_id ?? ""}-${r.timeframe ?? ""}-${pageStart + i}`}
                     ref={isSelected ? selectedRowRef : undefined}
                     onClick={() => handleRow(r)}
                     className={cn(isCurrent && "row-current", isSelected && "sel")}

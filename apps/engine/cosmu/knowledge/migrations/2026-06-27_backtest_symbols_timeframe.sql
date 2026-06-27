@@ -1,0 +1,19 @@
+-- Migration: add timeframe to backtest_symbols — the PER-CELL bar size (1h/4h/1d) the cell was screened on (2026-06-27).
+--
+-- LOT C makes the TIMEFRAME a 4th axis of the (strategy × asset × venue) triple. Until now every backtest_symbols cell
+-- carried only (symbol, venue_id) and the bar size lived implicitly on the spec — so two timeframes of the SAME
+-- (strat, symbol, venue) would COLLAPSE into one combo on the screener (the exact venue-collapse bug already fixed
+-- once). This column stamps each cell's OWN bar size so a 1h cell and a 1d cell of one strategy/symbol/venue are
+-- DISTINCT combos, not siblings hiding each other's P&L.
+--
+-- Additive, nullable, idempotent, forward-only. Legacy rows stay NULL and the read layer FALLS BACK to the version's
+-- spec.horizon.bar_size for them (a single-tf spec → its one bar size). The finder/loop persist is SCHEMA-ADAPTIVE — it
+-- probes for this column (knowledge/store.py::backtest_symbols_has_timeframe) and only WRITES it when present, so a
+-- pre-migration prod never crashes (INSERTing `timeframe` against a table without it raises UndefinedColumn and would
+-- abort the WHOLE cohort/finder persist transaction). The deterministic gate math (scorer/fdr/trials/cohort) is
+-- byte-unchanged — this is the per-cell IDENTITY/display key, never a funding input. Multi-tf itself is OPT-IN
+-- (Horizon.bar_sizes defaults None → one screen per spec), so prod row counts are unchanged until deliberately enabled.
+--
+-- PROD (Postgres) is applied OUT-OF-BAND in the Supabase SQL editor (see knowledge/store.py::migrate). Run this
+-- statement there, then redeploy Modal so the cron persists per-cell timeframes going forward.
+ALTER TABLE backtest_symbols ADD COLUMN IF NOT EXISTS timeframe TEXT;

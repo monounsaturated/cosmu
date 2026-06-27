@@ -764,6 +764,7 @@ export interface LabSymbolRow {
   strategy_version_id: string;
   symbol: string;
   thin?: boolean;
+  timeframe?: string | null;
   trades: number;
   venue_id: string | null;
   verdict: string | null;
@@ -773,6 +774,7 @@ export interface LabSymbolsResponse {
   min_trades: number;
   rows: LabSymbolRow[];
   symbols: string[];
+  timeframes?: string[];
   venues: string[];
 }
 
@@ -1347,7 +1349,7 @@ export interface StrategyDetailResponse {
   invested_usd?: number | null;
   kind?: "quant" | "llm";
   name: string;
-  notes_md: string;
+  notes_md?: string;
   params: Record<string, unknown>;
   pnl_usd?: number | null;
   realized_pnl?: number | null;

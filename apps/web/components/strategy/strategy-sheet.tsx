@@ -229,6 +229,44 @@ function TypeLaneBadges({ spec, origin, modelKind }: { spec: Record<string, unkn
   );
 }
 
+// ── Focused-cell header — the clicked (asset × venue) the rest of the sheet's backtest column reads, plus this
+// cell's BRUT gate verdict. Only rendered when a cell is focused (the sheet is per-cell). The brut verdict off
+// backtest_symbols.verdict is one of: 'pass' (cleared this cell's OWN gate), 'watch' (gate-failed near-miss,
+// routed to a zero-capital paper test), or a comma-joined kill-reason string. We map pass/watch to a clean
+// label + tone and COLLAPSE every kill-reason to a plain "Fail" badge, with the full reason in the tooltip —
+// never a wall of reason-codes in the header. null verdict (pre-migration / track-only) renders no badge. ──
+function brutVerdict(verdict: string | null | undefined): { label: string; tone: "pass" | "watch" | "fail"; tip: string } | null {
+  if (!verdict) return null;
+  if (verdict === "pass") return { label: "Pass", tone: "pass", tip: "Cleared THIS cell's own gate (its own DSR/PBO + trade floor) — a brut, per-combo verdict, never pooled or sibling-compared." };
+  if (verdict === "watch") return { label: "Watch", tone: "watch", tip: "A gate-failed near-miss — routed to a zero-real-capital paper test instead of being killed, so the forward record separates real edge from luck. NOT a gate pass." };
+  return { label: "Fail", tone: "fail", tip: `Did not clear this cell's gate — ${verdict}.` };
+}
+
+// Brut-verdict tone → the shared badge tone classes in globals.css (the SAME .up/.dn/.gold palette the rest of
+// the sheet uses): pass=green, watch=gold, fail=red. Each carries its own border, so no inline styling needed.
+const VERDICT_BADGE_CLASS: Record<"pass" | "watch" | "fail", string> = {
+  pass: "badge badge-up",
+  watch: "badge badge-gold",
+  fail: "badge badge-dn"
+};
+
+function CellHeader({ cell }: { cell: LabSymbolRow }) {
+  const v = brutVerdict(cell.verdict);
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "2px 0 2px" }}>
+      <span className="badge badge-muted" data-tip="One (asset × venue) cell — the granular truth the backtest column below reads, never a pooled mean.">
+        {cell.symbol}
+        {cell.venue_id ? <span className="quiet"> · {cell.venue_id}</span> : null}
+      </span>
+      {v ? (
+        <span className={VERDICT_BADGE_CLASS[v.tone]} data-tip={v.tip}>
+          {v.label}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 // ── Phase comparison: Backtest OOS / Paper / Live side by side. Live is not on this contract → all "—".
 // This table is now the SINGLE home for the gate metrics too (DSR / PBO / Max DD / OOS) — the separate
 // "Gate metrics" chip row was removed, so every measured number lives in one place with its phase columns.
@@ -365,9 +403,13 @@ function PhaseComparison({
       live: "—"
     },
     {
-      metric: "OOS duration",
-      tip: "How many DAYS of out-of-sample data the backtest ran on — the unseen period tested AFTER the data the strategy was built on. Longer = more trustworthy, and it's the denominator behind the annualized return. — = window not yet recorded.",
-      bt: formatOosWindow(headlineBt?.oos_window_days) ?? "—",
+      metric: "Validation window",
+      tip: cell
+        ? "How many DAYS of validation data THIS cell was scored on — the held-out period tested AFTER the data the strategy was fitted on, measured on this asset's OWN history (never a sibling's longer window). It's the denominator behind the annualized return. — = window not yet recorded."
+        : "How many DAYS of validation data the backtest was scored on — the held-out period tested AFTER the data the strategy was fitted on. Longer = more trustworthy, and it's the denominator behind the annualized return. — = window not yet recorded.",
+      // Per-cell truth when a cell is focused: THIS cell's own validation window (off backtest_symbols.oos_window_days),
+      // never the parent backtest's shared (longest-cell) window. Falls back to the headline backtest's window.
+      bt: formatOosWindow(cell?.oos_window_days ?? headlineBt?.oos_window_days) ?? "—",
       paper: ageDays !== null ? `${ageDays}d` : "—",
       live: "—"
     }
@@ -578,6 +620,10 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
 
       <TypeLaneBadges spec={(strategy.spec ?? {}) as Record<string, unknown>} origin={origin} modelKind={strategy.kind} />
 
+      {/* When the sheet is focused on ONE (asset × venue) cell, surface that cell's symbol/venue + brut gate
+          verdict up top — so the reader knows WHICH combo the backtest column below is reporting. */}
+      {cell ? <CellHeader cell={cell} /> : null}
+
       <MoneyBand data={money} />
 
       {/* ONE equity box with a phase toggle (v18 "Equity — Live" design): Backtest = the gross/net
@@ -603,7 +649,7 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
                 // Phase-comparison table uses — so the "why" prose and the table never disagree on the drawdown /
                 // return. DSR-prob + PBO have no per-cell value, so they stay the algo's pooled gate verdict.
                 oosReturn: cell ? cell.return_pct : headlineBt.oos_return,
-                oosWindowDays: headlineBt.oos_window_days,
+                oosWindowDays: cell?.oos_window_days ?? headlineBt.oos_window_days,
                 maxDd: cell ? cell.max_drawdown : headlineBt.max_dd
               }
             : null

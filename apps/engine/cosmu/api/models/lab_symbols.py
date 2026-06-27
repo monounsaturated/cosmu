@@ -15,6 +15,9 @@ class LabSymbolRow(BaseModel):
     status: str                   # the version's lifecycle status (screened/paper/live/killed/…) — advisory context
     symbol: str
     venue_id: str | None          # the fee axis (the same edge costs differently per venue)
+    timeframe: str | None = None  # the bar size (1h/4h/1d) this cell was screened on — the LOT-C 4th axis of the
+    #                               (algo × asset × venue × timeframe) combo. NULL for legacy/pre-migration cells
+    #                               (one bar_size per spec); two timeframes of one (strat, symbol, venue) are DISTINCT combos.
     return_pct: float             # standalone validation TOTAL return over the OOS window on THIS symbol+venue (NEVER pooled)
     return_pct_annualized: float | None = None  # CAGR of return_pct over oos_window_days — the cross-combo comparable
     #                                             (windows differ); NULL when the window is unknown. Fraction (0.034=+3.4%/yr).
@@ -42,6 +45,8 @@ class LabSymbolsResponse(BaseModel):
     rows: list[LabSymbolRow]
     symbols: list[str]            # the distinct symbols present — drives the filter chips
     venues: list[str]             # the distinct venues present — drives the filter chips
+    timeframes: list[str] = []    # the distinct timeframes present (LOT-C 4th axis) — drives the Timeframe filter chip.
+    #                               Empty until the migration lands / multi-tf is enabled (today's single-tf world).
     min_trades: int               # the REAL gate trade floor (settings.gates.min_trades) a cell must clear to be
     #                               judged honestly — surfaced so the web flags `thin` cells against the live
     #                               constant instead of hardcoding 30. Mirrors LabSymbolRow.thin.
