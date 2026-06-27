@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "N_total_events": 20248,
+    "N_large_events": 344,
+    "N_placebo": 489,
+    "protocols_seen": 339,
+    "protocols_matched": 165,
+    "skipped_no_symbol": 42,
+    "skipped_no_bars": 76,
+    "large_pct_threshold": 0.05,
+    "window_half_width_days": 5,
+    "net_cost_roundtrip": 0.005,
+    "drift": {
+      "pre_mean": -0.016639739043274704,
+      "post_mean": -0.035234065506885064,
+      "full_mean": -0.051873804550159774,
+      "pre_mean_placebo": -0.009921963329467882,
+      "post_mean_placebo": -0.01422956066877839,
+      "full_mean_placebo": -0.024151523998246275
+    },
+    "placebo_p": {
+      "pre": 0.1528,
+      "post": 0.0008,
+      "full": 0.0012
+    },
+    "net_post_relief_leg": {
+      "n": 344,
+      "mean_net": -0.04023406550688507,
+      "std": 0.1506720275670598,
+      "t_stat": -4.952682724967939,
+      "sharpe_per_event": -0.26703075651502756,
+      "psr_vs_zero": 2.4117672047241356e-06
+    },
+    "short_into_gross_leg": {
+      "mean": 0.016639739043274704,
+      "n": 344
+    },
+    "magnitude_split": {
+      "lower_half_pct_range": [
+        0.050045853530721864,
+        0.0860193611869745
+      ],
+      "upper_half_pct_range": [
+        0.08606409730218073,
+        3.839999999999999
+      ],
+      "lower_pre_mean": -0.012592046777553946,
+      "upper_pre_mean": -0.020687431308995464,
+      "lower_post_mean": -0.035827206475898786,
+      "upper_post_mean": -0.03464092453787134
+    }
+  },
+  "verdict": "KILL",
+  "reasons": [
+    "net post-relief leg mean -0.04023406550688507 <= 0 after 50bps round-trip cost"
+  ]
+}
