@@ -19,6 +19,7 @@ _PURGE_TABLES: tuple[str, ...] = (
     "portfolio_snapshots",
     "executions",
     "holdout_ledger",
+    "blinding_commits",
     "gate_verdicts",
     "trials",
     "experiments",

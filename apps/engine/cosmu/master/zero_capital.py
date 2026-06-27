@@ -123,6 +123,12 @@ def open_zero_capital_track(
         Portfolio(store, bankroll=store.settings.sim_bankroll).register_track(
             instrument_id=instrument.id, symbol=symbol, venue="sim", strategy_version_id=version_id
         )
+        # Hidden-box discipline: FREEZE the recipe hash the moment forward observation begins (the forward "read"),
+        # so a later in-place spec edit drifts the recipe past this commit and the Gate refuses to graduate/score
+        # the vibe without a fresh re-blind. Deferred import keeps the master dependency one-way (see _resolve...).
+        from cosmu.master.blinding import BlindingLedger
+
+        BlindingLedger(store).commit(version_id, reason="forward_first_read")
         store.append_event(
             actor="master",
             kind="track_opened",
@@ -222,7 +228,22 @@ def graduate_explore(store: Store, version_id: str, *, gate_clears) -> bool:  # 
 
     The gate is NEVER loosened here: graduation is gated on `gate_clears`, which is the honest 0.95 + BH-FDR bar.
     An explore version that never clears simply stays a zero-capital paper observation forever — exactly the point
-    of the vibe lane (route a low-confidence idea to paper, let the unchanged gate decide if it ever earns money)."""
+    of the vibe lane (route a low-confidence idea to paper, let the unchanged gate decide if it ever earns money).
+
+    BLINDING precondition: this is THE in-place spec-mutation path (it rewrites the persisted spec below), and the
+    vibe has ALREADY been read forward on paper (open_zero_capital_track froze its recipe). So before letting the
+    Gate score it, refuse if its recipe drifted past that forward-read commit with no fresh re-blind — otherwise the
+    forward evidence the Gate would trust was earned by a different recipe (the holdout-is-theater gap)."""
+    from cosmu.master.blinding import BlindingViolation, assert_scoreable
+
+    try:
+        assert_scoreable(store, version_id)
+    except BlindingViolation:
+        log.warning(
+            "graduate_explore: blinding REFUSED version_id=%s — recipe changed after its forward read; "
+            "re-blind (fresh blinding commit) before the Gate can score it.", version_id,
+        )
+        return False
     try:
         if not gate_clears(version_id):
             return False
