@@ -122,6 +122,17 @@ fr = cur.fetchone(); print(f"FEES   ${f(fr['fees']):,.2f} paid across {fr['n']} 
 cur.execute("SELECT status, COUNT(*) n FROM strategy_versions GROUP BY status ORDER BY n DESC")
 funnel = {r["status"]: r["n"] for r in cur.fetchall()}
 print(f"FUNNEL " + " · ".join(f"{k}={funnel[k]}" for k in funnel))
+# RECONCILE the badge column vs reality: a version is stamped 'paper' but only TRADES once it logs a real
+# is_paper=1 fill. orchestrator/loop.py::reclassify_unforwarded_paper demotes any paper w/ no fills back to
+# 'screened' (reason='no_fills_yet') on the next tick. So a transient `status=paper` count can exceed the
+# trading cells until that tick runs — surface the gap here so it self-explains instead of looking like drift.
+cur.execute(f"""SELECT COUNT(*) AS paper_status,
+  SUM(CASE WHEN EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id=sv.id
+      AND CAST(e.is_paper AS INTEGER)=1) THEN 1 ELSE 0 END) AS trading
+  FROM strategy_versions sv WHERE sv.status IN {PAPER}""")
+rec = cur.fetchone(); awaiting = int(rec["paper_status"]) - int(rec["trading"] or 0)
+print(f"       {rec['paper_status']} status=paper · {rec['trading'] or 0} actually trading"
+      + (f"  ⚠ {awaiting} stamped-paper w/ no fills yet → demote to 'screened' next reclassify tick" if awaiting else "  ✓ reconciled"))
 con.close()
 PY
 ```
@@ -131,7 +142,7 @@ PY
 - **Per-cell `—`** — a funded cell with **no real paper fill yet** (entry never fired, or only a seeded snapshot). It is NOT a forward result and is ranked last. Hand a stuck-flat cell to `debug-strategy`.
 - **WINNERS / LOSERS** — the outliers carry the verdict. Do **not** average them — a few real edges + a long tail of duds is the expected shape; the question is whether the *top* cells are genuinely net-positive over a meaningful age.
 - **FEES** — paid from the real fill ledger (today's venue schedule). Rising fees with flat P&L = churn.
-- **FUNNEL** — `killed ≫ paper` is healthy (the Gate is strict by design). `paper` is the forward cohort; `screened` = backtest-only, not funded; `live` should be the `wallet-live` count.
+- **FUNNEL** — `killed ≫ paper` is healthy (the Gate is strict by design). `paper` is the forward cohort; `screened` = backtest-only, not funded; `live` should be the `wallet-live` count. The reconcile line catches a **transient**: `status='paper'` is a badge that only becomes "trading" on the first real fill — `orchestrator/loop.py::reclassify_unforwarded_paper` demotes any fill-less `paper` back to `screened` (`no_fills_yet`) on the next tick, while `_promote_screened_on_first_fill` does the inverse. A `⚠ N stamped-paper w/ no fills` gap is this window, **not** drift — the money figures above already ignore those rows (`has_paper_fills` gate), so the BOOK is correct regardless.
 
 ## Present (operator's standard summary format)
 Render the read-out as the operator's **clean-emoji FRENCH résumé** (per `[[feedback_summary_format]]`): emoji section headers + a compact table for the cells + a short **Décisions / À surveiller** line. Lead with the BOOK figure and the WINNERS/LOSERS outliers; never a pooled mean across cells (per `[[feedback_surface_all_compute]]`). Keep it terse.
