@@ -4,6 +4,32 @@
 
 ## Built
 
+### Independent replication cohort (R3) — the GWAS "replication is the final arbiter" gate (2026-06-27)
+*Cross-disciplinary playbook bridge #5 + the meta-lesson "validation lives on data the discovery never touched"
+(`docs/reports/cross-disciplinary-playbook-2026-06-26.md`). Full writeup:
+`docs/reports/replication-cohort-r3-and-sequential-paper-test-2026-06-27.md`.*
+- **`research/replication_cohort.py` — the R3 step.** Takes a Gate (R1) survivor's **FROZEN** spec (`params_hash`,
+  **no refit**) and re-runs it on **3–5 HELD-OUT symbols it was NOT discovered on**, demanding a **replication
+  quorum (≥ 2 of N replicate net-of-fees)** before the survivor is credible — no replication = a single-cell overfit
+  the BRUT per-combo Gate passed. `FrozenSurvivor` + `run_replication_cohort` enforce **no-refit** (a `params_hash`
+  mismatch ⇒ verdict `DRIFT`, fail-closed), **held-out disjointness** (a held-out symbol overlapping the discovery
+  universe is dropped), and the **locked per-cell predicate** (`n_obs ≥ 36` AND `net > 0` AND beats B&H on Sharpe OR
+  a materially-lower drawdown — the SAME 0.75 bar `equity_faber_gtaa.validate()` uses).
+- **Staged R-lane.** R1 = discovery Gate (time axis, LOCKED) → R2 = `equity_taa_robustness` (parameter axis) → **R3 =
+  replication** (data axis, the GWAS final arbiter). R3 is **ADDITIVE**: it changes no `GateSettings` /
+  `PREREGISTERED_BAR` constant, registers **no trials** (confirmation, not a search), and can only demote a
+  credibility claim — never promote past R1, never move money.
+- **Equity-TAA adapter + operation.** `faber_gtaa_survivor()` reuses Faber GTAA's own frozen single-asset 10m-SMA
+  timing primitives (held-out QQQ/IWM/EEM/TLT/DBC, disjoint from the SPY/EFA/AGG/GLD/IEF/SHY sleeves). CLI
+  `python -m cosmu.research.replication_cohort`; `persist_replication_verdict` writes one `gate_verdicts` row
+  (`kind='replication'`, decision = the R3 verdict so it can never masquerade as a funding `PASS`) — no schema
+  change. The real run needs the equities total-return cache (a data-network task → M2/Modal); absent it the CLI
+  degrades to `INSUFFICIENT-DATA` honestly (never fabricates a number). Tests: `tests/test_replication_cohort.py`
+  (18, offline/deterministic).
+- **DESIGN ONLY (not built):** elevate the paper/forward lane from the 30-day time-WAIT (`PAPER_MIN_DAYS`) to a
+  formal **anytime-valid sequential test** (e-process / mixture-SPRT over `live_eligibility.forward_daily_returns`),
+  specified in the report §3. No live/money-path code touched.
+
 ### Realtime-data-lane P0+P1 — closed-candle guard, Tier-1 cadences, the event-study machine (2026-06-11)
 *Operator-approved epic (`docs/epics/realtime-data-lane.md`): cut reaction latency from ~24h toward minutes AND
 open the orthogonal-data axis the search campaign demanded — backtesting unstructured events (news/tweets/
