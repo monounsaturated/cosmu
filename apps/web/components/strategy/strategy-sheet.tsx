@@ -27,7 +27,7 @@ import { StageControl, type Stage } from "./stage-control";
 import { LifecycleTrace } from "./lifecycle-trace";
 import { laneOf, provenanceOf, strategyKindOf } from "@/lib/provenance";
 import { type Kind, KIND_LABEL, KIND_BADGE_CLASS } from "@/lib/lifecycle";
-import { cn, fmtTz, formatUsd } from "@/lib/utils";
+import { cn, fmtTz, formatUsd, formatVenue } from "@/lib/utils";
 
 // ── Honest derivations off the real detail response ──
 
@@ -122,6 +122,87 @@ export function referencedFeatures(spec: Record<string, unknown> | null | undefi
   return names;
 }
 
+// ── Holdout (out-of-sample) verdict off the contract's `holdout` bundle ({passed, deflated_sharpe}). The
+// untouched, one-shot OOS check is the single most honest "did the edge hold up" signal — and today it is
+// served but rendered NOWHERE on the sheet (the audit's "surface the computed-but-dropped evidence"). Read
+// defensively: holdout is a free-form Record on the contract, so coerce and fall back to nulls (→ "—"). ──
+export function holdoutVerdict(holdout: Record<string, unknown> | null | undefined): { passed: boolean | null; deflatedSharpe: number | null } {
+  if (!holdout || typeof holdout !== "object") return { passed: null, deflatedSharpe: null };
+  const passed = typeof holdout.passed === "boolean" ? holdout.passed : null;
+  const ds = typeof holdout.deflated_sharpe === "number" && Number.isFinite(holdout.deflated_sharpe) ? holdout.deflated_sharpe : null;
+  return { passed, deflatedSharpe: ds };
+}
+
+// ── Bar interval (timeframe) off the real spec — the cadence the backtest ran on. Tolerant of the few shapes a
+// StrategySpec carries it in (horizon.bar_size · top-level timeframe/bar_size · universe.timeframe); null → "—".
+function barIntervalOf(spec: Record<string, unknown> | null | undefined): string | null {
+  if (!spec || typeof spec !== "object") return null;
+  const horizon = spec.horizon;
+  const fromHorizon = horizon && typeof horizon === "object" ? (horizon as Record<string, unknown>).bar_size : undefined;
+  const universe = spec.universe;
+  const fromUniverse = universe && typeof universe === "object" ? (universe as Record<string, unknown>).timeframe : undefined;
+  const cand = [fromHorizon, spec.timeframe, spec.bar_size, fromUniverse].find((v) => typeof v === "string" && v);
+  return typeof cand === "string" ? cand : null;
+}
+
+// ── Data provenance — the honest "what data did this run on", consolidated from REAL served fields so a result
+// is never a black box: the instrument (symbol · venue) off the focused cell, the bar interval off the spec, the
+// OOS window length, and the named data sources/features the spec keys off. Reads ONLY what the contract already
+// carries; the per-cell fee schedule, exact date range, and bar provider are NOT yet on the contract (they land
+// with the engine-side provenance item) — so they are honestly omitted rather than faked. ──
+function DataProvenance({
+  spec,
+  cell,
+  headlineBt
+}: {
+  spec: Record<string, unknown>;
+  cell?: LabSymbolRow | null;
+  headlineBt: Backtest | null;
+}) {
+  const features = referencedFeatures(spec);
+  const interval = barIntervalOf(spec);
+  const symbol = cell?.symbol ?? null;
+  const venue = cell?.venue_id ?? null;
+  const windowDays = cell?.oos_window_days ?? headlineBt?.oos_window_days ?? null;
+  const instrument = symbol ? `${symbol}${venue ? ` · ${formatVenue(venue)}` : ""}` : null;
+
+  return (
+    <div className="psec">
+      <div className="psec-title" data-tip="Exactly what data this backtest ran on — surfaced so a result is never a black box.">
+        Data provenance
+      </div>
+      <div className="blocks">
+        <div className="block-row">
+          <span className="block-key">Instrument</span>
+          <span className="block-val">{instrument ?? <span className="quiet">— focus a cell to pin the symbol · venue</span>}</span>
+        </div>
+        <div className="block-row">
+          <span className="block-key">Bar interval</span>
+          <span className="block-val">{interval ?? <span className="quiet">—</span>}</span>
+        </div>
+        <div className="block-row">
+          <span className="block-key">OOS window</span>
+          <span className="block-val">{formatOosWindow(windowDays) ?? <span className="quiet">—</span>}</span>
+        </div>
+        <div className="block-row">
+          <span className="block-key" data-tip="The named point-in-time data sources / features this spec keys off — the inputs behind every signal.">Data sources</span>
+          <span className="block-val">
+            {features.length ? (
+              <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+                {features.map((f) => (
+                  <span key={f} className="badge badge-iris" style={{ textTransform: "none" }}>{f}</span>
+                ))}
+              </span>
+            ) : (
+              <span className="quiet">price/TA only — no named alt-data feature</span>
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Type & lane — the authoritative spec discriminators (strategy_kind / lane) + the provenance bucket + the
 // strategy MODEL kind, as a compact badge row. strategy_kind + lane come straight off the real spec; provenance
 // prefers the `origin` the row carries (passed from the screener) and otherwise self-derives Astro from the spec's
@@ -165,7 +246,8 @@ function PhaseComparison({
   ageDays,
   bestOos,
   bestOosAnn,
-  cell
+  cell,
+  holdout
 }: {
   headlineBt: Backtest | null;
   paperPnl: number | null;
@@ -174,6 +256,7 @@ function PhaseComparison({
   bestOos: number | null;
   bestOosAnn: number | null;
   cell?: LabSymbolRow | null;
+  holdout: { passed: boolean | null; deflatedSharpe: number | null };
 }) {
   // Prefer the per-cell standalone numbers when a cell is focused. return_pct / max_drawdown are FRACTIONS.
   const cellReturnPct = cell ? cell.return_pct * 100 : null;
@@ -188,6 +271,11 @@ function PhaseComparison({
   const dsrProb = headlineBt?.deflated_sharpe_prob ?? null;
   const dsrPass = dsrProb !== null ? dsrProb >= 0.95 : !!headlineBt?.passed_gates;
   const dsrProbStr = dsrProb !== null ? dsrProb.toFixed(2) : headlineBt ? (headlineBt.passed_gates ? "≥0.95" : "<0.95") : "—";
+  // Holdout = the untouched, ONE-SHOT out-of-sample check: did the edge survive data it never saw or fit to.
+  // Served on the contract but rendered nowhere until now (the audit's "surface the dropped evidence"). The
+  // ALGO's pooled verdict (no per-cell value), so it stays algo-level even when a cell is focused — like DSR/PBO.
+  const holdoutStr = holdout.passed === null ? "—" : holdout.passed ? "Held" : "Failed";
+  const holdoutTip = `The untouched, one-shot out-of-sample holdout — did the edge survive data it was never fit to (the most honest "is it real" check).${holdout.deflatedSharpe !== null ? ` Deflated-Sharpe ratio on the gated backtest: ${holdout.deflatedSharpe.toFixed(2)}.` : ""} The ALGO's pooled gate verdict, not a per-cell number.`;
   // `tip` defines each metric ONCE, in plain words (hover) — so a non-expert can read the table without a
   // glossary elsewhere. These replace the removed gate-metric chips' tooltips.
   const rows: { metric: string; tip?: string; bt: string; btTone?: string; paper: string; paperTone?: string; live: string }[] = [
@@ -241,6 +329,14 @@ function PhaseComparison({
       tip: `Deflated-Sharpe PROBABILITY — the 0-to-1 confidence the edge is real after discounting for how many variants were tried (so luck can't fake an edge). THIS is the number the Gate's 0.95 bar checks${headlineBt ? `; the raw deflated-Sharpe ratio (a separate ranking number, can exceed 1.0) is ${headlineBt.deflated_sharpe.toFixed(2)}` : ""}. The ALGO's pooled gate verdict, not a per-cell number.`,
       bt: dsrProbStr,
       btTone: headlineBt && dsrPass ? "up" : undefined,
+      paper: "—",
+      live: "—"
+    },
+    {
+      metric: "Holdout (OOS)",
+      tip: holdoutTip,
+      bt: holdoutStr,
+      btTone: holdout.passed === null ? undefined : holdout.passed ? "up" : "dn",
       paper: "—",
       live: "—"
     },
@@ -434,6 +530,9 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
   const headlineBt = headlineBacktest(backtests);
   const bestOos = bestOosPct(backtests);
   const bestOosAnn = bestOosAnnualizedPct(backtests);
+  // The one-shot out-of-sample holdout verdict + its DSR ratio, off the contract's `holdout` bundle — surfaced
+  // as a Phase-comparison row (was served-but-unrendered evidence).
+  const holdout = holdoutVerdict(strategy.holdout);
   // Forward P&L = the engine's MARKED total (realized + unrealized = value − starting_capital), off the
   // scope='track' snapshot — NEVER the cash-flow sum of opening buys. null until the track is marked.
   const paperPnl = strategy.pnl_usd ?? null;
@@ -511,7 +610,11 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
         }
       />
 
-      <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} bestOosAnn={bestOosAnn} cell={cell} />
+      <PhaseComparison headlineBt={headlineBt} paperPnl={paperPnl} trades={trades} ageDays={ageDays} bestOos={bestOos} bestOosAnn={bestOosAnn} cell={cell} holdout={holdout} />
+
+      {/* Data provenance — the honest "what data did this run on" (instrument · interval · OOS window · sources),
+          off real served fields so a result is never a black box. */}
+      <DataProvenance spec={(strategy.spec ?? {}) as Record<string, unknown>} cell={cell ?? null} headlineBt={headlineBt} />
 
       {/* Composed lifecycle verdict (backtest → paper → forward-ready → live-ready) + the audit trace, off the
           engine's GET /readiness/{version_id}. Advisory — it never arms money. */}

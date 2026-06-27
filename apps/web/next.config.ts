@@ -5,15 +5,15 @@ import type { NextConfig } from "next";
 // backend data keeps accruing, but the pages are gone from the UI. These redirects keep any old URL
 // (bookmarks, deep links) working by sending it to the nearest surviving surface — no 404s, no clutter.
 // EXCEPTIONS — UN-folded surfaces that host real pages, so they must NOT be in the folded list or the
-// catch-all would shadow them: /research (the Experiments memory from gate_verdicts) and /lab (the per-symbol
-// backtest screener — every strategy × symbol × venue, verdict-labelled).
+// catch-all would shadow them: /research (the Experiments memory from gate_verdicts), /lab (the per-symbol
+// backtest screener — every strategy × symbol × venue, verdict-labelled), and /mind (the read-only
+// credibility surface — the followed-voices scoreboard off /mind/credibility).
 const FOLDED_TO_STRATEGIES = [
   "/overview",
   "/console",
   "/verdicts",
   "/correlations",
   "/explorer",
-  "/mind",
   "/scores",
   "/steer",
   "/farm",

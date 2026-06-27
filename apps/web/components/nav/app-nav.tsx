@@ -1,8 +1,9 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — SEVEN surfaces: Strategies · Paper · Live · Indexes · Costs · Keys · Commands
-// (landing = Strategies). Strategies is now the ONE granular surface: every (algo × asset × venue)
+// frontend — EIGHT surfaces: Strategies · Paper · Live · Indexes · Mind · Costs · Keys · Commands
+// (landing = Strategies). Mind is the read-only credibility surface — the followed-voices scoreboard off
+// /mind/credibility. Strategies is now the ONE granular surface: every (algo × asset × venue)
 // triplet, never pooled — the old per-symbol "Lab" tab was folded into it (its route now redirects).
 // Indexes (2026-06-15) is the operator-defined, deterministically-scored
 // signal-index registry that strategies later key off. (The old Research/experiment-memory route was
@@ -35,6 +36,13 @@ const ICONS: Record<string, ReactNode> = {
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
       <path d="M1.7 10.5l3-3.4 2.4 2 3.4-4.4" /><circle cx="12.2" cy="3.4" r="1" fill="currentColor" stroke="none" />
       <line x1="1.7" y1="13" x2="13" y2="13" />
+    </svg>
+  ),
+  mind: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7.5 2.3c-2 0-3.4 1.3-3.4 3 0 .5-.3.8-.7 1.2-.5.5-.7 1-.7 1.6 0 .9.6 1.5 1.4 1.7.2 1.3 1.3 2.2 2.7 2.2" />
+      <path d="M7.5 2.3c2 0 3.4 1.3 3.4 3 0 .5.3.8.7 1.2.5.5.7 1 .7 1.6 0 .9-.6 1.5-1.4 1.7-.2 1.3-1.3 2.2-2.7 2.2" />
+      <line x1="7.5" y1="2.3" x2="7.5" y2="12" />
     </svg>
   ),
   paper: (
@@ -77,6 +85,7 @@ export const navItems: NavItem[] = [
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
+  { href: "/mind", key: "mind", label: "Mind", icon: ICONS.mind },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }
