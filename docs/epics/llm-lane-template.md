@@ -24,7 +24,7 @@ used ONLY to extract STRUCTURE from text; it never scores, never ranks, never mo
 
 | Phase | Module | What it does | LLM? |
 |------:|--------|--------------|:----:|
-| 0 | `data/sources/voices.py` | Pull a voice's timeline (Reddit JSON / RSS / xAI for X) as raw PIT posts | X only |
+| 0 | `data/sources/voices.py` | Pull a voice's timeline (Reddit user OR subreddit JSON / RSS / xAI for X) as raw PIT posts | X only |
 | 1 | `mind/claims.py` | Extract typed `Claim`s from each post (instructor-style, Pydantic `extra="forbid"`) | **yes** |
 | 2 | `mind/outcomes.py` | Resolve each claim against bars → per-author track record (Brier-skill vs base rate) | no |
 | 3 | `mind/authority.py` | Primacy + lead-lag + skill-anchored personalized PageRank → fused authority | no |
@@ -55,22 +55,31 @@ used ONLY to extract STRUCTURE from text; it never scores, never ranks, never mo
 ## 4. FLEXIBLE — what the next chat changes
 
 - **The panel** (`config/voices.py::VOICE_PANEL`) — operator-edited; add/remove a line and the next pass
-  picks it up. Currently a **minimal 2 voices** (one keyless Reddit breadth control + one keyless RSS
-  on-chain desk). Pre-registration discipline: add a voice with a falsifiable `why` BEFORE its calls are
-  scored.
+  picks it up. Currently a **small keyless 5-voice experiment** (three CONTROLS expected to score ~base-rate +
+  two CANDIDATES that might carry skill — see §5). Pre-registration discipline: add a voice with a falsifiable
+  `why` BEFORE its calls are scored.
 - **The model id** (`OPENROUTER_FREE_MODEL`) — swap to any `:free` variant.
-- **The source mix** — add X (set `XAI_API_KEY`), more subreddits, more feeds.
+- **The source mix** — add X (set `XAI_API_KEY`), more subreddits, more feeds. Reddit handles can be a USER
+  (`u/name`) or a SUBREDDIT (`r/sub`); both are keyless (subreddit support added 2026-06-27).
 - **The frequency** — the pass is dedup-safe and idempotent; run it on any cadence.
 - **The entity routing** (`ENTITY_BARS_SYMBOL`) — extend as the panel widens to new assets.
 
-## 5. The 2-voice starter panel (current)
+## 5. The starter panel (current) — a small keyless experiment, not a watchlist
 
-| handle | platform | hypothesis (`why`) |
-|--------|----------|--------------------|
-| `r/CryptoCurrency` | reddit (keyless) | broad retail sentiment — breadth NOT skill; the base-rate CONTROL that proves the scoreboard rewards skill, not loudness |
-| `https://insights.glassnode.com/feed/` | rss (keyless) | Glassnode Week-On-Chain — original, slow, data-driven BTC/ETH reads; a low-frequency causal candidate the lead-lag tripwire will confirm or refute |
+The panel is deliberately structured so the scoreboard has something to PROVE: **controls** that should land at
+~base-rate and **candidates** that might (probably won't) carry price-anchored skill. Each `why` is a
+falsifiable hypothesis registered before any call is scored.
 
-Expected honest first verdict: **0/2 carry skill after the base rate.** That is the machine working.
+| handle | platform | role | hypothesis (`why`) — and what FALSIFIES it |
+|--------|----------|------|---------------------------------------------|
+| `r/CryptoCurrency` | reddit (keyless subreddit) | CONTROL | broad multi-asset retail breadth, NOT skill — the base-rate control. Falsified if it ever beats base. |
+| `r/Bitcoin` | reddit (keyless subreddit) | CONTROL | BTC-maximalist UP-bias, not timing — must score ~0 excess over the BTC base rate. Falsified if a perma-bull beats base (metric rewards bias). |
+| `r/ethfinance` | reddit (keyless subreddit) | CONTROL | the same breadth-not-skill behaviour on a SECOND asset (ETH) — proves the base-rate result generalizes. Falsified if ETH breadth scores skill where BTC breadth does not. |
+| `https://insights.glassnode.com/feed/` | rss (keyless) | CANDIDATE | Glassnode Week-On-Chain — slow, original on-chain reads that may LEAD price; the lead-lag tripwire confirms or refutes foresight. |
+| `https://www.coindesk.com/arc/outboundfeeds/rss/` | rss (keyless) | CANDIDATE (ECHO control) | a fast news wire that should DESCRIBE the tape → lead-lag should mark it an ECHO (low authority). Falsified (tripwire miscalibrated) if a reactive wire reads as foresight. |
+
+Expected honest first verdict: **0/N carry skill after the base rate.** That is the machine working — the
+payoff is the substrate (a calibrated, look-ahead-clean scoreboard), not overnight alpha.
 
 ## 6. Mock mode — how it works (the $0 default)
 
@@ -105,3 +114,21 @@ real `:free` extraction smoke test on this date returned $0 (the account's $5 Op
 spent on prior paid usage, so the `:free` models 429'd before any inference — the seam degraded honestly,
 usage unchanged). The lane's correctness does NOT depend on free-tier availability: mock mode carries CI and
 the cron at $0 regardless.
+
+## 9. Activation decision (2026-06-27) — KEEP MOCK-DEFAULT
+
+This extension widens the panel (2 → 5 keyless voices) and makes Reddit **subreddit** handles work, but keeps
+the lane **dormant**: `VOICES_LIVE_ENABLED` stays unset, so the cron runs mock mode at **$0**. Why not flip
+live now:
+
+1. The `:free` extractor **429'd** in the 2026-06-26 test (the OpenRouter `:free` rate limit is gated on the
+   account's credit balance, which was spent on prior paid usage). A 429 is **account state**, not model
+   absence — so swapping the model id would NOT fix it.
+2. Reliable `:free` availability can only be confirmed on the operator's **OpenRouter dashboard** (the engine
+   cannot read it; this environment cannot reach `openrouter.ai`). **No paid accounts / no top-up** is in
+   scope here.
+
+So flipping live stays a **one-flag operator action** once they confirm free-tier availability:
+`VOICES_LIVE_ENABLED=1` (and, if needed, a different `:free` model in `OPENROUTER_FREE_MODEL`). Even live, the
+lane is observe-only and degrades honestly to $0 if the free tier 429s — so the worst case of flipping it is
+"no claims extracted this pass," never a spend or a crash.

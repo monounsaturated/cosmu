@@ -331,10 +331,14 @@ class XaiVoiceProvider:
 
 
 class RedditVoiceProvider:
-    """Pull one Reddit user's recent submissions AND comments from the public `user/<name>/{submitted,comments}.json`
-    endpoints (no auth, free). Submissions carry the title + selftext; comments carry the body. A real-time public
-    read → `available_at` = read time. Reddit blocks bare bot UAs, so we send a descriptive agent. Offline-testable
-    via an injected `_fetcher(url) -> dict`. One dead listing is swallowed (never aborts the other)."""
+    """Pull a Reddit voice's recent posts from the public JSON endpoints (no auth, free). TWO handle shapes:
+      * a USER ('u/name' or '@name') → its `user/<name>/{submitted,comments}.json` timeline (submissions carry the
+        title + selftext; comments carry the body) — a single author.
+      * a SUBREDDIT ('r/sub') → that community's `r/<sub>/hot.json` (history: `r/<sub>/new.json`) submissions — a
+        crowd, not one author (the base-rate/breadth control archetype). A subreddit has no per-user comment
+        timeline, so submissions ARE the crowd's posts.
+    A real-time public read → `available_at` = read time. Reddit blocks bare bot UAs, so we send a descriptive
+    agent. Offline-testable via an injected `_fetcher(url) -> dict`. One dead listing is swallowed (never aborts)."""
 
     _UA = "python:cosmu-engine:0.1 (by /u/cosmu-bot)"
     platform = "reddit"
@@ -342,6 +346,12 @@ class RedditVoiceProvider:
     def __init__(self, *, post_limit: int = 50, _fetcher: Callable[[str], dict] | None = None) -> None:
         self.post_limit = post_limit
         self._fetcher = _fetcher or self._fetch
+
+    @staticmethod
+    def _is_subreddit(handle: str) -> bool:
+        """A subreddit handle is 'r/<sub>' (or '/r/<sub>'); anything else is treated as a user."""
+        h = handle.lstrip("@")
+        return h.startswith("r/") or h.startswith("/r/")
 
     def _fetch(self, url: str) -> dict:
         req = urllib.request.Request(url, headers={"User-Agent": self._UA})
@@ -377,22 +387,53 @@ class RedditVoiceProvider:
         children = [(c.get("data") or {}) for c in (data.get("children") or [])]
         return children, data.get("after") or None
 
+    def _sub_listing_paged(
+        self, handle: str, sort: str, *, limit: int = 100, after_id: str | None = None
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """One paginated page of a SUBREDDIT's submissions (newest-first for `new`, ranked for `hot`). Same
+        cursor contract as `_listing_paged`. The handle is 'r/<sub>'; the path is `r/<sub>/<sort>.json`."""
+        sub = handle.lstrip("@").removeprefix("/r/").removeprefix("r/")
+        params: dict[str, Any] = {"limit": min(limit, 100)}
+        if after_id:
+            params["after"] = after_id
+        url = f"https://www.reddit.com/r/{sub}/{sort}.json?{urllib.parse.urlencode(params)}"
+        try:
+            payload = self._fetcher(url)
+        except Exception:  # noqa: BLE001 — a dead subreddit listing never aborts the run
+            return [], None
+        data = payload.get("data") or {}
+        children = [(c.get("data") or {}) for c in (data.get("children") or [])]
+        return children, data.get("after") or None
+
+    def _submission_text(self, d: dict[str, Any]) -> str:
+        """A submission's substance: title + selftext (joined when both present)."""
+        title = (d.get("title") or "").strip()
+        body = (d.get("selftext") or "").strip()
+        return f"{title}\n\n{body}".strip() if body else title
+
     def fetch_timeline(self, handle: str, *, limit: int, now: datetime | None = None) -> list[VoicePost]:
         if limit <= 0:
             return []
         read_at = _now(now)
-        out: list[VoicePost] = []
+        if self._is_subreddit(handle):
+            # A subreddit: its recent SUBMISSIONS are the crowd's posts (no per-user comment timeline). Keyless.
+            out: list[VoicePost] = []
+            children, _ = self._sub_listing_paged(handle, "hot", limit=limit)
+            for d in children:
+                p = self._post(handle, d, self._submission_text(d), read_at)
+                if p is not None and p.text:
+                    out.append(p)
+            out.sort(key=lambda p: p.ts)
+            return out[-limit:] if limit and len(out) > limit else out
+        user_out: list[VoicePost | None] = []
         # Submissions: title + selftext is the post's substance.
         for d in self._listing(handle, "submitted", limit):
-            title = (d.get("title") or "").strip()
-            body = (d.get("selftext") or "").strip()
-            text = f"{title}\n\n{body}".strip() if body else title
-            out.append(self._post(handle, d, text, read_at))
+            user_out.append(self._post(handle, d, self._submission_text(d), read_at))
         # Comments: the body IS the post.
         for d in self._listing(handle, "comments", limit):
             text = (d.get("body") or "").strip()
-            out.append(self._post(handle, d, text, read_at))
-        out = [p for p in out if p is not None and p.text]
+            user_out.append(self._post(handle, d, text, read_at))
+        out = [p for p in user_out if p is not None and p.text]
         out.sort(key=lambda p: p.ts)
         return out[-limit:] if limit and len(out) > limit else out
 
@@ -424,9 +465,12 @@ class RedditVoiceProvider:
         return VoicePost("reddit", handle, pid, text, ts, ts, url=url)
 
     def fetch_timeline_history(self, handle: str, *, since: datetime) -> list[VoicePost]:
-        """Paginate back through the user's submitted + comments until posts pre-date `since`.
-        available_at == ts so signal_history() can replay the authority series from the backfill
-        window start. Reddit caps listings at ~1 000 items per user, newest-first."""
+        """Paginate back through the voice's posts until they pre-date `since`. available_at == ts so
+        signal_history() can replay the authority series from the backfill window start. Reddit caps listings at
+        ~1 000 items newest-first. A SUBREDDIT handle paginates its `new` submissions; a USER handle paginates its
+        submitted + comments."""
+        if self._is_subreddit(handle):
+            return self._subreddit_history(handle, since=since)
         out: list[VoicePost] = []
         for kind in ("submitted", "comments"):
             cursor: str | None = None
@@ -454,6 +498,33 @@ class RedditVoiceProvider:
                         out.append(p)
                 if cursor is None:
                     break
+        seen: dict[str, VoicePost] = {}
+        for p in out:
+            seen[p.post_id] = p
+        return sorted(seen.values(), key=lambda p: p.ts)
+
+    def _subreddit_history(self, handle: str, *, since: datetime) -> list[VoicePost]:
+        """Paginate a SUBREDDIT's `new` submissions back to `since` (available_at == ts, retrospective PIT)."""
+        out: list[VoicePost] = []
+        cursor: str | None = None
+        exhausted = False
+        while not exhausted:
+            children, cursor = self._sub_listing_paged(handle, "new", after_id=cursor)
+            if not children:
+                break
+            for d in children:
+                created = d.get("created_utc")
+                if created is None:
+                    continue
+                ts = datetime.fromtimestamp(float(created), tz=UTC)
+                if ts < since:
+                    exhausted = True
+                    break
+                p = self._post_pit(handle, d, self._submission_text(d))
+                if p:
+                    out.append(p)
+            if cursor is None:
+                break
         seen: dict[str, VoicePost] = {}
         for p in out:
             seen[p.post_id] = p

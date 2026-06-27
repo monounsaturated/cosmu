@@ -29,23 +29,39 @@ class Voice:
 # THE STARTER PANEL — minimal, KEYLESS, easy to extend (the template default; see docs/epics/llm-lane-template.md).
 # --------------------------------------------------------------------------------------------------------------
 # Registering a voice is a deliberate, PRE-REGISTERED operator act (the anti-survivorship discipline: a voice is
-# added BEFORE its future calls are scored, with a falsifiable `why` on the record). This MINIMAL panel is two
-# voices on KEYLESS, free sources (Reddit public JSON + RSS) — NO X (which needs XAI_API_KEY) — so the whole lane
-# runs at ~$0 with no key. NEITHER voice is asserted to HAVE skill: the `why` is the testable HYPOTHESIS, and the
-# deterministic price-anchored scoreboard (Brier-skill vs base rate, echo-disconfirmed) confirms or refutes it OOS.
-# Expect the honest first verdict to be "0/2 carry skill after the base rate" — that is the machine working.
+# added BEFORE its future calls are scored, with a falsifiable `why` on the record). This SMALL panel is all on
+# KEYLESS, free sources (Reddit public JSON + RSS) — NO X (which needs XAI_API_KEY) — so the whole lane runs at
+# ~$0 with no key. It is deliberately structured as a little EXPERIMENT, not a watchlist: three CONTROLS expected
+# to score ~base-rate (two breadth crowds + one bias crowd) and two CANDIDATES that might carry price-anchored
+# skill (an on-chain research desk that may LEAD; a news wire that should ECHO). NO voice is asserted to HAVE
+# skill — each `why` is a testable HYPOTHESIS, and the deterministic price-anchored scoreboard (Brier-skill vs
+# base rate, echo-disconfirmed) confirms or refutes it OOS. Expect the honest first verdict to be "0/N carry
+# skill after the base rate" — that is the machine working.
 #
 # The OPERATOR edits this list (FLEXIBLE — not locked): add or remove a line and the next pass picks it up. Keep
 # it small and keyless; widen it in a future chat. Every entity a voice speaks on should be in ENTITY_BARS_SYMBOL
 # below, or its claims resolve as no_data (named, never guessed).
 VOICE_PANEL: tuple[Voice, ...] = (
-    # A broad retail crowd (keyless Reddit). HYPOTHESIS: breadth, not skill — the base-rate CONTROL that proves the
-    # metric rewards calibrated foresight, not loudness. Expected to score ~base-rate; if it ever scores high the
-    # metric is broken.
-    Voice("r/CryptoCurrency", "reddit", "broad retail sentiment proxy (keyless); breadth not skill — the base-rate control that proves the scoreboard rewards skill not volume"),
+    # --- CONTROLS (expected to score ~base-rate; if any scores high skill, the metric is rewarding bias/volume) ---
+    # A broad multi-asset retail crowd (keyless Reddit subreddit). HYPOTHESIS: breadth, not skill — the base-rate
+    # CONTROL that proves the metric rewards calibrated foresight, not loudness. FALSIFIED if it ever beats base.
+    Voice("r/CryptoCurrency", "reddit", "broad retail sentiment proxy (keyless subreddit); breadth not skill — the base-rate control that proves the scoreboard rewards skill not volume"),
+    # A BTC-maximalist crowd (keyless Reddit subreddit). HYPOTHESIS: a persistent UP bias on BTC, NOT timing skill —
+    # a directional-bias control. On a long up-drift it will "be right a lot" yet must score ~0 excess over base.
+    # FALSIFIED if a perma-bull beats the base rate (then the metric is rewarding bias, not foresight).
+    Voice("r/Bitcoin", "reddit", "BTC-maximalist crowd (keyless subreddit); persistent up-bias not timing — a bias control that must NOT beat the BTC base rate"),
+    # An ETH-focused crowd (keyless Reddit subreddit). HYPOTHESIS: the SAME breadth-not-skill behaviour on a SECOND
+    # asset — proves the base-rate result generalizes beyond BTC. FALSIFIED if ETH breadth scores skill where BTC
+    # breadth does not (would imply an asset-specific metric artifact).
+    Voice("r/ethfinance", "reddit", "ETH-focused retail crowd (keyless subreddit); second-asset breadth control — confirms the base-rate behaviour generalizes beyond BTC"),
+    # --- CANDIDATES (the falsifiable bets that SOMETHING here carries price-anchored skill) ---
     # An on-chain research desk (keyless RSS). HYPOTHESIS: original, slow, data-driven BTC/ETH reads that may LEAD
     # price rather than describe it — a low-frequency causal candidate the lead-lag tripwire will confirm or refute.
     Voice("https://insights.glassnode.com/feed/", "rss", "Glassnode 'Week On-Chain' newsletter (keyless RSS); original slow on-chain BTC/ETH research — test whether the directional framing leads the tape or merely narrates it"),
+    # A fast news wire (keyless RSS). HYPOTHESIS: it DESCRIBES the tape rather than leading it — the lead-lag
+    # tripwire should mark it an ECHO (low authority). A negative control for lead-lag: FALSIFIED (tripwire
+    # miscalibrated) if a reactive news wire ever reads as foresight.
+    Voice("https://www.coindesk.com/arc/outboundfeeds/rss/", "rss", "CoinDesk news wire (keyless RSS); reactive headline flow — the lead-lag ECHO control that must NOT register as foresight"),
 )
 
 # Claim entities (the extractor emits short tickers like "BTC") → the venue symbol whose bars resolve the
