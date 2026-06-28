@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from decimal import ROUND_DOWN, Decimal
 from types import SimpleNamespace
@@ -39,9 +40,19 @@ from cosmu.spine.venue import default_catalog
 
 STRATEGY_NAME = "Defensive Asset Allocation (Keller DAA top-6)"  # UNIQUE — does not collide with GEM/VAA/GTAA/PAA
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
-VENUE = "ibkr"
+# Equity execution VENUE — config-driven (override with COSMU_EQUITY_VENUE). Default ALPACA: Alpaca equity exec is
+# fully wired on main (adapters/exec/registry + the paper clock's PricingRouter price equities off Alpaca-when-keyed),
+# whereas IBKR has DATA but NO ExecutionAdapter — so an IBKR-funded equity survivor is structurally unable to ever go
+# live (it sim-fills forever while the UI shows 'armed'). This is a venue label/routing default only; it NEVER arms
+# live or moves money (the arm is SIM-only by invariant), it just labels the track on the venue that can actually
+# execute once the operator arms it. orchestrator.loop._FUNDING_VENUE_BY_ASSET_CLASS already maps equity → alpaca.
+VENUE = os.environ.get("COSMU_EQUITY_VENUE", "alpaca").strip() or "alpaca"
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
-IBKR_ETF_BPS_PER_SIDE = daa.IBKR_ETF_BPS_PER_SIDE
+# Per-side ETF fee charged on each rebalance leg. We keep daa's documented 1.0 bps/side: it is the validation's own
+# net-of-fee assumption and it is CONSERVATIVE for any venue (Alpaca is commission-free / 0 bps, IBKR ~0.5 bps), so a
+# paper track can never look BETTER than reality by under-charging. (Name kept for back-compat; it is a generic ETF fee.)
+EQUITY_ETF_BPS_PER_SIDE = daa.IBKR_ETF_BPS_PER_SIDE
+IBKR_ETF_BPS_PER_SIDE = EQUITY_ETF_BPS_PER_SIDE  # legacy alias — referenced below; unchanged numeric value
 # DAA's proven-regime passport is DERIVED from its OWN per-regime net PnL (research._arm_regimes), NOT hardcoded:
 # each invested month is tagged bull/bear/chop off the SPY trend (the same classifier the live gate re-derives) and a
 # regime is proven only if the arm's net PnL there is positive. DAA scales into short Treasuries as the canary breadth
