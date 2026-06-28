@@ -49,15 +49,17 @@ Live verdict = `promote_brut` ([cohort.py:196]) per-combo, `TrialStats(count=1)`
 - **Optional cleanup for you (low-pri, NOT done — needs your ok):** delete the ~106 squash-merged branches to declutter; keep `wip/snapshot-*` and this run's branch.
 - **Ground-truth corrections found:** Alpaca equity execution is **already wired on main** (only `research/equity_daa_arm.py:42 VENUE="ibkr"` left to flip); `capital_guard.run_capital_guard()` exists but is **only API-reachable, never scheduled** (real safety gap); `authority_weighted_claim_signal` feature is registered but **0 specs enter on it**; `research/leakage_tripwire.py` (`audit_feature`) + `research/disconfirmers.py` (`symbol_anonymization_null`) **already exist but are wired to nothing**.
 
-### WAVE 2 — in flight (build agents, isolated worktrees, each its own branch + draft PR)
-| Item | Branch | Status |
-|------|--------|--------|
-| Leakage tripwire (reframed → wire `audit_feature` into `profile_source` + audit-all-features, roadmap #3/#7; module already exists) | `claude/leakage-tripwire-poc-2026-06-28` | running |
-| BRUT-integrity regression tripwire (freezes the audit above) | `claude/brut-pooling-tripwire-2026-06-28` | running |
-| #1 Placebo panel as standing cohort-rider on the finder's real tape | (agent-named) | launching |
-| #2 inbox-lint CLI — the strategy-railway rung (50 specs as reviewable as 1) | (agent-named) | launching |
-| #4 Token-unlock supply-shock drift event-study (NEW dated leak-proof edge axis, keyless DefiLlama) | (agent-named) | launching |
-| #6 Voice-driven `event` specs entering on `authority_weighted_claim_signal` → Gate (our unique edge lane, never tested) | (agent-named) | launching |
+### WAVE 2 + leakage (build agents, isolated worktrees, each its own draft PR)
+| Item | Branch / PR | Status |
+|------|-------------|--------|
+| Leakage tripwire — wired the missing **ticker-anonymization** disconfirmer into the `audit_feature` bundle (+ `--anon` CLI, 44 tests). Module already existed (#387); no duplication. | [#458](https://github.com/monounsaturated/cosmu/pull/458) | ✅ done |
+| BRUT-integrity tripwire — 3 regression tests + 8-line per-cell guard in `loop.py::_score_cells` (pooled-oos can never rescue a per-cell verdict). | [#459](https://github.com/monounsaturated/cosmu/pull/459) | ✅ done |
+| #1 Placebo panel → standing finder cohort-rider (flag-gated, observe-only) | `claude/placebo-cohort-rider-2026-06-28` | 🔄 running |
+| #2 inbox-lint CLI — strategy-authoring railway rung | `claude/inbox-lint-2026-06-28` | 🔄 running |
+| #6 Voice-authority `event` specs → Gate (unique edge lane, first test) | `claude/voice-event-specs-2026-06-28` | 🔄 running |
+| #12 Intraday order-flow / book-imbalance feasibility (docs-only spike, new signal regime) | `claude/intraday-orderflow-spike-2026-06-28` | 🔄 running |
+
+_(Dropped #4 token-unlock — memory shows N5 [#447](https://github.com/monounsaturated/cosmu/pull/447) already KILLED token-unlock drift; no new angle. M2 note: a 5-file batch pytest hung once under agent contention — agents bounded to own-file tests.)_
 
 _(PR links + verdicts filled in as agents report.)_
 
