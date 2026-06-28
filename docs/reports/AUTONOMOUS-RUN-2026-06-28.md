@@ -10,6 +10,26 @@
 
 ---
 
+## ⭐ RUN SUMMARY (executive — read this first)
+
+A 6-hour fully-autonomous run produced **22 draft PRs (#457–#479)** — **all reversible, NONE merged, every code PR adversarially pre-reviewed clean, and the whole batch `git merge-tree`-verified safe to merge sequentially (zero conflicts).** Gate constants byte-identical throughout; per-combo BRUT preserved; money-path PRs explicitly verified they cannot over-arm / move money / loosen a fee; nothing deployed.
+
+**🎯 The 3 things to do on return:**
+1. **Review + merge the batch** — the verified merge order is in Part 4's **Merge Guide** (safe sequentially; strip each PR's "DO NOT MERGE" line on merge). Redeploy Modal after the money-path trio (#465/#471/#474).
+2. **⚠️ DEPLOY the HL positioning logger ([#479](https://github.com/monounsaturated/cosmu/pull/479))** — it's the best remaining edge axis ($0/keyless/PIT-clean) and is **data-starved at birth**; every day un-deployed is a day later the Gate can rule (~2–3wk forward-hoard needed).
+3. **Decide the deferred follow-ups** (Part 4 — funder re-key, etc.) + any **paid data** (the next-data-axis report says **$0 to start**; hold spend behind a proven free whiff).
+
+**📦 What shipped, by theme:**
+- **Honesty / moat:** leakage tripwire at the feature-door ([#458]), source-door ([#463]), + standing audit ([#466] — pipeline **LEAK-FREE**, 0/79); BRUT-integrity regression tripwire ([#459]); placebo cohort-rider ([#461]).
+- **Strategy-authoring railway:** inbox-lint ([#460], 125 specs→119/6/26 dups) + wave-0 novelty-gate ([#470]).
+- **Path to first live $:** live-arming dry-run proves the chain fires ([#467]) + 2 real gaps FIXED ([#471]) + capital_guard now scheduled every tick ([#465]).
+- **Fee / data honesty:** paper-fee-parity ([#474] — fixed a real funding-gate bug: paper under-charged Polymarket/IBKR) · provenance+divergence surfacing ([#475]) · USDC liquidity-first module ([#469]) · pipeline integrity audit ([#472]).
+- **Edge hunt (North Star):** intraday microstructure ×3 → KILL ([#468]/[#473]/[#476]); Polymarket Σ(YES)<$1 arb → KILL ([#477]); Aave money-market stress → KILL ([#478]); **→ forward lead: HL long-tail positioning logger BUILT** ([#479], deploy to hoard) + the next-data-axis recommendation report.
+
+**📉 Honest bottom line:** **no edge survived the Gate this run — the binding constraint is the DATA WALL, not the method or the Gate** (which validated itself repeatedly). The run converted that reality into a **hardened moat, a de-risked live path, and a ready-to-deploy $0 forward bet** (HL positioning) whose verdict needs ~2–3 weeks of hoarded data. The single highest-leverage next action is mechanical: **deploy #479 and start the clock.**
+
+---
+
 ## PART 1 — Shipped in this chat (ALREADY MERGED to `main`, deployed Modal v23) → QA in prod
 
 Repo: `github.com/monounsaturated/cosmu`. Main tip at run start: `95370be2` (through PR #456).
