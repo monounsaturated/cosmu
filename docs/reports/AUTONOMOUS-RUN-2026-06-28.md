@@ -54,8 +54,10 @@ Live verdict = `promote_brut` ([cohort.py:196]) per-combo, `TrialStats(count=1)`
 |------|-------------|--------|
 | Leakage tripwire — wired the missing **ticker-anonymization** disconfirmer into the `audit_feature` bundle (+ `--anon` CLI, 44 tests). Module already existed (#387); no duplication. | [#458](https://github.com/monounsaturated/cosmu/pull/458) | ✅ done |
 | BRUT-integrity tripwire — 3 regression tests + 8-line per-cell guard in `loop.py::_score_cells` (pooled-oos can never rescue a per-cell verdict). | [#459](https://github.com/monounsaturated/cosmu/pull/459) | ✅ done |
-| #1 Placebo panel → standing finder cohort-rider (flag-gated, observe-only) | `claude/placebo-cohort-rider-2026-06-28` | 🔄 running |
-| #2 inbox-lint CLI — strategy-authoring railway rung | `claude/inbox-lint-2026-06-28` | 🔄 running |
+| #1 Placebo panel → standing finder cohort-rider (flag default-OFF, observe-only; new `lab/placebo_rider.py`) | [#461](https://github.com/monounsaturated/cosmu/pull/461) | ✅ done |
+| #7 Standing leakage-audit over ALL wired alt-features (surface any existing leak feeding the Gate) | `claude/leakage-audit-all-2026-06-28` | 🔄 running |
+| #2 inbox-lint CLI — strategy-authoring railway rung (verified on real inbox: **125 specs → 119 pass / 6 fail / 26 near-dup clusters**) | [#460](https://github.com/monounsaturated/cosmu/pull/460) | ✅ done |
+| #3 Leakage tripwire → `profile_source` GO/REVIEW/NO-GO (close the baked-in-alignment leak #458 flagged) | `claude/leakage-profile-source-2026-06-28` | 🔄 running |
 | #6 Voice-authority `event` specs → Gate (unique edge lane, first test) | `claude/voice-event-specs-2026-06-28` | 🔄 running |
 | #12 Intraday order-flow / book-imbalance feasibility (docs-only spike, new signal regime) | `claude/intraday-orderflow-spike-2026-06-28` | 🔄 running |
 
