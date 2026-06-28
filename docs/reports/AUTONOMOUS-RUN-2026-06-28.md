@@ -98,7 +98,11 @@ _(PR links + verdicts filled in as agents report.)_
 
 **Already-merged (prod) — spot-check:** `/mind` voice scoreboard renders · strategy sheet shows holdout/OOS + provenance · Modal v23 healthy (`modal app history`) · Gate constants byte-identical.
 
-**Autonomous-run branches — review before any merge:** _(filled in as PRs land — see Part 2 table)_
+**Autonomous-run branches — adversarial PRE-REVIEW (2 isolated reviewers, every test suite re-run):**
+- ✅ **All 9 shipped PRs (#458–#466) = PASS, ZERO blockers.** No PR touches `master/scorer.py` / `master/cohort.py` scoring math (Gate constants byte-identical); per-combo BRUT preserved; fully reversible; money-path safe.
+- 🔒 **#465 (money-path) explicit safety verdict:** cannot move money (reduce-only; SIM until you arm), cannot arm / flip the live interlock, cannot crash the tick (try/except-wrapped). Strictly *adds* protection.
+- 📝 **Optional follow-ups (none block merge):** (a) ack #465's default-ON auto-guard; (b) #466's conservative leak-thresholds may degrade a *weak* real leak to WARN (re-run as history deepens); (c) strip the "DO NOT MERGE — POC" line on actual merge; (d) cosmetic: move #461's `survivor_dsrs` comprehension inside the OFF-gate.
+- ⏳ Pending review: #467 (dry-run) + capital-path-fix (#10b) + novelty-gate (#8) + USDC module — will be pre-reviewed once finalized.
 
 **Housekeeping you may want:** delete ~106 squash-merged remote branches (list verified safe); leave `wip/snapshot-*`.
 
