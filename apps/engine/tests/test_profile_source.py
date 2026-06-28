@@ -109,9 +109,13 @@ def test_to_dict_and_to_text_are_stable_for_tooling():
     d = p.to_dict()
     assert d["verdict"] == "GO"
     assert d["coverage"]["rows"] == 70
+    # The six metadata checks are always present; with no bars supplied the behavioral gate reports an INFO
+    # 'behavioral_audit' skipped check (visible, never a silent pass), so it appears in the serialized set too.
     assert {c["name"] for c in d["checks"]} == {
-        "coverage_depth", "gaps", "staleness", "look_ahead", "pit_lag", "revision_safety"
+        "coverage_depth", "gaps", "staleness", "look_ahead", "pit_lag", "revision_safety", "behavioral_audit"
     }
+    behavioral = next(c for c in d["checks"] if c["name"] == "behavioral_audit")
+    assert behavioral["severity"] == "info" and "skipped" in behavioral["detail"]
     text = p.to_text()
     assert "DATA-TRUST AUDIT" in text and "VERDICT: GO" in text
 
