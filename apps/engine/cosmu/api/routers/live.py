@@ -644,6 +644,11 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
         "SELECT symbol, instrument_id FROM positions WHERE strategy_version_id = ? ORDER BY updated_at DESC LIMIT 1",
         (request.version_id,),
     )
+    # `attribution_confirmed` = the version's ONE funded cell is demonstrably the requested (symbol, venue) — so any
+    # version-only forward evidence on file provably belongs to THIS cell (one funded cell per version today). It
+    # gates the safe version-scope fallback below; never set when no funded position exists (then only cell-scoped
+    # evidence can arm — an unproven request still blocks).
+    attribution_confirmed = False
     if funded and funded.get("symbol"):
         from cosmu.orchestrator.loop import _instrument_venue
         from cosmu.spine.venue import default_catalog
@@ -656,14 +661,50 @@ def live_launch(request: LaunchActivateRequest) -> LaunchActivateResponse:
                 reason=(f"forward proof was earned on {funded['symbol']}@{funded_venue}, not "
                         f"{request.symbol}@{request.venue_id} — arm the cell that was actually proven"),
             )
+        attribution_confirmed = True
 
     # HARD live-eligibility gate: paper maturity (>= PAPER_MIN_DAYS net-positive) AND regime.
     # `override_paper` waives ONLY the paper precondition (logged below), never the regime gate.
+    #
+    # CELL-SCOPED (GAP 1 fix): thread the LAUNCHED cell's symbol+venue into the eligibility readers so the arming
+    # path evaluates the SAME BRUT cell key (version:symbol:venue) the per-combo model proves, NOT the version-only
+    # key. The forward-evidence readers (track_opened passport, clock origin, return, daily-marked DSR, forward
+    # fills) are all cell-scoped; passing symbol/venue is what makes a cell proven ONLY under its own BRUT key
+    # armable — the new capability this fix unlocks.
+    #
+    # SAFE VERSION-SCOPE FALLBACK (the "only where still correct" half): the funder TODAY still writes forward
+    # evidence under the VERSION-only key (master/zero_capital.open_zero_capital_track: track_opened ref_id=version,
+    # tracks row with no symbol/venue) while the live `tracks` table already carries the BRUT columns — so a
+    # cell-scoped read of a currently-funded cell finds NOTHING and would (fail-safe) block a legitimately-proven
+    # arm. To bridge until the funder is re-keyed, IF the cell-scoped verdict is NOT eligible we fall back to the
+    # version-scoped verdict — but ONLY when `attribution_confirmed` (the version's one funded cell IS the requested
+    # symbol@venue, proven above from the live position). That makes the version-only evidence provably THIS cell's
+    # evidence, never a sibling's. WHY THIS CANNOT OVER-ARM: (1) the fallback requires a real funded position
+    # matching the request (no funded cell → no fallback → cell-scoped block stands); (2) the version-only verdict
+    # is the EXACT gate that arms today, so the fallback is at most today's behaviour, never weaker; (3) the regime
+    # gate + the 5 execution interlocks still apply to whichever verdict arms. It widens which PROVEN cells arm,
+    # never which UNPROVEN cells arm.
     from cosmu.master.live_eligibility import live_eligibility_verdict, paper_clock_origin
 
     reference = _version_reference_bars(request.version_id)  # this version's own asset-class regime brain
-    verdict = live_eligibility_verdict(store, request.version_id, reference, override=request.override_paper)
-    ft_days = verdict.paper_age_days if paper_clock_origin(store, request.version_id) else None
+    verdict = live_eligibility_verdict(
+        store, request.version_id, reference, override=request.override_paper,
+        symbol=request.symbol, venue_id=request.venue_id,
+    )
+    if not verdict.eligible and attribution_confirmed:
+        version_scoped = live_eligibility_verdict(
+            store, request.version_id, reference, override=request.override_paper,
+        )
+        if version_scoped.eligible:
+            verdict = version_scoped  # bridge: version-only proof for the confirmed funded cell (legacy funder)
+    ft_days = (
+        verdict.paper_age_days
+        if (
+            paper_clock_origin(store, request.version_id, symbol=request.symbol, venue_id=request.venue_id)
+            or (attribution_confirmed and paper_clock_origin(store, request.version_id))
+        )
+        else None
+    )
     readiness = "proven" if verdict.forward_ready else "not yet proven"
 
     if not verdict.eligible:
