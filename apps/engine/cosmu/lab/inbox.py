@@ -201,6 +201,26 @@ def _already_imported(store: Store, content_hash: str) -> bool:
     return row is not None
 
 
+def _authored_by(store: Store, content_hash: str) -> str:
+    """Provenance of an inbox spec for the wave-0 novelty policy: was this file written by the AGENT batch master
+    (strategize/batch author with authored_by='agent') or by a HUMAN? Read off the audited authoring events
+    (strategize_authored / inbox_queued), matched on the file's content_hash. Defaults to 'human' — we only
+    HARD-SKIP a near-dup on POSITIVE evidence it was machine-authored, so an operator's intentional inbox spec is
+    never silently dropped. Best-effort: any read hiccup degrades to 'human' (the conservative, never-drop side)."""
+    try:
+        # Only the AUTHORING events carry real provenance — inbox_imported is always recorded actor='human' by the
+        # scanner, so it would mask an agent file's true origin. Match on the authoring events alone.
+        row = store.row(
+            "SELECT actor FROM events WHERE kind IN ('strategize_authored', 'inbox_queued') "
+            "AND payload LIKE ? ORDER BY id ASC LIMIT 1",
+            (f'%"content_hash": "{content_hash}"%',),
+        )
+    except Exception:  # noqa: BLE001 — provenance is advisory; a read hiccup must never break the scan
+        return "human"
+    actor = (row or {}).get("actor") if row else None
+    return "agent" if actor == "agent" else "human"
+
+
 def _spec_from_frontmatter(text: str) -> StrategySpec | None:
     """A `.md` file may lead with a YAML front-matter block (`---` … `---`) that IS a typed StrategySpec — the
     authored format the inbox README documents. Parse it directly so the authored edge (named features, modules,
@@ -268,6 +288,7 @@ def scan_inbox(
         return report
 
     new_specs: list[StrategySpec] = []
+    new_specs_authored_by: list[str] = []  # parallel provenance for the wave-0 novelty policy (human vs agent)
     for path in sorted(directory.iterdir()):
         if path.suffix.lower() not in _SUPPORTED or not path.is_file():
             continue
@@ -299,6 +320,9 @@ def scan_inbox(
 
         record.imported = True
         new_specs.append(spec)
+        # Provenance for the wave-0 novelty policy: resolved from the authoring events BEFORE we record the
+        # inbox_imported event below (so this file's own import never masks its true origin). Human by default.
+        new_specs_authored_by.append(_authored_by(store, chash))
         report.imported.append(record)
         store.append_event(
             actor="human",
@@ -309,7 +333,10 @@ def scan_inbox(
 
     if run_cohort and new_specs:
         loop = FarmLoop(settings=store.settings, store=store, market_data=market_data)
-        report.cohort = loop.run_cohort(cohort_size=len(new_specs), explore_pct=0.0, extra_seeds=new_specs)
+        report.cohort = loop.run_cohort(
+            cohort_size=len(new_specs), explore_pct=0.0,
+            extra_seeds=new_specs, extra_seeds_authored_by=new_specs_authored_by,
+        )
     return report
 
 
