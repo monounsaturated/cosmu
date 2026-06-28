@@ -65,6 +65,8 @@ Live verdict = `promote_brut` ([cohort.py:196]) per-combo, `TrialStats(count=1)`
 | #12 Intraday order-flow / book-imbalance feasibility — **VERDICT: GO** (keyless PIT-honest historical aggTrades + direction-carrying `isBuyerMaker`; the new edge axis) | [#462](https://github.com/monounsaturated/cosmu/pull/462) | ✅ done |
 | **H1 edge experiment** — aggressive-flow-imbalance fade (1m maker) → **KILL** (0/7; gross ≤2bps eaten by turnover×fee). **BUT shuffle-null confirms a REAL ~2bps order-flow signal EXISTS** (FIL p=0.04, OP p=0.075) — turnover-bound, NOT absent. Reusable keyless `data/intraday_aggtrades.py` fetcher shipped. | [#468](https://github.com/monounsaturated/cosmu/pull/468) | ✅ done |
 | **H1b edge experiment** — LOW-TURNOVER variant (rare extreme imbalances · longer horizon · coarser bars → round-trips ↓10–100×) to monetize the confirmed ~2bps signal past the fee wall. **The run's top edge lead.** | `claude/h1b-orderflow-lowturnover-2026-06-28` (stacked on #468) | 🔄 running |
+| USDC liquidity-first base-currency decision module (trade=liquidity-wins, rest=USDC-default; propose-only, 3 new files, 18 tests) | [#469](https://github.com/monounsaturated/cosmu/pull/469) | ✅ done |
+| Pipeline integrity audit — fees-per-venue · price-per-symbol-fallback+corr · USDC-settlement readiness across backtest→paper→live (operator "verify" item) | `claude/pipeline-integrity-audit-2026-06-28` | 🔄 running |
 
 _(Dropped #4 token-unlock — memory shows N5 [#447](https://github.com/monounsaturated/cosmu/pull/447) already KILLED token-unlock drift; no new angle. M2 note: a 5-file batch pytest hung once under agent contention — agents bounded to own-file tests.)_
 
