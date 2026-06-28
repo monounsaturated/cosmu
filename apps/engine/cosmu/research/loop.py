@@ -84,6 +84,42 @@ def _hoard_per_market_odds(store: Store, alt_store) -> None:  # noqa: ANN001
         logger.exception("per-market odds hoard step failed; ingest step (already persisted) is unaffected")
 
 
+def _hoard_hl_positioning(alt_store) -> None:  # noqa: ANN001
+    """Best-effort Hyperliquid LONG-TAIL POSITIONING hoard (next-data-axis #1, 2026-06-28), folded into the
+    hourly ingest cron — the wiring that makes the keyless on-chain crowding/liq-density poller actually run in
+    prod so the forward hoard starts accumulating depth IMMEDIATELY (native history is shallow; the binding cost
+    is TIME, so every hour the cron runs is an hour earlier the Gate can rule, ~2-3 wks out). ONE capture per pass:
+    aggregate OI/funding/mark for the long-tail basket (majors excluded) + optional per-account watchlist fold
+    (HL_POSITIONING_ACCOUNTS env), then materialize the two derived registry features (crowding-extreme z +
+    OI-normalized long-liq density). DATA-GATHERING ONLY (no Gate change, no money, no arming). Append-only +
+    PIT-immutable (ts == available_at == capture instant) + idempotent. WRAPPED so any failure (HL /info hiccup,
+    a delisted coin) is logged + swallowed and can NEVER abort the already-persisted ingest pass — same best-effort
+    discipline as the bar + odds hoards above."""
+    try:
+        import os
+
+        from cosmu.data.sources.hyperliquid_positioning import (
+            DEFAULT_LONGTAIL_COINS,
+            PositioningPoller,
+            hoard_once,
+            materialize_features,
+        )
+
+        accounts = tuple(
+            a.strip() for a in os.environ.get("HL_POSITIONING_ACCOUNTS", "").split(",") if a.strip()
+        )
+        poller = PositioningPoller(coins=DEFAULT_LONGTAIL_COINS, accounts=accounts)
+        raw = hoard_once(alt_store, poller=poller)
+        feat = materialize_features(alt_store, coins=DEFAULT_LONGTAIL_COINS)
+        logger.info(
+            "hl positioning hoard: %s raw points across %s metrics, %s derived feature-points "
+            "(crowding/liq-density) — forward-hoarding the long-tail positioning axis.",
+            sum(raw.values()), len(raw), sum(feat.values()),
+        )
+    except Exception:  # noqa: BLE001 — the hoard is a free bonus; its failure must never touch the ingest result
+        logger.exception("hl positioning hoard step failed; ingest step (already persisted) is unaffected")
+
+
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
     """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) are
     ingested — exactly what arm (3) needs to differ from price-only. Same predicate the API uses."""
@@ -198,6 +234,11 @@ def auto_research_pass(
         # change, no money). BOUNDED + idempotent + best-effort: a CLOB hiccup or DB-absent universe is a no-op
         # and can NEVER abort the already-persisted ingest pass.
         _hoard_per_market_odds(store, alt_store)
+        # HOARD Hyperliquid long-tail positioning (next-data-axis #1, 2026-06-28): keyless on-chain crowding +
+        # liquidation-density per coin, forward-hoarded so the Gate can rule on the freshest-but-deepest history
+        # ~2-3 wks out. DATA-GATHERING ONLY + best-effort: an HL /info hiccup is a no-op and can NEVER abort the
+        # already-persisted ingest pass. Writes raw snapshots + materializes the two derived registry features.
+        _hoard_hl_positioning(alt_store)
 
     if not cross_asset_gate:
         return None

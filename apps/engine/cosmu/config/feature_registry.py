@@ -48,6 +48,14 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
     FeatureDefinition(name="defi_tvl", source="defillama", tier="tier0", asset_classes=["crypto"], asof_semantics="daily publication time (next-day availability floor)", prior="DeFi TVL flows indicate risk appetite and liquidity across crypto protocols", transform_version="defi-tvl-v1"),
     FeatureDefinition(name="open_interest", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="OI changes reveal leverage build-up."),
     FeatureDefinition(name="perp_spot_basis", source="exchange", tier="tier0", asset_classes=["crypto"], asof_semantics="exchange publication time", prior="Basis captures risk appetite and carry."),
+    # --- Hyperliquid LONG-TAIL POSITIONING (next-data-axis #1, 2026-06-28). FORWARD-HOARDED from the keyless
+    # on-chain /info clearinghouse state on a 15-25 long-tail/HIP-3 perp basket (majors excluded). PIT-clean by
+    # construction (on-chain snapshot, ts == available_at == capture instant, no revision). DATA-STARVED at birth
+    # (depth accrues only forward, ~2-3 wks before the Gate can rule) but registered now so the poller + correlation
+    # scan recognize them the moment the hoard fills. enabled=True so the correlation scan picks them up as the
+    # hoard accrues; until then they honestly skip (no store data). See data/sources/positioning_features.py. ---
+    FeatureDefinition(name="hl_crowding_extreme_z", source="hyperliquid", tier="tier1", asset_classes=["crypto"], asof_semantics="on-chain clearinghouse snapshot at the capture instant (ts == available_at; immutable, no revision)", prior="A crowding EXTREME on a thin perp (net positioning stretched vs its trailing window) precedes a 1-3d mean-reversion as the crowd unwinds — fade the extreme, net of maker fees.", transform_version="hl-positioning-crowding-v1"),
+    FeatureDefinition(name="hl_long_liq_density_norm", source="hyperliquid", tier="tier1", asset_classes=["crypto"], asof_semantics="on-chain clearinghouse snapshot at the capture instant (ts == available_at; immutable, no revision)", prior="A high share of the long book with liquidation prices clustered just below mark is fuel for a down-cascade; an OI-normalized long-liq density extreme precedes a near-term drawdown on thin perps.", transform_version="hl-positioning-liqdensity-v1"),
     # DISABLED (honesty fix — TOP PRIORITY): this was NEVER on-chain exchange netflow. Its provider
     # (data/providers/onchain.ExchangeNetflowProvider) fetches Binance USDⓈ-M globalLongShortAccountRatio —
     # perp CROWD POSITIONING — and stored ratio-1.0 under a FABRICATED "net inflows precede sell pressure"
