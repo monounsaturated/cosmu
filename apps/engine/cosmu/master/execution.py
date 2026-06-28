@@ -249,7 +249,7 @@ def execute_orders(
             if route_live
             else intent.price * (Decimal("1") + Decimal(intent.side) * _SIM_SLIPPAGE_FRACTION)
         )
-        fee = _pit_fee_for_order(store, venue, intent.symbol, intent.qty, fill_price)
+        fee = _pit_fee_for_order(store, venue, intent.symbol, intent.qty, fill_price, instrument=instrument)
 
         if route_live:
             # Shape the order to the venue. Crypto uses ccxt-unified symbols; a prediction CLOB (Polymarket)
@@ -323,15 +323,32 @@ def execute_orders(
     return outcomes
 
 
-def _pit_fee_for_order(store: Store, venue, symbol: str, qty: Decimal, price: Decimal) -> Decimal:
-    """Compute the taker fee for an order using the PIT fee schedule from the alt_data store.
+def _pit_fee_for_order(store: Store, venue, symbol: str, qty: Decimal, price: Decimal, *, instrument=None) -> Decimal:
+    """Compute the taker fee for an order, charging the SAME per-venue, asset-aware, pinned-to-today fee the
+    backtest/screen modelled — the paper-lane parity with build_cost_context.
 
-    Falls back to the static catalog taker fee when no PIT snapshot exists (offline / pre-first-ingest).
-    This is the single chokepoint that eliminates hardcoded fees in the order path.
+    Resolution order (single chokepoint, no hardcoded fee):
+      1. ASSET-AWARE override (Polymarket per-category×(1−price); IBKR per-share/per-contract/min/cap) via the
+         shared `effective_taker_bps`. This is what closes the gap: a flat catalog/PIT bps would UNDER-charge a
+         Polymarket (≈0) or IBKR equity (0.5) order vs the cost the screen used — and paper is the gate that funds
+         live. Returns None for plain spot/perp venues → the crypto path below is byte-identical to before.
+      2. PIT fee snapshot from the alt_data store (this account's tiered taker bps for crypto).
+      3. Static catalog taker fee (offline / pre-first-ingest).
+
+    The override can only EQUAL-or-RAISE a non-crypto fee (honest); it NEVER lowers a crypto fee and NEVER touches
+    the Gate.
     """
     from cosmu.data.altdata import read_pit_fee
+    from cosmu.spine.asset_fees import effective_taker_bps
 
     now = datetime.now(tz=UTC)
+    # 1. Asset-aware override (Polymarket / IBKR) — the per-asset/per-category fee the backtest charged. None for
+    #    plain crypto spot/perp → fall through to the unchanged PIT-then-catalog path.
+    override = effective_taker_bps(venue, instrument, reference_price=float(price), as_of=now)
+    if override is not None:
+        notional = qty * price
+        return notional * (override / Decimal("10000"))
+    # 2/3. Crypto: PIT snapshot if present, else the static catalog taker (byte-identical to before).
     taker_bps = read_pit_fee(store, venue.id, symbol, "venue_fees_taker", now)
     if taker_bps is not None:
         fee_fraction = Decimal(str(taker_bps)) / Decimal("10000")
