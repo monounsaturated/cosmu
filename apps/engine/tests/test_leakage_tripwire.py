@@ -2,18 +2,25 @@
 
 The Gate validates edge-after-costs; it does NOT verify the feature pipeline was point-in-time honest. A
 look-ahead bug UPSTREAM of the Gate is Gate-INVISIBLE (a survivor real on paper, zero/negative live). The
-tripwire is the standing guard a NEW data source must clear BEFORE it is trusted as a feature. It bundles three
-INDEPENDENT disconfirmers:
+tripwire is the standing guard a NEW data source must clear BEFORE it is trusted as a feature. It bundles FOUR
+INDEPENDENT disconfirmers (the three the operator named — PIT/available_at, shuffle, ticker-anonymization —
+plus the forward-shift sanity kept from the merged guard):
 
-  [1] available_at audit   — align_asof is strictly backward-looking (no value joined before its available_at).
-  [2] shuffle-null         — the IC survives a time-shuffle (genuine alignment, not a noise artefact).
-  [3] forward-shift sanity — lagging the feature does NOT beat the live read (no baked-in 1-bar look-ahead).
+  [1] available_at audit    — align_asof is strictly backward-looking (no value joined before its available_at).
+  [2] shuffle-null          — the IC survives a time-shuffle (genuine alignment, not a noise artefact).
+  [3] ticker-anonymization  — the IC survives masking SYMBOL IDENTITY (transferable timing, not 'BTC always
+      goes up' memorization). Active only with a multi-symbol map; skipped (never silently passed) for a single
+      series.
+  [4] forward-shift sanity  — lagging the feature does NOT beat the live read (no baked-in 1-bar look-ahead).
 
 These tests prove the harness CAN tell clean from leaked:
-  - a KNOWN-CLEAN on-bar-honest feature PASSES all three;
+  - a KNOWN-CLEAN on-bar-honest feature PASSES all checks;
   - a deliberately LEAKED feature (each value stamped one bar early — a hidden look-ahead) FAILS the RIGHT
     disconfirmer (forward-shift sanity), while [1] and the shuffle stay green (the leak is the ALIGNMENT, not
-    the data — which is exactly why the available_at audit alone can miss it).
+    the data — which is exactly why the available_at audit alone can miss it);
+  - a KNOWN-CLEAN multi-symbol panel (transferable within-symbol timing) PASSES the ticker-anonymization check;
+  - a deliberately IDENTITY-MEMORIZED panel (a constant per-symbol level that ranks with that symbol's drift —
+    'this ticker always goes up') FAILS the ticker-anonymization check (the edge dies when the ticker is masked).
 
 Offline + deterministic (string-seeded RNG, no network, no DB, no Binance — the M2 is geo-blocked).
 """
@@ -31,9 +38,16 @@ from cosmu.research.leakage_tripwire import (
     audit_feature,
     available_at_audit,
     forward_shift_sanity,
+    symbol_anonymization_null,
 )
 from cosmu.research.leakage_tripwire import (
     _synthetic_clean_feature as clean_feature,
+)
+from cosmu.research.leakage_tripwire import (
+    _synthetic_clean_panel as clean_panel,
+)
+from cosmu.research.leakage_tripwire import (
+    _synthetic_identity_memorized_panel as memorized_panel,
 )
 from cosmu.research.leakage_tripwire import (
     _synthetic_leaked_feature as leaked_feature,
@@ -164,8 +178,86 @@ def test_report_render_is_human_readable():
     assert "LEAKAGE TRIPWIRE" in text
     assert "available_at audit" in text
     assert "shuffle-null" in text
+    assert "ticker-anonymization" in text  # [3] is named even when skipped (single series)
     assert "forward-shift" in text
     assert "PASS" in text
+
+
+# =========================================================================== (3) ticker / identity anonymization
+
+
+def test_anonymization_skipped_for_single_series_but_named_in_report():
+    """With NO multi-symbol map the ticker-anonymization check is SKIPPED (identity is cross-sectional — a single
+    series has no ticker to mask), reported as SKIPPED rather than silently passed, and it never blocks a verdict."""
+    points, bars = clean_feature(seed=7)
+    report = audit_feature(points, bars, horizon=1, seed=7, shuffle_trials=100)
+    assert report.anonymization is None
+    assert "ticker_anonymization" not in report.failed_checks
+    assert "SKIPPED" in report.render()
+
+
+def test_clean_panel_passes_anonymization():
+    """A KNOWN-CLEAN multi-symbol panel (transferable WITHIN-symbol timing, no per-symbol level prior) must PASS
+    the ticker-anonymization check — demeaning identity removes nothing real, so within|IC| ~ pooled|IC|."""
+    series, bars_by = clean_panel(seed=7)
+    first = next(iter(series))
+    report = audit_feature(
+        series[first], bars_by[first], horizon=1, seed=7, shuffle_trials=100,
+        series_by_symbol=series, bars_by_symbol=bars_by,
+    )
+    assert report.anonymization is not None
+    assert report.anonymization.survives, "transferable panel wrongly flagged as identity-memorized"
+    assert not report.anonymization.memorized
+    assert "ticker_anonymization" not in report.failed_checks
+    assert report.passed, f"clean panel flagged leaky: {report.failed_checks}"
+
+
+def test_identity_memorized_panel_fails_anonymization():
+    """A deliberately IDENTITY-MEMORIZED panel (a CONSTANT per-symbol feature level that ranks with that symbol's
+    constant drift — 'this ticker always goes up') must FAIL the ticker-anonymization check: the pooled cross-
+    sectional IC is large and spurious, but demeaning each symbol collapses the feature to ~0, so within|IC| ~ 0
+    and the memorized edge dies when the ticker is masked. The acceptance criterion for disconfirmer #3."""
+    series, bars_by = memorized_panel(seed=7)
+    first = next(iter(series))
+    report = audit_feature(
+        series[first], bars_by[first], horizon=1, seed=7, shuffle_trials=100,
+        series_by_symbol=series, bars_by_symbol=bars_by,
+    )
+    assert report.anonymization is not None
+    assert report.anonymization.memorized, "an identity-memorized prior slipped through the anonymization check"
+    assert not report.anonymization.survives
+    assert "ticker_anonymization" in report.failed_checks
+    assert not report.passed
+    # quantitative signature: a real pooled IC that collapses within-symbol → identity_share near 1.0.
+    assert abs(report.anonymization.pooled_ic) > 0.1
+    assert abs(report.anonymization.within_ic) < 0.5 * abs(report.anonymization.pooled_ic)
+    assert report.anonymization.identity_share > 0.5
+
+
+def test_anonymization_disconfirmer_isolated_via_direct_call():
+    """Call the ticker-anonymization disconfirmer directly (no other check in the way) on both controls — the
+    clean panel SURVIVES, the memorized panel is flagged MEMORIZED. Isolates [3] from [2]/[4]."""
+    clean_series, clean_bars = clean_panel(seed=11)
+    memo_series, memo_bars = memorized_panel(seed=11)
+    clean_res = symbol_anonymization_null(clean_series, clean_bars, horizon=1)
+    memo_res = symbol_anonymization_null(memo_series, memo_bars, horizon=1)
+    assert clean_res.survives and not clean_res.memorized
+    assert memo_res.memorized and not memo_res.survives
+
+
+def test_anonymization_can_be_advisory():
+    """With require_anonymization_survival=False a memorized panel is NOT failed on [3] alone (the verdict is
+    still recorded for the reviewer) — symmetric with the shuffle's advisory mode."""
+    series, bars_by = memorized_panel(seed=7)
+    first = next(iter(series))
+    report = audit_feature(
+        series[first], bars_by[first], horizon=1, seed=7, shuffle_trials=100,
+        series_by_symbol=series, bars_by_symbol=bars_by,
+        require_shuffle_survival=False, require_anonymization_survival=False,
+    )
+    assert report.anonymization is not None
+    assert report.anonymization.memorized  # the verdict is recorded
+    assert "ticker_anonymization" not in report.failed_checks  # but not enforced in advisory mode
 
 
 def test_shuffle_survival_can_be_advisory():

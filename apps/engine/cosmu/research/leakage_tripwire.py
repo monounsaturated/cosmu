@@ -1,16 +1,26 @@
 # intent: the STANDING leakage tripwire — the #1 blow-up guard. A look-ahead/alignment bug UPSTREAM of the Gate
 # is Gate-INVISIBLE (the Gate validates edge-after-costs, NOT pipeline honesty): it produces a survivor that is
-# genuinely real on paper and zero/negative live. This module bundles THREE independent disconfirmers into ONE
-# PASS/FAIL report a NEW data source MUST clear before it is trusted as a feature ([[vibe_coding_leakage_risk]]):
+# genuinely real on paper and zero/negative live. This module bundles FOUR independent disconfirmers into ONE
+# PASS/FAIL report a NEW data source MUST clear before it is trusted as a feature ([[vibe_coding_leakage_risk]]).
+# The three the operator named — PIT/available_at audit, shuffle-null, ticker/identity anonymization — plus the
+# forward-shift sanity (kept from the merged guard, #387, because it catches the back-dated-alignment leak the
+# other three structurally miss):
 #
 #   (1) AVAILABLE_AT AUDIT  — the align_asof PIT join is strictly BACKWARD-looking: NO feature value is ever
 #       joined to a bar whose ts < that value's available_at. Brute-verified against the points themselves, so
-#       a join that ever peeked a not-yet-published value is caught directly (not inferred from an IC).
+#       a join that ever peeked a not-yet-published value is caught directly (not inferred from an IC). This is
+#       the point-in-time / available_at honesty check (operator's disconfirmer #1).
 #   (2) SHUFFLE-NULL        — permute the feature's VALUES in time (break the real time-alignment, keep the
 #       marginal distribution) → its IC vs forward returns must COLLAPSE toward 0. An IC that SURVIVES the
 #       shuffle reflects a genuine feature→return alignment; an IC inside the shuffled band is a noise /
-#       autocorrelation artefact, never an edge (BlindTrade: IC 0.015 → 0.0004 under shuffle).
-#   (3) FORWARD-SHIFT SANITY — shifting the feature +1 bar (using TOMORROW's value TODAY) must IMPROVE in-sample
+#       autocorrelation artefact, never an edge (BlindTrade: IC 0.015 → 0.0004 under shuffle). (Operator's #2.)
+#   (3) TICKER / IDENTITY ANONYMIZATION — strip SYMBOL IDENTITY by demeaning each symbol's feature AND forward
+#       return WITHIN that symbol, then pool. A cross-sectional IC that comes from a memorized per-symbol PRIOR
+#       (a constant level that happens to rank with that symbol's drift — "BTC always goes up") VANISHES; a
+#       transferable within-symbol timing signal SURVIVES. The IC analog of the LLM ticker-memorization test
+#       (Sarkar & Vafa). (Operator's #3.) Only runs when a MULTI-SYMBOL series map is supplied — identity is a
+#       cross-sectional concept; a single series has no ticker to mask. Advisory-but-recorded for one symbol.
+#   (4) FORWARD-SHIFT SANITY — shifting the feature +1 bar (using TOMORROW's value TODAY) must IMPROVE in-sample
 #       fit (|IC| rises) — that is the honest direction of cheating, and it MUST help. If instead shifting the
 #       feature BACKWARD (a MORE honest, more-lagged read) improves the fit, the live wiring is ALREADY peeking
 #       at the future: the as-of alignment is too-early by a bar, so de-leaking it (lagging) helps. That is the
@@ -18,12 +28,27 @@
 #
 # Each check is NECESSARY, never sufficient — surviving the tripwire is the price of admission to the Gate, which
 # alone disposes (PROPOSE-ONLY). PURE + OFFLINE: operates on AltDataPoint lists + Bar lists already read
-# point-in-time, reuses align_asof (the SAME join the backtest runs) + spearman_ic + the shuffle_null harness
-# (never a second hand-rolled correlation). No I/O, no DB, no settings, no LLM. Changes NO Gate constant.
+# point-in-time, reuses align_asof (the SAME join the backtest runs) + spearman_ic + the shuffle_null and
+# symbol_anonymization_null harnesses (never a second hand-rolled correlation). No I/O, no DB, no settings, no
+# LLM, no Gate constant mutation. Changes NO Gate constant; reads none. It INFORMS, it does NOT move money.
+#
+# HONEST LIMITATIONS (a PASS is necessary, not sufficient — read these before trusting a green report):
+#   - The shuffle + anonymization nulls catch the SPURIOUS / MEMORIZED class; the available_at + forward-shift
+#     checks catch LOOK-AHEAD. None catches a leak that is BOTH real-in-alignment AND survives a value-shuffle
+#     AND is symbol-transferable — e.g. a globally-normalized transform (mean/std over the WHOLE history) whose
+#     leak is a slow drift, not a per-bar misalignment. That class needs the available_at audit on the RAW
+#     source + the profile-source PIT-lag profiler upstream; the tripwire reduces the surface, it does not close
+#     it. (Global-normalization smell is best caught at ingest, not here — documented, not over-claimed.)
+#   - Ticker-anonymization (3) uses within-symbol demeaning + a BINARY memorized flag (within|IC| < 50% of
+#     pooled|IC|). A MIXED edge (real timing + a partial identity prior) shows a partial identity_share and may
+#     pass or fail near the 50% boundary — read identity_share, not just the flag. It needs a MULTI-SYMBOL map;
+#     a single series carries no ticker and the check is SKIPPED (reported as such, never silently passed).
+#   - The shuffle p-value is empirical (add-one corrected); with few obs the band is wide. The forward-shift
+#     margin (15%) is conservative against estimation noise — a sub-margin baked-in peek can slip [4].
 #
 # Entry points:
 #   audit_feature(points, bars, horizon=...) -> TripwireReport   (the programmatic gate the edge lane calls)
-#   python -m cosmu.research.leakage_tripwire <feature>          (CLI: runs the three checks on offline data)
+#   python -m cosmu.research.leakage_tripwire <feature>          (CLI: runs the checks on offline data)
 
 from __future__ import annotations
 
@@ -32,7 +57,13 @@ from dataclasses import dataclass, field
 from cosmu.data.backtest import align_asof
 from cosmu.data.market import Bar
 from cosmu.data.providers._types import AltDataPoint
-from cosmu.research.disconfirmers import ShuffleNullResult, pit_ic, shuffle_null
+from cosmu.research.disconfirmers import (
+    ShuffleNullResult,
+    SymbolAnonymizationResult,
+    pit_ic,
+    shuffle_null,
+    symbol_anonymization_null,
+)
 
 # The forward-shift sanity needs a real margin before it accuses the wiring of peeking: a backward-shifted IC
 # must beat the live IC by MORE than this fraction (and the live IC must already be a real signal) before we call
@@ -182,10 +213,13 @@ def forward_shift_sanity(
 
 @dataclass(frozen=True)
 class TripwireReport:
-    """The PASS/FAIL verdict over the three independent disconfirmers. `passed` is the AND of all three: a NEW
+    """The PASS/FAIL verdict over the independent disconfirmers. `passed` is the AND of every ACTIVE check: a NEW
     source must clear EVERY check before the edge lane trusts it as a feature. A FAIL names the disconfirmer
-    that caught it (`failed_checks`) so the operator fixes the right surface (look-ahead vs spurious IC vs
-    baked-in peek). PROPOSE-ONLY: a PASS is necessary, never sufficient — the Gate alone disposes."""
+    that caught it (`failed_checks`) so the operator fixes the right surface (look-ahead vs spurious IC vs ticker
+    memorization vs baked-in peek). The ticker-anonymization check is ACTIVE only when a multi-symbol series map
+    is supplied (`anonymization is not None`); identity is a cross-sectional concept, so a single series carries
+    no ticker to mask and the check is skipped (never silently passed). PROPOSE-ONLY: a PASS is necessary, never
+    sufficient — the Gate alone disposes; this report moves no money and reads no Gate constant."""
 
     feature: str
     n_obs: int
@@ -194,6 +228,7 @@ class TripwireReport:
     shuffle: ShuffleNullResult
     forward_shift: ForwardShiftResult
     passed: bool
+    anonymization: SymbolAnonymizationResult | None = None  # active only for a multi-symbol series map
     failed_checks: tuple[str, ...] = field(default_factory=tuple)
 
     def render(self) -> str:
@@ -206,9 +241,20 @@ class TripwireReport:
             f"  [2] shuffle-null: real|IC|={abs(self.real_ic):.4f}, "
             f"null_mean|IC|={self.shuffle.null_mean_abs:.4f}, p={self.shuffle.p_value:.4f}"
             f"  -> {'PASS (survives, collapsed)' if self.shuffle.survives else 'FAIL (IC inside shuffled band)'}",
-            f"  [3] {self.forward_shift.summary}"
-            f"  -> {'PASS' if self.forward_shift.passed else 'FAIL (lagging the feature improves fit = live peek)'}",
         ]
+        if self.anonymization is not None:
+            a = self.anonymization
+            lines.append(
+                f"  [3] ticker-anonymization: pooled|IC|={abs(a.pooled_ic):.4f}, "
+                f"within|IC|={abs(a.within_ic):.4f}, identity_share={a.identity_share:.2f}"
+                f"  -> {'PASS (transferable, identity not the edge)' if a.survives else 'FAIL (edge dies when ticker masked = memorized prior)'}"
+            )
+        else:
+            lines.append("  [3] ticker-anonymization: SKIPPED (single series — no ticker identity to mask)")
+        lines.append(
+            f"  [4] {self.forward_shift.summary}"
+            f"  -> {'PASS' if self.forward_shift.passed else 'FAIL (lagging the feature improves fit = live peek)'}"
+        )
         if self.failed_checks:
             lines.append(f"  FAILED: {', '.join(self.failed_checks)}")
         return "\n".join(lines)
@@ -224,32 +270,47 @@ def audit_feature(
     seed: int = 0,
     alpha: float = 0.05,
     require_shuffle_survival: bool = True,
+    series_by_symbol: dict[str, list[AltDataPoint]] | None = None,
+    bars_by_symbol: dict[str, list[Bar]] | None = None,
+    require_anonymization_survival: bool = True,
 ) -> TripwireReport:
-    """Run the three-disconfirmer leakage tripwire on one feature's PIT-stamped points against `bars`, returning
-    a PASS/FAIL TripwireReport. The single front door the edge lane gates a NEW source on.
+    """Run the leakage tripwire on one feature's PIT-stamped points against `bars`, returning a PASS/FAIL
+    TripwireReport. The single front door the edge lane gates a NEW source on.
 
-    Checks (all must pass for `passed=True`):
-      [1] available_at audit  — align_asof is strictly backward-looking (zero look-ahead in the join).
-      [2] shuffle-null        — the IC survives a time-shuffle (genuine alignment, not a noise artefact).
-      [3] forward-shift sanity — lagging the feature does NOT beat the live read (no baked-in look-ahead).
+    Checks (every ACTIVE one must pass for `passed=True`):
+      [1] available_at audit   — align_asof is strictly backward-looking (zero look-ahead in the join).
+      [2] shuffle-null         — the IC survives a time-shuffle (genuine alignment, not a noise artefact).
+      [3] ticker-anonymization — the IC survives masking SYMBOL IDENTITY (a transferable timing edge, not a
+          memorized per-symbol prior). ACTIVE only when `series_by_symbol`+`bars_by_symbol` (a multi-symbol map)
+          are supplied; identity is cross-sectional, so a single series has no ticker to mask and [3] is SKIPPED
+          (reported as such, never silently passed).
+      [4] forward-shift sanity — lagging the feature does NOT beat the live read (no baked-in 1-bar look-ahead).
 
     `require_shuffle_survival` (default True) makes a feature whose IC collapses INTO the shuffled band a FAIL —
-    a "signal" indistinguishable from noise is not trustworthy. Set False to treat the shuffle as advisory (the
-    audit then only fails on a positive look-ahead, [1] or [3]); the report still records the shuffle verdict.
+    a "signal" indistinguishable from noise is not trustworthy. `require_anonymization_survival` (default True)
+    likewise fails an edge that dies when the ticker is masked. Set either False to keep that check advisory (the
+    report still records its verdict). The positive-look-ahead checks ([1], [4]) are always hard.
 
     PURE + deterministic for fixed (points, bars, seed, trials). Reuses align_asof + spearman_ic + the
-    shuffle_null harness — never a second hand-rolled correlation. Changes NO Gate constant."""
+    shuffle_null and symbol_anonymization_null harnesses — never a second hand-rolled correlation. Changes NO
+    Gate constant; reads none. PROPOSE-ONLY — it informs, it does not move money."""
     real_ic, n = pit_ic(points, bars, horizon)
     a1 = available_at_audit(points, bars)
     a2 = shuffle_null(points, bars, horizon, trials=shuffle_trials, seed=seed, alpha=alpha)
-    a3 = forward_shift_sanity(points, bars, horizon)
+    a4 = forward_shift_sanity(points, bars, horizon)
+
+    a3: SymbolAnonymizationResult | None = None
+    if series_by_symbol is not None and bars_by_symbol is not None:
+        a3 = symbol_anonymization_null(series_by_symbol, bars_by_symbol, horizon)
 
     failed: list[str] = []
     if not a1.passed:
         failed.append("available_at_audit")
     if require_shuffle_survival and not a2.survives:
         failed.append("shuffle_null")
-    if not a3.passed:
+    if a3 is not None and require_anonymization_survival and not a3.survives:
+        failed.append("ticker_anonymization")
+    if not a4.passed:
         failed.append("forward_shift_sanity")
 
     return TripwireReport(
@@ -258,7 +319,8 @@ def audit_feature(
         real_ic=real_ic,
         available_at=a1,
         shuffle=a2,
-        forward_shift=a3,
+        forward_shift=a4,
+        anonymization=a3,
         passed=not failed,
         failed_checks=tuple(failed),
     )
@@ -267,10 +329,12 @@ def audit_feature(
 __all__ = [
     "AvailableAtResult",
     "ForwardShiftResult",
+    "SymbolAnonymizationResult",
     "TripwireReport",
     "audit_feature",
     "available_at_audit",
     "forward_shift_sanity",
+    "symbol_anonymization_null",
 ]
 
 
@@ -339,19 +403,88 @@ def _synthetic_leaked_feature(
     return leaked, bars[: len(leaked)]
 
 
+# ---------------------------------------------------------------- multi-symbol fixtures (ticker anonymization, [3])
+
+
+def _synthetic_clean_panel(
+    *, n_symbols: int = 6, n: int = 400, seed: int = 7
+) -> tuple[dict[str, list[AltDataPoint]], dict[str, list[Bar]]]:
+    """A multi-symbol panel where the feature carries a TRANSFERABLE within-symbol timing edge (feature[t] leads
+    that symbol's own return t->t+1, same mechanism every symbol) and NO per-symbol level prior. Demeaning each
+    symbol removes nothing real, so the within-symbol IC ~ the pooled IC → it PASSES the ticker-anonymization
+    check (the edge is the timing, not the identity). Offline + pure (keyless; per-symbol string-seeded RNG)."""
+    series: dict[str, list[AltDataPoint]] = {}
+    bars_by: dict[str, list[Bar]] = {}
+    for s in range(n_symbols):
+        sym = f"SYNTH{s}"
+        feature_vals, bars = _synthetic_market(n, seed=seed * 1000 + s)
+        # zero-centre the feature per symbol so it carries NO constant level (no identity prior to memorize).
+        mu = sum(feature_vals) / len(feature_vals)
+        centred = [v - mu for v in feature_vals]
+        series[sym] = [AltDataPoint(ts=b.ts, available_at=b.ts, value=centred[t]) for t, b in enumerate(bars)]
+        bars_by[sym] = bars
+    return series, bars_by
+
+
+def _synthetic_identity_memorized_panel(
+    *, n_symbols: int = 6, n: int = 400, seed: int = 7
+) -> tuple[dict[str, list[AltDataPoint]], dict[str, list[Bar]]]:
+    """A multi-symbol panel whose pooled cross-sectional IC is a MEMORIZED PER-SYMBOL PRIOR, not a timing edge:
+    each symbol gets a CONSTANT feature level (its "identity") that rank-correlates with that symbol's CONSTANT
+    drift — "this ticker always goes up, and its feature is always high". Pooled, the level ranks beautifully with
+    forward returns (a big spurious IC); but it is pure identity memorization. Demeaning each symbol collapses the
+    feature to ~0 (a constant minus its own mean), so the within-symbol IC vanishes → it FAILS the ticker-
+    anonymization check. The within-symbol noise carries NO real timing signal. Offline + pure + deterministic.
+    Proves the disconfirmer catches a 'BTC always goes up' memorization, not just blesses transferable signals."""
+    import random
+    from datetime import UTC, datetime, timedelta
+    from decimal import Decimal
+
+    t0 = datetime(2023, 1, 1, tzinfo=UTC)
+    series: dict[str, list[AltDataPoint]] = {}
+    bars_by: dict[str, list[Bar]] = {}
+    for s in range(n_symbols):
+        sym = f"MEMO{s}"
+        rng = random.Random(f"tripwire-memo-{seed}-{s}")
+        # the symbol's IDENTITY: a constant feature level and a matching constant per-bar drift. Higher level ->
+        # higher drift, monotonically, so the pooled (level vs forward-return) IC is large and spurious.
+        level = float(s)
+        drift = 0.0008 * s  # the ticker-specific drift the constant level "predicts" by memorization
+        closes = [100.0]
+        for _ in range(n - 1):
+            ret = drift + 0.004 * rng.gauss(0, 1)  # drift is per-symbol constant; noise is within-symbol
+            closes.append(max(0.01, closes[-1] * (1.0 + ret)))
+        bars: list[Bar] = []
+        pts: list[AltDataPoint] = []
+        for t in range(n):
+            ts = t0 + timedelta(days=t)
+            px = Decimal(str(round(closes[t], 6)))
+            bars.append(Bar(ts=ts, open=px, high=px, low=px, close=px, volume=Decimal(1000)))
+            pts.append(AltDataPoint(ts=ts, available_at=ts, value=level))  # CONSTANT feature = identity only
+        series[sym] = pts
+        bars_by[sym] = bars
+    return series, bars_by
+
+
 def _main() -> int:
-    """`python -m cosmu.research.leakage_tripwire <feature>` — run the three-check tripwire OFFLINE on a
-    synthetic feature and print the PASS/FAIL report. Pass `--leaked` to score the deliberately future-peeking
-    control (it must FAIL the forward-shift sanity), `--horizon N`, `--trials N`, `--seed N`. No network, no DB,
-    no Binance (the M2 is geo-blocked) — the harness is pure so the CLI demonstrates the guard anywhere.
+    """`python -m cosmu.research.leakage_tripwire <feature>` — run the leakage tripwire OFFLINE on a synthetic
+    feature and print the PASS/FAIL report. Flags:
+      --leaked   score the deliberately future-peeking single-series control (must FAIL forward-shift, [4]).
+      --anon     score a multi-symbol panel + run the ticker-anonymization check ([3]); add --leaked to score
+                 the identity-MEMORIZED panel ('BTC always goes up'), which must FAIL anonymization.
+      --horizon N / --trials N / --seed N  knobs.
+    No network, no DB, no Binance (the M2 is geo-blocked) — the harness is pure so the CLI demonstrates the guard
+    anywhere.
 
     A real edge-lane caller does NOT use these synthetic builders: it passes the NEW source's actual PIT points +
-    the real bars to `audit_feature(...)`. The CLI is the offline demonstrator + the manual spot-check."""
+    the real bars to `audit_feature(...)` (and a `series_by_symbol`/`bars_by_symbol` map to activate [3]). The CLI
+    is the offline demonstrator + the manual spot-check."""
     import sys
 
     argv = sys.argv[1:]
     feature = next((a for a in argv if not a.startswith("--")), "synthetic")
     leaked = "--leaked" in argv
+    anon = "--anon" in argv
 
     def _opt(flag: str, default: int) -> int:
         for i, a in enumerate(argv):
@@ -365,6 +498,24 @@ def _main() -> int:
     horizon = _opt("--horizon", 1)
     trials = _opt("--trials", 200)
     seed = _opt("--seed", 7)
+
+    if anon:
+        # Activate the ticker-anonymization check ([3]) by passing a multi-symbol map. --leaked picks the
+        # identity-memorized panel (must FAIL [3]); otherwise the transferable clean panel (must PASS).
+        if leaked:
+            series, bars_by = _synthetic_identity_memorized_panel(seed=seed)
+            label = f"{feature} (IDENTITY-MEMORIZED panel)"
+        else:
+            series, bars_by = _synthetic_clean_panel(seed=seed)
+            label = f"{feature} (clean transferable panel)"
+        # score the FIRST symbol's series for the single-series checks ([1],[2],[4]); the panel drives [3].
+        first_sym = next(iter(series))
+        report = audit_feature(
+            series[first_sym], bars_by[first_sym], horizon=horizon, feature=label,
+            shuffle_trials=trials, seed=seed, series_by_symbol=series, bars_by_symbol=bars_by,
+        )
+        print(report.render())
+        return 0 if report.passed else 1
 
     if leaked:
         points, bars = _synthetic_leaked_feature(seed=seed, horizon=horizon)
