@@ -1,12 +1,12 @@
 # 🤖 Autonomous Run — 2026-06-28 (master log + QA guide)
 
-> **READ THIS FIRST when you come back.** This is the single entry point for everything done while you were away.
-> It has 4 parts: **(1)** what shipped in this chat (already merged — QA in prod), **(2)** the autonomous-run log
+> **READ THIS FIRST when you come back.** Single entry point for everything done while you were away.
+> 4 parts: **(1)** what shipped in this chat (already merged — QA in prod), **(2)** the autonomous-run log
 > (branches/PRs created but **NOT merged** — your review + approval needed), **(3)** the live roadmap, **(4)** a QA checklist.
 >
-> **Rules I am operating under this run (12:30 → ~18:30):** full autonomy · no merges to `main` · no irreversible
-> changes · no questions asked · no `spawn_task` chips · I launch all sub-agents myself · everything reversible &
-> reviewable · North Star = **autonomous profit, net of fees** · the Gate is the moat (never loosened).
+> **Rules this run (12:30 → ~18:30):** full autonomy · no merges to `main` · no irreversible changes · no questions ·
+> no `spawn_task` chips · I launch all sub-agents myself · everything reversible & reviewable as **draft PRs** ·
+> North Star = **autonomous profit, net of fees** · the Gate is the moat (never loosened).
 
 ---
 
@@ -15,69 +15,85 @@
 Repo: `github.com/monounsaturated/cosmu`. Main tip at run start: `95370be2` (through PR #456).
 
 ### The cross-disciplinary "honesty instruments" wave (all merged)
-| PR | What | Live/Dormant | QA hook |
-|----|------|--------------|---------|
-| [#442](https://github.com/monounsaturated/cosmu/pull/442) | Placebo empirical-null panel (Gate self-validation) | Offline-audit | `research/placebo_panel.py` — 0/50 placebos clear; beat-B&H is load-bearing |
-| [#453](https://github.com/monounsaturated/cosmu/pull/453) | Trial-count honesty ledger (deflate DSR on TRUE N) | Write live / recompute offline | `master/trial_ledger.py` — counts looks, never averages perfs |
-| [#452](https://github.com/monounsaturated/cosmu/pull/452) | Blinding-commit (hidden-box holdout) | **Live** (refuses graduation on recipe drift) | `master/blinding.py` |
-| [#450](https://github.com/monounsaturated/cosmu/pull/450) | Replication cohort (R3) + sequential paper test | Dormant (additive) | `research/replication_cohort.py` — quorum by symbol |
-| [#448](https://github.com/monounsaturated/cosmu/pull/448) | Crowding clamp (Kelly × signal-corr, T2) | Dormant (propose-only) | `master/signal_crowding.py` |
-| [#445](https://github.com/monounsaturated/cosmu/pull/445) | Decay monitor (pheromone-evaporation study) | Dormant (design-only) | `research/decay_monitor.py` |
-| [#444](https://github.com/monounsaturated/cosmu/pull/444) | Worst-regime + LTCM forced-exit stress (TAA) | Dormant (informs) | `research/equity_taa_stress.py` |
-| [#441](https://github.com/monounsaturated/cosmu/pull/441) | Lean front read-outs (voice scoreboard · holdout-OOS · provenance) | Read-only | `/mind` page + strategy sheet |
-| [#437](https://github.com/monounsaturated/cosmu/pull/437)/[#446](https://github.com/monounsaturated/cosmu/pull/446) | LLM voices/authority lane template (keyless, mock-default, $0) | Mock/observe-only | `config/voices.py` |
+| PR | What | Live/Dormant |
+|----|------|--------------|
+| [#442](https://github.com/monounsaturated/cosmu/pull/442) | Placebo empirical-null panel (Gate self-validation) | Offline-audit (0/50 placebos clear; beat-B&H load-bearing) |
+| [#453](https://github.com/monounsaturated/cosmu/pull/453) | Trial-count honesty ledger | Write live / recompute offline (counts looks, never averages perfs) |
+| [#452](https://github.com/monounsaturated/cosmu/pull/452) | Blinding-commit (hidden-box holdout) | **Live** (refuses graduation on recipe drift) |
+| [#450](https://github.com/monounsaturated/cosmu/pull/450) | Replication cohort (R3) + sequential paper test | Dormant (additive) |
+| [#448](https://github.com/monounsaturated/cosmu/pull/448) | Crowding clamp (Kelly × signal-corr) | Dormant (propose-only) |
+| [#445](https://github.com/monounsaturated/cosmu/pull/445) | Decay monitor | Dormant (design-only) |
+| [#444](https://github.com/monounsaturated/cosmu/pull/444) | Worst-regime + LTCM forced-exit stress (TAA) | Dormant (informs) |
+| [#441](https://github.com/monounsaturated/cosmu/pull/441) | Lean front read-outs (voice scoreboard · holdout-OOS · provenance) | Read-only |
+| [#437](https://github.com/monounsaturated/cosmu/pull/437)/[#446](https://github.com/monounsaturated/cosmu/pull/446) | LLM voices/authority lane template (keyless, mock-default, $0) | Mock/observe-only |
 
-### Edge experiments run this chat (all KILLED/NO-GO honestly — public-data price/calendar/attention signals exhausted)
-- [#443](https://github.com/monounsaturated/cosmu/pull/443) N1 UMA pre-settlement — KILL · [#447](https://github.com/monounsaturated/cosmu/pull/447) N5 token-unlock — KILL · [#451](https://github.com/monounsaturated/cosmu/pull/451) N11 attention-acceleration — KILL · [#439](https://github.com/monounsaturated/cosmu/pull/439) Polymarket×Kalshi arb — NO-GO
-- Post-run (already on main): [#455](https://github.com/monounsaturated/cosmu/pull/455)/[#456](https://github.com/monounsaturated/cosmu/pull/456) per-combo visibility + opt-in deep/timeframe screen axis; timeframe re-screen 0/8 (crypto-price exhausted holds across 1h/4h/1d).
+### Edge experiments (all KILLED/NO-GO honestly — public-data price/calendar/attention exhausted)
+[#443](https://github.com/monounsaturated/cosmu/pull/443) N1 UMA · [#447](https://github.com/monounsaturated/cosmu/pull/447) N5 token-unlock · [#451](https://github.com/monounsaturated/cosmu/pull/451) N11 attention · [#439](https://github.com/monounsaturated/cosmu/pull/439) Polymarket×Kalshi · [#455](https://github.com/monounsaturated/cosmu/pull/455)/[#456](https://github.com/monounsaturated/cosmu/pull/456) per-combo visibility + deep/timeframe screen (0/8).
 
-### The BRUT-integrity audit (this chat — verification only, NO code change)
-**Your question:** did the trial-count ledger / any instrument reintroduce the per-strategy-averaged deflated Sharpe
-(mean-of-OOS + mean-of-%-perf across a strategy's combos) that you had removed from the Gate?
-**Answer: NO — verified in code.**
-- Live verdict = `promote_brut` ([cohort.py:196]) judges each combo on its OWN streams, `TrialStats(count=1)`, no sibling deflation, no per-strategy mean. `loop.py:561` "NO RE-POOLING"; `loop.py:77` the pooled metric is explicitly "POOLED display metrics".
-- #453 counts ESSAIS (looks) + decorrelates by ρ̄; never averages perfs; its `effective_n` is "Audit-only; never a gate input" → consumed only by the offline `scripts/research/recompute_survivor_dsr.py`.
-- The pooled `fmean(total_return across symbols)` at `backtest.py:1093` survives only as a **display** metric; the `promote_cohort` path that consumes it is the **research-cohort lane** (1 basket strategy = 1 blended book = legit), which **interprets, does not fund**.
-- **Verdict: per-combo BRUT model intact.** One optional hardening proposed: a regression tripwire asserting pooled-oos never becomes a verdict input (see Part 3).
+### BRUT-integrity audit (verification only — NO code change)
+**Your question:** did #453 / any instrument reintroduce the per-strategy-averaged deflated Sharpe you removed? **Answer: NO.**
+Live verdict = `promote_brut` ([cohort.py:196]) per-combo, `TrialStats(count=1)`, no sibling deflation; `loop.py:77` the pooled metric is "POOLED display metrics" only; #453 counts looks not perfs (offline recompute). The pooled `fmean` at `backtest.py:1093` survives only as display; the `promote_cohort` consumer is the research-cohort lane (1 basket = 1 book = legit, interprets-not-funds). **Per-combo BRUT model intact.** → frozen by WAVE 2 regression tripwire (Part 2).
 
 ---
 
-## PART 2 — Autonomous-run log (branches/PRs created — NOT merged; review needed)
+## PART 2 — Autonomous-run log (branches/PRs — NOT merged; review needed)
 
-> Each entry: branch · what · status · how to review. **Nothing here is on `main`.** All draft PRs.
+> Everything here is on a branch. **Nothing is on `main`.** All draft PRs.
 
-_(updated continuously as waves complete)_
+### WAVE 0 — setup ✅
+- Master log + QA guide → branch `claude/autonomous-run-2026-06-28`, draft PR [#457](https://github.com/monounsaturated/cosmu/pull/457). Living document (this file).
 
-- **WAVE 0 (setup):** this doc, on branch `claude/autonomous-run-2026-06-28` (draft PR). Living document.
-- **WAVE 1 (in flight):** clean-state verification + deep bottleneck analysis + autonomous roadmap synthesis.
+### WAVE 1 — clean-state + bottleneck + roadmap ✅ (workflow, 7 agents, ~493k tokens)
+- **Clean state: `nothing_lost = TRUE`.** All substantive work is on `origin/main`. Of 113 remote branches, ~106 are squash-merged duplicates (`git cherry` `+0 -1`); the 7 flagged were file-checked — all on main / superseded. `origin/wip/snapshot-2026-06-26` intact at `12875f33`, correctly NOT replayed.
+- **Genuinely-unmerged (all dormant/trivial/superseded — nothing valuable stranded):** `claude/jolly-lamport-lncwph` (06-21 crowding-positioning data spike, dormant area), `claude/focused-fermat-w9ii8j` (trivial web route-guard), `claude/tender-turing-19c2dd` (2 superseded skill drafts: ingest-idea, research-review). 
+- **Optional cleanup for you (low-pri, NOT done — needs your ok):** delete the ~106 squash-merged branches to declutter; keep `wip/snapshot-*` and this run's branch.
+- **Ground-truth corrections found:** Alpaca equity execution is **already wired on main** (only `research/equity_daa_arm.py:42 VENUE="ibkr"` left to flip); `capital_guard.run_capital_guard()` exists but is **only API-reachable, never scheduled** (real safety gap); `authority_weighted_claim_signal` feature is registered but **0 specs enter on it**; `research/leakage_tripwire.py` (`audit_feature`) + `research/disconfirmers.py` (`symbol_anonymization_null`) **already exist but are wired to nothing**.
+
+### WAVE 2 — in flight (build agents, isolated worktrees, each its own branch + draft PR)
+| Item | Branch | Status |
+|------|--------|--------|
+| Leakage tripwire (reframed → wire `audit_feature` into `profile_source` + audit-all-features, roadmap #3/#7; module already exists) | `claude/leakage-tripwire-poc-2026-06-28` | running |
+| BRUT-integrity regression tripwire (freezes the audit above) | `claude/brut-pooling-tripwire-2026-06-28` | running |
+| #1 Placebo panel as standing cohort-rider on the finder's real tape | (agent-named) | launching |
+| #2 inbox-lint CLI — the strategy-railway rung (50 specs as reviewable as 1) | (agent-named) | launching |
+| #4 Token-unlock supply-shock drift event-study (NEW dated leak-proof edge axis, keyless DefiLlama) | (agent-named) | launching |
+| #6 Voice-driven `event` specs entering on `authority_weighted_claim_signal` → Gate (our unique edge lane, never tested) | (agent-named) | launching |
+
+_(PR links + verdicts filled in as agents report.)_
 
 ---
 
-## PART 3 — Live roadmap (what I'm working toward, ranked by leverage to the North Star)
+## PART 3 — Roadmap (WAVE 1 synthesis — ranked, buildable, reversible)
 
-Anchored on the backlog NOW/NEXT + the cross-disciplinary playbook + your stated priorities (backend > frontend,
-engineering > polish, the human will help author strategies SOON → a standardized "railway" is needed).
+| # | Title | Eff | Lev | First branch-step |
+|---|-------|-----|-----|-------------------|
+| 1 | **Placebo panel as standing cohort-rider** on the finder's real tape | M | 9 | hook `run_placebo_panel(finder market)`; assert `any_cleared==False`; per-survivor `compare_survivor_to_null`. Flag-gated. |
+| 2 | **inbox-lint CLI** — validate-whole-directory manifest | M | 9 | `python -m cosmu.lab.inbox_lint`: validate_spec + derive_facets + pairwise structural_distance → manifest + dup-clusters. |
+| 3 | **Leakage tripwire → profile_source verdict** | M | 8 | extend `ingest/profile_source.py` to call `audit_feature`; forward-shift fail = NO-GO. |
+| 4 | **Token-unlock supply-shock drift event-study** (new axis) | M | 9 | keyless DefiLlama `/unlocks` → >5%-float unlocks → [-7d,+7d] returns by cap-tier vs random-date placebo. |
+| 5 | **Schedule capital_guard watchdog + flip equity arm VENUE→alpaca** | M | 8 | capital_guard hook in scheduler tick + test auto-disarm on drawdown breach; config-driven VENUE. |
+| 6 | **Voice-driven `event` specs → Gate** (unique edge lane) | M | 8 | generator → N typed specs entering on `authority_weighted_claim_signal` → batch-backtest → Gate. |
+| 7 | **Standing leakage-audit over ALL wired alt features** | S | 7 | `python -m cosmu.research.leakage_audit_all` over feature_registry; exit non-zero on any forward-shift fail. |
+| 8 | **Close inbox novelty hole** (wave-0 extra_seeds) | S | 8 | call `_novelty_ok` in the loop.py wave-0 seed path; agent near-dup rejected, human kept+flagged. |
+| 9 | **UMA pre-settlement convergence study** (fix N1 data gap) | M | 8 | fetch UMA proposal event (`available_at`=proposal block) → offline study in-window CLOB vs return-to-$1 net fee. |
+| 10 | **End-to-end live-arming dry-run harness** (testnet, synthetic matured TAA) | M | 7 | seeded pytest: paper-mature → eligible → armed → testnet order → guard disarm. Depends on #5. |
+| 11 | **spec_digest + ticker-anonymization disconfirmer in finder** | S | 6 | pure `spec_digest(spec)` (feeds #2) + invoke `symbol_anonymization_null` as advisory finder field. |
+| 12 | **Intraday order-flow / book-imbalance feasibility** (docs-only spike) | S | 6 | inventory keyless PIT-honest trade-tape/L2; 2-3 hypotheses + disconfirmers; go/no-go. |
 
-**Candidate high-leverage workstreams (WAVE 1 will re-rank adversarially):**
-1. **Leakage tripwire UPSTREAM of the Gate** `[P0]` — the #1 blow-up vector; the Gate validates edge, not pipeline honesty. Feature-side PIT/`available_at` audit + permutation/shuffle null + ticker-anonymization disconfirmer.
-2. **Strategy-creation railway** `[P1]` — standardized typed-spec intake + validation + `/generate-strategies` scaffolding so the human's strategies are uniform & reviewable (explicitly requested).
-3. **Pooled-oos regression tripwire** `[S]` — freeze the BRUT-integrity guarantee you just had me verify.
-4. **Edge hypothesis diversity / new data axes** — the binding constraint is the DATA WALL, not method.
-5. **Backtest provenance + source≠venue + fees-per-venue** + **USDC liquidity-first base-currency module** (operator requests).
-6. **Wire dormant instruments** (placebo/replication/crowding/decay/worst-regime) into the live verdict/sizing where it helps.
+**Build order (live):** WAVE 2 = #1, #2, #4, #6 + the two tripwires already running. WAVE 3 = #3/#7 (after leakage agent), #8, #5+#10 (safety/capital-path, careful). WAVE 4 = #9, #11, #12 + wiring dormant instruments.
+
+**Deliberately NOT building:** IBKR adapter (Alpaca already covers equity live) · frontend polish (Claude Code is the front end) · voice-panel backfill (until #6 proves the wire non-inert) · new crypto price/calendar/attention hypotheses (0/96 exhausted) · anything touching a Gate constant · any merge or prod/data mutation.
 
 ---
 
 ## PART 4 — QA checklist (for when you're back)
 
-**Already-merged (prod) — spot-check:**
-- [ ] `/mind` page renders the voice scoreboard (untested voices show "untested", not 0).
-- [ ] Strategy sheet shows holdout/OOS evidence + data provenance.
-- [ ] Modal v23 healthy (`modal app history`); the 5 crons stepping.
-- [ ] Gate constants byte-identical (DSR 0.95 / FDR / PBO / min-trades / holdout / beat-B&H).
+**Already-merged (prod) — spot-check:** `/mind` voice scoreboard renders · strategy sheet shows holdout/OOS + provenance · Modal v23 healthy (`modal app history`) · Gate constants byte-identical.
 
-**Autonomous-run branches — review before any merge:** _(filled in as PRs are created)_
+**Autonomous-run branches — review before any merge:** _(filled in as PRs land — see Part 2 table)_
+
+**Housekeeping you may want:** delete ~106 squash-merged remote branches (list verified safe); leave `wip/snapshot-*`.
 
 ---
 
-_Last updated: WAVE 0 (run start)._
+_Last updated: WAVE 1 complete, WAVE 2 launching._
