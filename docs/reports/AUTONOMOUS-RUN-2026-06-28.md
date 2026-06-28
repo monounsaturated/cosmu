@@ -62,7 +62,7 @@ Live verdict = `promote_brut` ([cohort.py:196]) per-combo, `TrialStats(count=1)`
 | #10 End-to-end live-arming dry-run — **full path FIRES** (eligible→arm→testnet order→fill→guard disarm, 7/7, no real money). Surfaced 2 real capital-path gaps ↓ | [#467](https://github.com/monounsaturated/cosmu/pull/467) | ✅ done |
 | #10b **Capital-path gaps FIXED** (both, fail-safe verified): (1) cell-scoped arming eligibility + safe version-scope fallback (only when attribution-confirmed — widens PROVEN cells, never UNPROVEN); (2) `lot_size` rejection now LOUD (`arm_opened_nothing`), no silent no-op. **Follow-up surfaced:** funder writes forward-evidence version-only → re-key per-BRUT-cell to drop the fallback (larger, deferred). | [#471](https://github.com/monounsaturated/cosmu/pull/471) | ✅ done |
 | **Polymarket Σ(YES)<$1 structural-arb** → **KILL** (58/150 liquid head scanned; 19 gross sub-$1 sets, 0 survive: 16 dust-quoted long-tail legs <$50 depth = unfillable mirage, 8 non-exhaustive binaries can pay $0). Where liquid+trustworthy, the vig removed the edge. No live test. | [#477](https://github.com/monounsaturated/cosmu/pull/477) | ✅ done |
-| Cross-PR composition / merge-order review — how the ~14 code PRs compose (shared files: finder.py #461+#475, loop.py #459+#470, execution.py #474), recommend a safe merge order | `(isolated reviewer)` | 🔄 running |
+| Cross-PR composition / merge-order review → **SAFE to merge sequentially, ZERO textual conflicts, no semantic collisions** (`git merge-tree`-verified). Only ordering: #463 & #466 after #458; #473 after #468 (stacked); shared files (loop.py, finder.py) auto-merge either order. Merge order ↓ in the Merge Guide. | `(isolated reviewer)` | ✅ done |
 | #6 Voice-authority `event` specs → Gate — **wire PROVEN end-to-end, lane INERT in prod** (0 rows `social_authority`; voice tables absent). Unlock = populate panel + run `voices_pass` (operator-gated, next-chat — it's a prod mutation). | [#464](https://github.com/monounsaturated/cosmu/pull/464) | ✅ done |
 | #12 Intraday order-flow / book-imbalance feasibility — **VERDICT: GO** (keyless PIT-honest historical aggTrades + direction-carrying `isBuyerMaker`; the new edge axis) | [#462](https://github.com/monounsaturated/cosmu/pull/462) | ✅ done |
 | **H1 edge experiment** — aggressive-flow-imbalance fade (1m maker) → **KILL** (0/7; gross ≤2bps eaten by turnover×fee). **BUT shuffle-null confirms a REAL ~2bps order-flow signal EXISTS** (FIL p=0.04, OP p=0.075) — turnover-bound, NOT absent. Reusable keyless `data/intraday_aggtrades.py` fetcher shipped. | [#468](https://github.com/monounsaturated/cosmu/pull/468) | ✅ done |
@@ -115,10 +115,24 @@ _(PR links + verdicts filled in as agents report.)_
 - ✅ **All 9 shipped PRs (#458–#466) = PASS, ZERO blockers.** No PR touches `master/scorer.py` / `master/cohort.py` scoring math (Gate constants byte-identical); per-combo BRUT preserved; fully reversible; money-path safe.
 - 🔒 **#465 (money-path) explicit safety verdict:** cannot move money (reduce-only; SIM until you arm), cannot arm / flip the live interlock, cannot crash the tick (try/except-wrapped). Strictly *adds* protection.
 - 📝 **Optional follow-ups (none block merge):** (a) ack #465's default-ON auto-guard; (b) #466's conservative leak-thresholds may degrade a *weak* real leak to WARN (re-run as history deepens); (c) strip the "DO NOT MERGE — POC" line on actual merge; (d) cosmetic: move #461's `survivor_dsrs` comprehension inside the OFF-gate.
-- ⏳ Pending review: #467 (dry-run) + capital-path-fix (#10b) + novelty-gate (#8) + USDC module — will be pre-reviewed once finalized.
+- ✅ **Batch 2 reviewed (all PASS, 0 blockers):** #467, #469, #470, #471, #474 — money-path #471/#474 explicitly safe (cannot over-arm / move money / loosen a fee; no rebate possible). **All 14 code PRs pre-reviewed clean.** (#475 provenance additive/display-only; HL-logger + Aave launched after this review → review on finalize.)
 
-**Housekeeping you may want:** delete ~106 squash-merged remote branches (list verified safe); leave `wip/snapshot-*`.
+### ✅ MERGE GUIDE — whole batch SAFE to merge sequentially (`git merge-tree`-verified: zero textual conflicts, no semantic collisions)
+Recommended order (the only constraints are *dependencies*, not conflicts):
+1. **#458** leakage_tripwire (new module — unblocks #463 + #466)
+2. **#469** base_currency · **#460** inbox_lint (new files, additive)
+3. **#463** profile_source — *after #458*
+4. **#459** then **#470** (both `evolution/loop.py` — disjoint hunks, either order, back-to-back)
+5. **#461** then **#475** (both `lab/finder.py` — disjoint hunks, back-to-back)
+6. **Money-path — merge with care, REDEPLOY MODAL after:** #474 (fee parity) · #471 (capital-path gaps) · #465 (capital-guard schedule). Independent of each other; ack #465's default-ON guard.
+7. **Experiments / docs (any order):** #462, #464, #466 *(after #458)*, #467, #472, #476, #477.
+8. **#468 then #473** (stacked — #473 must follow #468).
+- The two shared files (`evolution/loop.py`, `lab/finder.py`) auto-merge either order; no pair needs a manual rebase. Strip each PR's "DO NOT MERGE — POC" line on merge.
+
+**Deferred follow-ups (documented, none block merge):** re-key the funder per-BRUT-cell to drop #471's temporary fallback · high-priced-ETF lot_size sizing (fractional shares) · DRY-point `research/gate.py`/`build_cost_context` at the shared `effective_taker_bps` · re-run leakage-audit as feature history deepens (37 SKIP) · perp-maker fee input may be over-conservative (30bps catalog vs ~14bps real).
+
+**Housekeeping you may want:** delete ~106 squash-merged remote branches (verified safe); leave `wip/snapshot-*` + this run's branch.
 
 ---
 
-_Last updated: WAVE 1 complete, WAVE 2 launching._
+_Last updated: edge probes concluded (intraday + Polymarket KILL); next-axis = HL long-tail positioning (logger building); all code PRs reviewed clean + merge guide written._
