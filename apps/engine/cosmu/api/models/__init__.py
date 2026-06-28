@@ -201,6 +201,7 @@ from cosmu.api.models.verdicts import (  # noqa: F401
 from cosmu.api.models.explorer import (  # noqa: F401
     CellCurvePoint,
     CellCurveResponse,
+    CellProvenanceResponse,
     CostBasisCell,
     CostBasisResponse,
     ExplorerDetailResponse,
@@ -399,6 +400,7 @@ __all__ = [
     # explorer
     "CellCurvePoint",
     "CellCurveResponse",
+    "CellProvenanceResponse",
     "CostBasisCell",
     "CostBasisResponse",
     "ExplorerDetailResponse",

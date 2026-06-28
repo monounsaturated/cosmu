@@ -271,6 +271,195 @@ def persist_decision(store: Any, decision_: AlignmentDecision, *, now: str | Non
         pass
 
 
+# -----------------------------------------------------------------------------------------------------------------
+# PER-CELL DATA PROVENANCE — make a backtest cell state EXACTLY what data it ran on (operator: "a backtest result
+# must never be a black box"). This is a DISPLAY/AUDIT record only: it READS the bars + the alignment decision the
+# backtest already assembled and is NEVER a gate input, so the locked scorer/FDR/cohort math is byte-unchanged.
+# -----------------------------------------------------------------------------------------------------------------
+# Divergence FLAG threshold: a cell whose price came from a FALLBACK reference source (a source ≠ the live venue's
+# own book) is flagged when the source's returns track the live venue too loosely OR the close-levels sit too far
+# apart to mark the cell honestly. Reuses the SAME corr/spread the alignment check computes (so the flag agrees with
+# the UNIFY/FALLBACK verdict's spirit) — a deliberately LOOSE display threshold (the strict gate is UNIFY_*): we
+# flag a cell for the operator to inspect, we never silently move a number. corr below / spread above → flag.
+PROVENANCE_FLAG_MIN_CORR = 0.95
+PROVENANCE_FLAG_MAX_SPREAD_BPS = 50.0
+
+
+@dataclass(frozen=True)
+class CellProvenance:
+    """EXACTLY what data ONE backtest cell (symbol × venue) ran on — the anti-black-box record. Additive +
+    display-only: it READS the assembled bars + the alignment decision and is NO gate input, so attaching it
+    cannot move a backtest number, the Gate, or the money path.
+
+    Fields:
+      - symbol / venue        : the canonical pair + the LIVE venue this cell's fee/depth prices against.
+      - bar_source            : WHERE the scored bars came from (the provider/venue book, e.g. 'binance-reference',
+                                'kraken-keyless', 'bybit', 'hyperliquid', 'polymarket-odds') — NOT necessarily the
+                                live venue (a FALLBACK cell is scored on the reference book, surfaced plainly here).
+      - bar_interval          : the bar size the cell was scored at ('1h', '1d', …).
+      - first_bar_ts/last_bar_ts: ISO range of the actual bars scored (None when the cell has no bars).
+      - n_bars                : how many bars were scored.
+      - holdout_split_index   : the index into the bar series where validation ends and the embargoed holdout
+                                begins (the last ~20% is the holdout; None when the cell is too short to hold out).
+      - fee_bps/slippage_bps/impact_bps : the TODAY's-schedule cost overlay charged on every fill (fees-always-today
+                                rule) — the exact per-venue numbers the backtest used, recorded not re-typed.
+      - reuses_reference      : True when bar_source is a SHARED reference book the cell did NOT natively trade on
+                                (a price-source ≠ live-venue situation worth surfacing); False = native venue bars.
+      - source_is_fallback    : True when the price SOURCE differs from the live VENUE (a FALLBACK reference was
+                                used) — the headline 'backtested on <source> → live venue <venue>' divergence case.
+      - align_corr/align_spread_bps/align_overlap : the divergence metric of the source-vs-live-venue price
+                                (Pearson corr of returns + median |spread| in bps + shared-bar count), straight
+                                from the alignment decision. None for a native-venue (reference) cell with no
+                                cross-venue check to make.
+    """
+
+    symbol: str
+    venue: str
+    bar_source: str
+    bar_interval: str
+    n_bars: int
+    fee_bps: float
+    slippage_bps: float
+    impact_bps: float
+    reuses_reference: bool
+    source_is_fallback: bool
+    first_bar_ts: str | None = None
+    last_bar_ts: str | None = None
+    holdout_split_index: int | None = None
+    align_corr: float | None = None
+    align_spread_bps: float | None = None
+    align_overlap: int | None = None
+
+    @property
+    def divergence_flagged(self) -> bool:
+        """True when the price SOURCE differs from the live VENUE (a fallback was used) AND the source tracks the
+        venue too loosely to be silently trusted (corr below / spread above the LOOSE display thresholds, or the
+        overlap was too thin to even estimate). A native-venue cell (source == venue, no fallback) is NEVER flagged
+        — its own book is the truth. This is an INSPECT-ME flag for the operator, never a gate action."""
+        if not self.source_is_fallback:
+            return False
+        if self.align_corr is None or self.align_spread_bps is None:
+            return True  # a fallback with no measurable alignment is the most suspect case → flag
+        return self.align_corr < PROVENANCE_FLAG_MIN_CORR or self.align_spread_bps > PROVENANCE_FLAG_MAX_SPREAD_BPS
+
+    def to_dict(self) -> dict[str, Any]:
+        """A JSON-serializable view (the shape persisted on an event payload / served on an API field)."""
+        return {
+            "symbol": self.symbol,
+            "venue": self.venue,
+            "bar_source": self.bar_source,
+            "bar_interval": self.bar_interval,
+            "n_bars": self.n_bars,
+            "first_bar_ts": self.first_bar_ts,
+            "last_bar_ts": self.last_bar_ts,
+            "holdout_split_index": self.holdout_split_index,
+            "fee_bps": self.fee_bps,
+            "slippage_bps": self.slippage_bps,
+            "impact_bps": self.impact_bps,
+            "reuses_reference": self.reuses_reference,
+            "source_is_fallback": self.source_is_fallback,
+            "align_corr": self.align_corr,
+            "align_spread_bps": self.align_spread_bps,
+            "align_overlap": self.align_overlap,
+            "divergence_flagged": self.divergence_flagged,
+        }
+
+    def log_line(self) -> str:
+        """A one-line human-readable provenance summary for the backtest log — states EXACTLY what the cell ran on,
+        plainly names the price source vs the live venue, and FLAGS a divergent fallback so a backtest is never a
+        black box. E.g.:
+          'PROVENANCE BTC/USDT@kraken: backtested on kraken-keyless price → live venue kraken | 1h | 1200 bars
+           2024-01-01T00:00:00→2024-02-19T00:00:00 | holdout@960 | fees 40.0bps slip 7.0/55.0bps | aligned'
+          '… backtested on binance-reference price → live venue bybit | … | FALLBACK source (corr 0.91 spread
+           62.0bps over 800 bars) ⚠ DIVERGENT'"""
+        rng = (
+            f"{self.first_bar_ts}→{self.last_bar_ts}"
+            if self.first_bar_ts and self.last_bar_ts
+            else "no-bars"
+        )
+        holdout = f"holdout@{self.holdout_split_index}" if self.holdout_split_index is not None else "no-holdout"
+        fees = f"fees {self.fee_bps}bps slip {self.slippage_bps}/{self.impact_bps}bps"
+        if self.source_is_fallback:
+            if self.align_corr is not None and self.align_spread_bps is not None:
+                align = (
+                    f"FALLBACK source (corr {self.align_corr} spread {self.align_spread_bps}bps "
+                    f"over {self.align_overlap} bars)"
+                )
+            else:
+                align = "FALLBACK source (alignment unmeasured)"
+            if self.divergence_flagged:
+                align += " ⚠ DIVERGENT"
+        else:
+            align = "aligned (native venue source)"
+        return (
+            f"PROVENANCE {self.symbol}@{self.venue}: backtested on {self.bar_source} price "
+            f"→ live venue {self.venue} | {self.bar_interval} | {self.n_bars} bars {rng} | "
+            f"{holdout} | {fees} | {align}"
+        )
+
+
+# A bar series' validation/holdout split mirrors _purged_embargoed_split (last ~20% held out): split index =
+# max(40, int(0.8 * n)). Recorded for provenance ONLY (the real split lives in data/backtest); None when the series
+# is too short to leave a holdout. This is a read, never a re-implementation of the gate's split logic.
+def _provenance_holdout_split(n_bars: int) -> int | None:
+    if n_bars < 80:
+        return None
+    return max(40, int(n_bars * 0.8))
+
+
+def cell_provenance(
+    *,
+    symbol: str,
+    venue: str,
+    bar_source: str,
+    bar_interval: str,
+    bars: list[Bar],
+    fee_bps: float,
+    slippage_bps: float,
+    impact_bps: float,
+    reuses_reference: bool,
+    decision_: AlignmentDecision | None,
+    is_reference_venue: bool,
+) -> CellProvenance:
+    """Assemble ONE cell's provenance record from the bars it ran on + the cost overlay + the alignment decision.
+
+    `bar_source` is the human name of WHERE the scored bars came from (the provider/venue book). `reuses_reference`
+    is the PriceCell leakage-guard flag: True when the cell was scored on a SHARED reference series rather than its
+    own native venue book. `is_reference_venue` is True iff this cell's live venue IS the reference venue itself (so
+    reusing the reference is just scoring on its own book — NOT a divergence).
+
+    `source_is_fallback` is the headline divergence case — the price SOURCE differs from the live VENUE: True iff the
+    cell reuses the reference AND its live venue is NOT the reference venue (a non-reference venue scored on the
+    shared reference book; covers BOTH the UNIFY path, with a measured alignment, AND the per-venue-mode 'native bars
+    missing → fall back to reference' path, where no alignment was measured). The corr/spread come straight from the
+    alignment decision (None for a native cell, or a fallback whose alignment wasn't measured). Pure + display-only."""
+    n = len(bars)
+    first_ts = bars[0].ts.isoformat() if n else None
+    last_ts = bars[-1].ts.isoformat() if n else None
+    stats = decision_.stats if decision_ is not None else None
+    return CellProvenance(
+        symbol=symbol,
+        venue=venue,
+        bar_source=bar_source,
+        bar_interval=bar_interval,
+        n_bars=n,
+        fee_bps=round(float(fee_bps), 4),
+        slippage_bps=round(float(slippage_bps), 4),
+        impact_bps=round(float(impact_bps), 4),
+        reuses_reference=reuses_reference,
+        # A cell is a SOURCE≠VENUE fallback iff it reuses a shared reference book AND its live venue is NOT the
+        # reference venue. The reference venue's OWN cell reuses the reference too, but that is its own book — not a
+        # fallback. (decision_ may be None on the per-venue 'native missing → reference' fallback; still a fallback.)
+        source_is_fallback=bool(reuses_reference and not is_reference_venue),
+        first_bar_ts=first_ts,
+        last_bar_ts=last_ts,
+        holdout_split_index=_provenance_holdout_split(n),
+        align_corr=(stats.corr if stats is not None else None),
+        align_spread_bps=(stats.median_spread_bps if stats is not None else None),
+        align_overlap=(stats.n_overlap if stats is not None else None),
+    )
+
+
 def load_decision(store: Any, pair: CanonicalPair, venue: str) -> AlignmentDecision | None:
     """Read a previously-persisted verdict for (pair, venue), or None when absent/unreadable (the caller then
     decides fresh). So the verdict is NOT recomputed every run — the screen reads the inspected decision."""

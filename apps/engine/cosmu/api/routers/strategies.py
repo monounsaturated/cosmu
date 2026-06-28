@@ -16,6 +16,7 @@ from cosmu.api.models import (
     Backtest,
     CellCurvePoint,
     CellCurveResponse,
+    CellProvenanceResponse,
     Execution,
     LabSymbolsResponse,
     Point,
@@ -30,6 +31,7 @@ from cosmu.api.models import (
 from cosmu.api.routers.lab import _cell_row, _cell_select, _dedup_cells
 from cosmu.api.routers.leaderboard import _money_or_none  # the shared finite-or-None money coercion (never null→0)
 from cosmu.knowledge.store import backtest_symbols_has_equity_curve, utcnow
+from cosmu.master.live_eligibility import cell_id
 from cosmu.master.scorer import BacktestMetrics, TrialStats, deflated_sharpe_prob
 from cosmu.research.summary_facts import facts_hash, summary_facts
 
@@ -307,6 +309,86 @@ def strategy_cell_curve(version_id: str, symbol: str, venue: str | None = None) 
     return CellCurveResponse(
         version_id=version_id, symbol=symbol, venue=venue, available=len(points) >= 2, points=points,
     )
+
+
+@router.get("/strategies/{version_id}/cell-provenance", response_model=CellProvenanceResponse)
+def strategy_cell_provenance(version_id: str, symbol: str, venue: str | None = None) -> CellProvenanceResponse:
+    """PER-CELL DATA PROVENANCE for ONE (symbol, venue) cell — EXACTLY what the backtest ran on, so a result is
+    never a black box. Surfaces the bar SOURCE, interval, date range, bar count, holdout split, the TODAY's-schedule
+    fee/slippage/impact overlay (fees-always-today), and the headline source-vs-venue divergence: whether the price
+    SOURCE differed from the live VENUE (a FALLBACK reference was used), the corr/spread divergence metric, and a
+    `divergence_flagged` warning. Display/audit only — never a gate input.
+
+    Served from the provenance recorded on the cell's `track_opened` event payload at screen time (the same record
+    written for every funded cell). `available` is False when no provenance was recorded (e.g. a cell whose track
+    opened before this shipped) — an honest empty state, never a fabricated record. `venue` mirrors the other cell
+    routes: None → the latest track-open for the symbol; a real id → that venue's cell."""
+    cid = cell_id(version_id, symbol, venue) if venue else None
+    with store.reading():
+        if cid is not None:
+            row = store.row(
+                "SELECT payload FROM events WHERE kind = 'track_opened' AND ref_id = ? ORDER BY ts DESC LIMIT 1",
+                (cid,),
+            )
+        else:
+            # No venue constraint → the latest track_opened whose payload names this (version, symbol). The ref_id
+            # is 'version:symbol:venue', so a LIKE on the version:symbol prefix matches any venue for the symbol.
+            row = store.row(
+                "SELECT payload FROM events WHERE kind = 'track_opened' AND ref_id LIKE ? ORDER BY ts DESC LIMIT 1",
+                (f"{version_id}:{symbol}:%",),
+            )
+    prov = None
+    if row and row.get("payload"):
+        try:
+            payload = json.loads(row["payload"]) if isinstance(row["payload"], str) else row["payload"]
+            prov = (payload or {}).get("provenance")
+        except (ValueError, TypeError):
+            prov = None
+    if not prov:
+        return CellProvenanceResponse(version_id=version_id, symbol=symbol, venue=venue, available=False)
+    return CellProvenanceResponse(
+        version_id=version_id,
+        symbol=symbol,
+        venue=venue or prov.get("venue"),
+        available=True,
+        bar_source=prov.get("bar_source"),
+        bar_interval=prov.get("bar_interval"),
+        n_bars=prov.get("n_bars"),
+        first_bar_ts=prov.get("first_bar_ts"),
+        last_bar_ts=prov.get("last_bar_ts"),
+        holdout_split_index=prov.get("holdout_split_index"),
+        fee_bps=prov.get("fee_bps"),
+        slippage_bps=prov.get("slippage_bps"),
+        impact_bps=prov.get("impact_bps"),
+        reuses_reference=prov.get("reuses_reference"),
+        source_is_fallback=prov.get("source_is_fallback"),
+        align_corr=prov.get("align_corr"),
+        align_spread_bps=prov.get("align_spread_bps"),
+        align_overlap=prov.get("align_overlap"),
+        divergence_flagged=prov.get("divergence_flagged"),
+        log_line=_provenance_log_line(prov),
+    )
+
+
+def _provenance_log_line(prov: dict) -> str | None:
+    """Rebuild the one-line provenance summary from a persisted provenance dict (the same shape CellProvenance.
+    to_dict() writes), so the API can serve the SAME human-readable line the backtest log emitted. Best-effort —
+    None on a malformed dict (the structured fields still carry the truth)."""
+    try:
+        from cosmu.data.reference import CellProvenance
+
+        return CellProvenance(
+            symbol=prov["symbol"], venue=prov["venue"], bar_source=prov["bar_source"],
+            bar_interval=prov["bar_interval"], n_bars=prov["n_bars"],
+            fee_bps=prov["fee_bps"], slippage_bps=prov["slippage_bps"], impact_bps=prov["impact_bps"],
+            reuses_reference=prov["reuses_reference"], source_is_fallback=prov["source_is_fallback"],
+            first_bar_ts=prov.get("first_bar_ts"), last_bar_ts=prov.get("last_bar_ts"),
+            holdout_split_index=prov.get("holdout_split_index"),
+            align_corr=prov.get("align_corr"), align_spread_bps=prov.get("align_spread_bps"),
+            align_overlap=prov.get("align_overlap"),
+        ).log_line()
+    except (KeyError, TypeError):
+        return None
 
 
 def _parse_curve_points(raw: object) -> list[CellCurvePoint]:
