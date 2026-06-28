@@ -70,7 +70,8 @@ Live verdict = `promote_brut` ([cohort.py:196]) per-combo, `TrialStats(count=1)`
 | USDC liquidity-first base-currency decision module (trade=liquidity-wins, rest=USDC-default; propose-only, 3 new files, 18 tests) | [#469](https://github.com/monounsaturated/cosmu/pull/469) | ✅ done |
 | #8 Inbox novelty-gate on wave-0 seeds (agent near-dup hard-skip · human near-dup kept+flagged; protects the FDR budget) — railway now solid w/ #460 | [#470](https://github.com/monounsaturated/cosmu/pull/470) | ✅ done |
 | Pipeline integrity audit — **3 GAPs** (backtest CORRECT; **paper lane under-charges fees for Polymarket/IBKR** = the gate that funds; divergence-check write-only; USDC catalog `*USDT`-only). No leakage / no live mis-accounting (live reconciles to fills). | [#472](https://github.com/monounsaturated/cosmu/pull/472) | ✅ done |
-| **Paper-lane fee-parity fix** — shared `effective_taker_bps` so paper charges the per-venue fee the backtest modelled (Polymarket/IBKR); crypto unchanged; TIGHTENS, never loosens | `claude/paper-fee-parity-2026-06-28` | 🔄 running |
+| **Paper-lane fee-parity fix** — shared `effective_taker_bps`; paper now charges Polymarket per-category×(1−price) (~300bps@p0.40 vs ≈0) + IBKR per-share (==backtest); crypto byte-identical; TIGHTENS only; Gate untouched; 10/10 tests. **Closes the audit's headline finding.** | [#474](https://github.com/monounsaturated/cosmu/pull/474) | ✅ done |
+| Pre-review batch 2 — newer code PRs (#467, #469, #470, #471, #474), hardest scrutiny on money-path #471/#474 | `(isolated reviewer)` | 🔄 running |
 
 _(Dropped #4 token-unlock — memory shows N5 [#447](https://github.com/monounsaturated/cosmu/pull/447) already KILLED token-unlock drift; no new angle. M2 note: a 5-file batch pytest hung once under agent contention — agents bounded to own-file tests.)_
 
