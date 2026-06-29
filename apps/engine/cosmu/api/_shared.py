@@ -85,6 +85,39 @@ def annualized_return_lo(total_return: object, window_days: float | None, sharpe
     return annualized_return(total * shrink, window_days)
 
 
+def count_total_combos(store_: Store) -> int:
+    """The TRUE number of distinct (algo × asset × venue) COMBOS backtested — COUNT over DISTINCT
+    (strategy_id, symbol, venue_id) in backtest_symbols (the algo id resolved via strategy_versions). This is the
+    HONEST denominator the screener shows ("1,000 of 36,065"), independent of any per-request row LIMIT / pagination
+    cap — so the ribbon never passes off a page size as the universe. The combo (algo × asset × venue) is the unit
+    the screener dedups to (NOT the version), so we count distinct strategy_id, matching what the table displays.
+    Read-only; 0 on any error (honest empty, never crashes the response)."""
+    try:
+        row = store_.row(
+            "SELECT COUNT(*) AS n FROM ("
+            "SELECT DISTINCT sv.strategy_id, bs.symbol, bs.venue_id "
+            "FROM backtest_symbols bs JOIN strategy_versions sv ON sv.id = bs.strategy_version_id"
+            ") t"
+        )
+        return int(row["n"]) if row and row["n"] is not None else 0
+    except Exception:  # noqa: BLE001 — a counting read must never 500 the screener/sidebar
+        return 0
+
+
+def count_total_strategies(store_: Store) -> int:
+    """The TRUE number of distinct STRATEGIES (algorithms) that carry at least one backtested cell — COUNT(DISTINCT
+    strategy_id) over backtest_symbols. The honest "Strategies" count the ribbon + sidebar show, over the WHOLE set
+    rather than the top-N slice the leaderboard/lab response is capped to. Read-only; 0 on any error."""
+    try:
+        row = store_.row(
+            "SELECT COUNT(DISTINCT sv.strategy_id) AS n "
+            "FROM backtest_symbols bs JOIN strategy_versions sv ON sv.id = bs.strategy_version_id"
+        )
+        return int(row["n"]) if row and row["n"] is not None else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 settings = get_settings()
 try:
     store = Store(settings)

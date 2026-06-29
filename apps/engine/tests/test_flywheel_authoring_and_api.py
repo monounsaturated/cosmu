@@ -568,3 +568,39 @@ def test_detail_money_all_none_without_a_fill(tmp_path, monkeypatch):
     body = client.get(f"/strategies/{vid}").json()
     assert body["has_paper_fills"] is False
     assert body["value_usd"] is None and body["pnl_usd"] is None and body["forward_equity"] == []
+
+
+def test_detail_carries_status_and_blotter_is_paper(tmp_path, monkeypatch):
+    # The sheet derives the TRUE stage from the version's real status (so a Live/Killed version doesn't read
+    # "Paper" off the trades+backtests shape); the blotter tags each fill paper vs live via is_paper.
+    client, store = _client(tmp_path, monkeypatch)
+    spec = seed_momentum_spec(); spec.name = "Status + is_paper detail"
+    vid = _persist_version(store, spec, passed=True)   # _persist_version sets status='paper' when passed
+    _add_paper_fill(store, vid)                         # is_paper=1 fill
+    body = client.get(f"/strategies/{vid}").json()
+    assert body["status"] == "paper"                    # the real lifecycle status is surfaced for deriveStage
+    assert body["trades"] and body["trades"][0]["is_paper"] is True  # the blotter tags the fill as paper
+
+
+def _seed_leaderboard_cell(store: Store, *, name: str, symbol: str, venue: str) -> str:
+    """A version with BOTH a backtest and a per-symbol cell — so it counts toward total_combos/total_strategies
+    (which are computed over backtest_symbols)."""
+    sid = store.insert("strategies", {"name": name, "thesis": "t", "origin": "test", "created_at": utcnow()})
+    vid = store.insert("strategy_versions", {"strategy_id": sid, "spec": {"name": name}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": utcnow()})
+    bt = store.insert("backtests", {"strategy_version_id": vid, "kind": "screen", "oos_return": "0.05", "sharpe": "1", "sortino": "1", "deflated_sharpe": "0.6", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 40, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 1, "created_at": utcnow()})
+    store.insert("backtest_symbols", {"backtest_id": bt, "strategy_version_id": vid, "symbol": symbol, "venue_id": venue, "return_pct": "0.05", "sharpe": "1.0", "max_drawdown": "0.05", "trades": 40, "verdict": "robust", "created_at": utcnow()})
+    return vid
+
+
+def test_leaderboard_carries_honest_total_counts(tmp_path, monkeypatch):
+    # The sidebar reads total_strategies (distinct strategies over the WHOLE set) instead of rows.length (versions
+    # on the board, capped) — so two strategies (one on two venues = 3 combos) report total_strategies=2, total_combos=3.
+    client, store = _client(tmp_path, monkeypatch)
+    vid_a = _seed_leaderboard_cell(store, name="LB-A", symbol="BTCUSDT", venue="binance")
+    # A second cell for the SAME strategy A on another venue (same strategy_id, new combo).
+    bt2 = store.insert("backtests", {"strategy_version_id": vid_a, "kind": "screen", "oos_return": "0.05", "sharpe": "1", "sortino": "1", "deflated_sharpe": "0.6", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 40, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 1, "created_at": utcnow()})
+    store.insert("backtest_symbols", {"backtest_id": bt2, "strategy_version_id": vid_a, "symbol": "BTCUSDT", "venue_id": "kraken", "return_pct": "0.05", "sharpe": "1.0", "max_drawdown": "0.05", "trades": 40, "verdict": "robust", "created_at": utcnow()})
+    _seed_leaderboard_cell(store, name="LB-B", symbol="ETHUSDT", venue="binance")
+    body = client.get("/leaderboard").json()
+    assert body["total_strategies"] == 2  # strategy A + strategy B
+    assert body["total_combos"] == 3      # A×binance, A×kraken, B×binance

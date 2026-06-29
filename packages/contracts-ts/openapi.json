@@ -908,6 +908,218 @@
         "title": "CellCurveResponse",
         "type": "object"
       },
+      "CellProvenanceResponse": {
+        "description": "PER-CELL DATA PROVENANCE \u2014 EXACTLY what a backtest cell (algo \u00d7 symbol \u00d7 venue) ran on (the operator's\n'a backtest result must never be a black box' surfacing). Display/audit only; never a gate input.\n\n`available` is False when no provenance was recorded for the cell (e.g. a legacy track opened before this\nshipped). When True, the fields state the bar SOURCE, interval, date range, bar count, holdout split, the\nTODAY's-schedule cost overlay (fees-always-today), and \u2014 the headline \u2014 whether the price SOURCE differed from\nthe live VENUE (a FALLBACK reference was used) plus the divergence metric (corr / median spread) and a\n`divergence_flagged` warning when the source tracks the venue too loosely to silently trust. `log_line` is the\nsame one-line human summary written to the backtest log.",
+        "properties": {
+          "align_corr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align Corr"
+          },
+          "align_overlap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align Overlap"
+          },
+          "align_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align Spread Bps"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "bar_interval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bar Interval"
+          },
+          "bar_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bar Source"
+          },
+          "divergence_flagged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divergence Flagged"
+          },
+          "fee_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Bps"
+          },
+          "first_bar_ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Bar Ts"
+          },
+          "holdout_split_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Split Index"
+          },
+          "impact_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Bps"
+          },
+          "last_bar_ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Bar Ts"
+          },
+          "log_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Line"
+          },
+          "n_bars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Bars"
+          },
+          "reuses_reference": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuses Reference"
+          },
+          "slippage_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slippage Bps"
+          },
+          "source_is_fallback": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Is Fallback"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "symbol",
+          "venue",
+          "available"
+        ],
+        "title": "CellProvenanceResponse",
+        "type": "object"
+      },
       "ClassToggleRequest": {
         "properties": {
           "active": {
@@ -2291,6 +2503,11 @@
             "title": "Id",
             "type": "string"
           },
+          "is_paper": {
+            "default": false,
+            "title": "Is Paper",
+            "type": "boolean"
+          },
           "price": {
             "title": "Price",
             "type": "number"
@@ -2329,6 +2546,88 @@
           "ts"
         ],
         "title": "Execution",
+        "type": "object"
+      },
+      "ExecutionListItem": {
+        "description": "One row of the global Trades feed (GET /executions): a real Execution plus the strategy it belongs to. Paper\n(simulated) and live (real/testnet) fills together, each tagged `is_paper` so the one Trades table can show both\nhonestly. Read-only \u2014 listing a trade never moves money.",
+        "properties": {
+          "fee": {
+            "title": "Fee",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_paper": {
+            "title": "Is Paper",
+            "type": "boolean"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "number"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "strategy_name": {
+            "title": "Strategy Name",
+            "type": "string"
+          },
+          "strategy_version_id": {
+            "title": "Strategy Version Id",
+            "type": "string"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          }
+        },
+        "required": [
+          "id",
+          "ts",
+          "strategy_version_id",
+          "strategy_name",
+          "side",
+          "qty",
+          "price",
+          "fee",
+          "venue",
+          "is_paper"
+        ],
+        "title": "ExecutionListItem",
+        "type": "object"
+      },
+      "ExecutionsResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionListItem"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows"
+        ],
+        "title": "ExecutionsResponse",
         "type": "object"
       },
       "ExplorerDetailResponse": {
@@ -3846,6 +4145,22 @@
             "title": "Created At",
             "type": "string"
           },
+          "fee_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Bps"
+          },
+          "has_paper_fills": {
+            "default": false,
+            "title": "Has Paper Fills",
+            "type": "boolean"
+          },
           "kind": {
             "title": "Kind",
             "type": "string"
@@ -4016,6 +4331,16 @@
             "title": "Timeframes",
             "type": "array"
           },
+          "total_combos": {
+            "default": 0,
+            "title": "Total Combos",
+            "type": "integer"
+          },
+          "total_strategies": {
+            "default": 0,
+            "title": "Total Strategies",
+            "type": "integer"
+          },
           "venues": {
             "items": {
               "type": "string"
@@ -4177,6 +4502,16 @@
             },
             "title": "Rows",
             "type": "array"
+          },
+          "total_combos": {
+            "default": 0,
+            "title": "Total Combos",
+            "type": "integer"
+          },
+          "total_strategies": {
+            "default": 0,
+            "title": "Total Strategies",
+            "type": "integer"
           }
         },
         "required": [
@@ -7054,6 +7389,11 @@
             ],
             "title": "Starting Capital"
           },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
           "summary_md": {
             "anyOf": [
               {
@@ -8258,6 +8598,47 @@
           }
         },
         "summary": "Evolution Run"
+      }
+    },
+    "/executions": {
+      "get": {
+        "description": "All trade executions newest-first \u2014 paper (SIMULATED, is_paper=1) AND live (real/testnet, is_paper=0)\ntogether, each tagged `is_paper`, with the owning strategy NAME + version joined. The single Trades page\nrenders this one table; the tag is the ONLY thing that separates simulated paper money from real/testnet\nmoney, so it is never dropped. INNER JOIN strategy_versions/strategies \u2014 an execution always belongs to a\nversion, so an orphan fill (no version) is intentionally not listed rather than shown with a fabricated name.\nBounded by `limit` (clamped 1..1000) so a fat ledger never floods the response. Read-only; never funds.",
+        "operationId": "executions_executions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Executions"
       }
     },
     "/explorer": {
@@ -9967,6 +10348,71 @@
           }
         },
         "summary": "Strategy Cell Curve"
+      }
+    },
+    "/strategies/{version_id}/cell-provenance": {
+      "get": {
+        "description": "PER-CELL DATA PROVENANCE for ONE (symbol, venue) cell \u2014 EXACTLY what the backtest ran on, so a result is\nnever a black box. Surfaces the bar SOURCE, interval, date range, bar count, holdout split, the TODAY's-schedule\nfee/slippage/impact overlay (fees-always-today), and the headline source-vs-venue divergence: whether the price\nSOURCE differed from the live VENUE (a FALLBACK reference was used), the corr/spread divergence metric, and a\n`divergence_flagged` warning. Display/audit only \u2014 never a gate input.\n\nServed from the provenance recorded on the cell's `track_opened` event payload at screen time (the same record\nwritten for every funded cell). `available` is False when no provenance was recorded (e.g. a cell whose track\nopened before this shipped) \u2014 an honest empty state, never a fabricated record. `venue` mirrors the other cell\nroutes: None \u2192 the latest track-open for the symbol; a real id \u2192 that venue's cell.",
+        "operationId": "strategy_cell_provenance_strategies__version_id__cell_provenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CellProvenanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Cell Provenance"
       }
     },
     "/strategies/{version_id}/comparison": {

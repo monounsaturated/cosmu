@@ -39,9 +39,14 @@ export function feeTotalFromTrades(trades: Execution[]): number | null {
   return trades.reduce((acc, t) => acc + t.fee, 0);
 }
 
-// Stage derived honestly from the contract shape: fills → paper; backtests only → backtest; none → queued.
-// We never claim "live"/"killed" — neither is recoverable here, so we never invent them.
-export function deriveStage(trades: Execution[], backtests: Backtest[]): Stage {
+// Stage derived honestly. Live/Killed are recoverable ONLY from the version's real `status` — the trades+backtests
+// SHAPE can't tell a live fill from a paper one (a live version has fills, so the shape alone would read "Paper").
+// So prefer the real status for those two lanes; otherwise fall back to the contract-shape heuristic: fills → paper;
+// backtests only → backtest; none → queued. `status` is optional so a partial/legacy response degrades gracefully.
+export function deriveStage(trades: Execution[], backtests: Backtest[], status?: string | null): Stage {
+  const s = (status ?? "").toLowerCase();
+  if (s === "live") return "live";
+  if (s === "killed") return "killed";
   if (trades.length > 0) return "paper";
   if (backtests.length > 0) return "backtest";
   return "queued";
@@ -403,10 +408,12 @@ function PhaseComparison({
       live: "—"
     },
     {
-      metric: "Validation window",
+      // Labeled "OOS window" to match the Data-provenance row + the screener column — ONE term for the
+      // out-of-sample (validation) window everywhere, so it reads clearly (operator flagged it was unclear).
+      metric: "OOS window",
       tip: cell
-        ? "How many DAYS of validation data THIS cell was scored on — the held-out period tested AFTER the data the strategy was fitted on, measured on this asset's OWN history (never a sibling's longer window). It's the denominator behind the annualized return. — = window not yet recorded."
-        : "How many DAYS of validation data the backtest was scored on — the held-out period tested AFTER the data the strategy was fitted on. Longer = more trustworthy, and it's the denominator behind the annualized return. — = window not yet recorded.",
+        ? "Out-of-sample (validation) window — how many DAYS THIS cell was scored on, the held-out period tested AFTER the data the strategy was fitted on, measured on this asset's OWN history (never a sibling's longer window). It's the denominator behind the annualized return. — = window not yet recorded."
+        : "Out-of-sample (validation) window — how many DAYS the backtest was scored on, the held-out period tested AFTER the data the strategy was fitted on. Longer = more trustworthy, and it's the denominator behind the annualized return. — = window not yet recorded.",
       // Per-cell truth when a cell is focused: THIS cell's own validation window (off backtest_symbols.oos_window_days),
       // never the parent backtest's shared (longest-cell) window. Falls back to the headline backtest's window.
       bt: formatOosWindow(cell?.oos_window_days ?? headlineBt?.oos_window_days) ?? "—",
@@ -566,8 +573,9 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
   const backtests = strategy.backtests ?? [];
   const totalFee = feeTotalFromTrades(trades);
   // Prefer the engine's canonical stage (passed from the screener row) so the sheet badge never disagrees
-  // with the table; fall back to the contract-shape heuristic for the standalone /strategy/[id] page.
-  const stage = stageOverride ?? deriveStage(trades, backtests);
+  // with the table; else derive from the version's real status + contract shape (so a Live/Killed version reads
+  // correctly on the standalone /strategy/[id] page instead of "Paper").
+  const stage = stageOverride ?? deriveStage(trades, backtests, strategy.status);
   const ageDays = trackAgeDays(trades);
   const headlineBt = headlineBacktest(backtests);
   const bestOos = bestOosPct(backtests);

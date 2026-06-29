@@ -22,7 +22,7 @@ import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { LIFE_BADGE_CLASS, LIFE_LABEL, type LifeStatus } from "@/lib/lifecycle";
 import { engineGetJson, enginePeek } from "@/lib/engine";
-import { cn, formatPct, formatVenue, isKilled, isPaper } from "@/lib/utils";
+import { cn, formatPct, formatVenue, isKilled, isPaper, isPaperRow } from "@/lib/utils";
 
 // Rows shown per page — never render more than this many <tr> at once (keeps the DOM lean on a fat universe).
 const PAGE_SIZE = 100;
@@ -100,8 +100,16 @@ function isUncomputed(r: LabSymbolRow): boolean {
 
 // The row's lifecycle lane: a cell-less (uncomputed) row is ALWAYS "New" (lab); otherwise the parent version's
 // normalized status. Single source for the badge, the Status dropdown, the filter and the status sort.
+//
+// HONEST-PAPER FIX: the `status` column is overloaded — most paper-status rows are zero-capital watch-lane rejects
+// (gate near-misses routed to a paper test) that have NEVER traded. Reuse the shared isPaperRow predicate
+// (isPaper(status) && has_paper_fills===true): a paper-status row WITHOUT a real fill is badged "Backtest", not
+// "Paper" — matching the version's own sheet ("no fills yet") and the leaderboard/sidebar paper cohort. Because
+// this is the ONE row-level source, the badge, the Status filter and the status sort all stay in lockstep.
 function rowLifeStatus(r: LabSymbolRow): LifeStatus {
-  return isUncomputed(r) ? "lab" : lifeStatusOf(r.status);
+  if (isUncomputed(r)) return "lab";
+  if (isPaper(r.status) && !isPaperRow(r)) return "screened";
+  return lifeStatusOf(r.status);
 }
 
 // The small per-row lifecycle badge (replaces the old Verdict cell). New / Backtest / Paper / Live / Killed,
@@ -111,9 +119,20 @@ function LifeBadge({ row }: { row: LabSymbolRow }) {
   return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
 }
 
+// Compact OOS-window formatter for the narrow screener column ("2.4yr" / "8mo" / "45d"); the sheet shows the
+// fuller "870d (~2.4yr)". null/≤0 → null so the caller renders an honest "—".
+function formatOosShort(days: number | null | undefined): string | null {
+  if (typeof days !== "number" || days <= 0) return null;
+  const d = Math.round(days);
+  if (d >= 360) return `${(d / 365).toFixed(1)}yr`;
+  if (d >= 60) return `${Math.round(d / 30)}mo`;
+  return `${d}d`;
+}
+
 // Sortable column keys. "combo" and "strategy" are the two identity columns (always shown); the rest are pickable.
-// The legacy "verdict" column is gone; "status" is the per-row lifecycle stage.
-type ColKey = "status" | "return" | "venue" | "symbol" | "timeframe" | "trades" | "dd" | "sharpe";
+// The legacy "verdict" column is gone; "status" is the per-row lifecycle stage. "fees" = the venue's TODAY taker
+// fee (sim while paper/backtest, real while live); "oos" = the out-of-sample validation window duration.
+type ColKey = "status" | "return" | "venue" | "symbol" | "timeframe" | "trades" | "dd" | "sharpe" | "fees" | "oos";
 type SortKey = "combo" | "strategy" | ColKey;
 type SortDir = "asc" | "desc";
 
@@ -131,6 +150,8 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
   dd: (r) => r.max_drawdown,
   trades: (r) => r.trades,
   status: (r) => LIFE_RANK[rowLifeStatus(r)] ?? 0,
+  fees: (r) => (typeof r.fee_bps === "number" ? r.fee_bps : -Infinity),
+  oos: (r) => (typeof r.oos_window_days === "number" ? r.oos_window_days : -Infinity),
 };
 
 // Column order: status · return · venue · symbol · trades · dd · sharpe.
@@ -143,11 +164,13 @@ const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
   { key: "timeframe", label: "Timeframe", tip: "The bar size (1h · 4h · 1d) this cell was screened on — the 4th axis of the combo (algo × asset × venue × timeframe). The same edge on two timeframes is two DISTINCT combos. — = not recorded (legacy/single-timeframe cell)." },
   { key: "trades", label: "Trades", align: "right" },
   { key: "dd", label: "Max DD", align: "right" },
+  { key: "oos", label: "OOS window", align: "right", tip: "Out-of-sample window — the held-out test period this cell was scored on (the data tested AFTER what the strategy was fitted on). It's the denominator behind the annualized return; LONGER = more trustworthy. — = window not recorded." },
+  { key: "fees", label: "Fees", align: "right", tip: "The venue's CURRENT taker fee (fees-always-today: the backtest charges this on every bar). Tagged by stage — 'sim' while paper/backtest (simulated against real fees, no real order), GOLD 'real' once the combo trades live. — = unknown venue." },
   { key: "sharpe", label: "Sharpe", align: "right" },
 ];
 // Timeframe is HIDDEN by default (in today's single-timeframe world every cell shows the same value, so the column
 // adds no signal); it becomes useful once multi-tf is enabled and is then pickable from the Columns menu.
-const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, timeframe: false, trades: true, dd: true, sharpe: false };
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, timeframe: false, trades: true, dd: true, oos: true, fees: true, sharpe: false };
 const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
 
 // Per-column CSS width class (table-layout:fixed honours these). The identity columns (.col-combo, .col-strat)
@@ -160,6 +183,8 @@ const COL_CLASS: Record<ColKey, string> = {
   timeframe: "col-venue",
   trades: "col-num-sm",
   dd: "col-num",
+  oos: "col-num-sm",
+  fees: "col-num-sm",
   sharpe: "col-num",
 };
 
@@ -474,6 +499,32 @@ export function SymbolsTable({
             )}
           </td>
         );
+      case "oos": {
+        // The out-of-sample validation window duration — surfaced ON THE ROW (operator flagged it was unclear).
+        const oos = formatOosShort(r.oos_window_days);
+        return (
+          <td key={key} style={{ textAlign: "right" }} className={oos === null ? "quiet" : undefined}>
+            {uncomputed || oos === null ? "—" : oos}
+          </td>
+        );
+      }
+      case "fees": {
+        // Stage-aware fee tag: 'sim' while paper/backtest (simulated against the venue's real fee, no real order),
+        // GOLD 'real' once the combo trades live. The bps figure is TODAY's venue taker fee (fees-always-today).
+        if (uncomputed || typeof r.fee_bps !== "number") {
+          return <td key={key} style={{ textAlign: "right" }} className="quiet">—</td>;
+        }
+        const live = rowLifeStatus(r) === "live";
+        return (
+          <td key={key} style={{ textAlign: "right" }}
+              title={live ? "REAL fees — this combo trades live; the venue charges this taker fee on every fill." : "Simulated fees — the backtest/paper charges this venue's CURRENT taker fee on every bar (fees-always-today). No real money."}>
+            <span style={live ? { color: "var(--gold)", fontWeight: 700 } : undefined}>{r.fee_bps.toFixed(0)} bps</span>
+            <span className={live ? "" : "quiet"} style={{ display: "block", fontSize: "0.78em", lineHeight: 1.1, color: live ? "var(--gold)" : undefined }}>
+              {live ? "real" : "sim"}
+            </span>
+          </td>
+        );
+      }
       case "status":
         return <td key={key}><LifeBadge row={r} /></td>;
     }
@@ -553,8 +604,8 @@ export function SymbolsTable({
             </colgroup>
             <thead>
               <tr>
-                <th onClick={() => toggleSort("combo")} style={{ cursor: "pointer" }}>
-                  <div className="th-inner">Combo<span className={cn("sort-ind", sort.key === "combo" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
+                <th onClick={() => toggleSort("combo")} style={{ cursor: "pointer" }} title="Bot — the stable id of this combo (algo × asset × venue). Most are backtest-only; a combo becomes a live/paper-trading bot once it actually trades (see the Status badge).">
+                  <div className="th-inner">Bot<span className={cn("sort-ind", sort.key === "combo" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
                 </th>
                 <th onClick={() => toggleSort("strategy")} style={{ cursor: "pointer" }}>
                   <div className="th-inner">Strategy<span className={cn("sort-ind", sort.key === "strategy" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
@@ -588,7 +639,10 @@ export function SymbolsTable({
                     title="Open this strategy"
                   >
                     <td>
-                      {comboNum !== undefined ? <span className="combo-num" title={`Combo #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
+                      {comboNum !== undefined ? <span className="combo-num" title={`Bot #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
+                      {/* Real-money (gold) marker — a live combo trades real money. Reuses the ribbon's gold treatment.
+                          Today 0 combos are live, so this is dormant but correct the instant one arms live. */}
+                      {rowLifeStatus(r) === "live" ? <span title="Real money — this combo is LIVE" aria-label="live, real money" style={{ color: "var(--gold)", marginLeft: 4, fontSize: 9, verticalAlign: "middle" }}>●</span> : null}
                     </td>
                     {/* STRATEGY: width-capped + ellipsis. The combo/algo "#n" prefix and the LLM badge stay
                         flex-shrink:0 (always visible); only the long name ellipsizes inside .strat-name. The

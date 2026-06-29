@@ -183,6 +183,29 @@ export interface CellCurveResponse {
   version_id: string;
 }
 
+export interface CellProvenanceResponse {
+  align_corr?: number | null;
+  align_overlap?: number | null;
+  align_spread_bps?: number | null;
+  available: boolean;
+  bar_interval?: string | null;
+  bar_source?: string | null;
+  divergence_flagged?: boolean | null;
+  fee_bps?: number | null;
+  first_bar_ts?: string | null;
+  holdout_split_index?: number | null;
+  impact_bps?: number | null;
+  last_bar_ts?: string | null;
+  log_line?: string | null;
+  n_bars?: number | null;
+  reuses_reference?: boolean | null;
+  slippage_bps?: number | null;
+  source_is_fallback?: boolean | null;
+  symbol: string;
+  venue: string | null;
+  version_id: string;
+}
+
 export interface ClassToggleRequest {
   active: boolean;
   kind: string;
@@ -453,11 +476,29 @@ export interface EventsResponse {
 export interface Execution {
   fee: number;
   id: string;
+  is_paper?: boolean;
   price: number;
   qty: number;
   side: string;
   ts: string;
   venue: string | null;
+}
+
+export interface ExecutionListItem {
+  fee: number;
+  id: string;
+  is_paper: boolean;
+  price: number;
+  qty: number;
+  side: string;
+  strategy_name: string;
+  strategy_version_id: string;
+  ts: string;
+  venue: string | null;
+}
+
+export interface ExecutionsResponse {
+  rows: ExecutionListItem[];
 }
 
 export interface ExplorerDetailResponse {
@@ -750,6 +791,8 @@ export interface KillswitchResponse {
 
 export interface LabSymbolRow {
   created_at: string;
+  fee_bps?: number | null;
+  has_paper_fills?: boolean;
   kind: string;
   max_drawdown: number;
   oos_window_days?: number | null;
@@ -775,6 +818,8 @@ export interface LabSymbolsResponse {
   rows: LabSymbolRow[];
   symbols: string[];
   timeframes?: string[];
+  total_combos?: number;
+  total_strategies?: number;
   venues: string[];
 }
 
@@ -806,6 +851,8 @@ export interface LaunchActivateResponse {
 
 export interface LeaderboardResponse {
   rows: LeaderboardRow[];
+  total_combos?: number;
+  total_strategies?: number;
 }
 
 export interface LeaderboardRow {
@@ -1355,6 +1402,7 @@ export interface StrategyDetailResponse {
   realized_pnl?: number | null;
   spec: Record<string, unknown>;
   starting_capital?: number | null;
+  status?: string;
   summary_md?: string | null;
   summary_stale?: boolean | null;
   summary_updated_at?: string | null;

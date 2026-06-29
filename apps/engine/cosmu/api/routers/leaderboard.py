@@ -6,7 +6,7 @@ import math
 
 from fastapi import APIRouter
 
-from cosmu.api._shared import _json, _metric, annualized_return as _annualized_return, oos_window_days as _oos_window_days, store
+from cosmu.api._shared import _json, _metric, annualized_return as _annualized_return, count_total_combos, count_total_strategies, oos_window_days as _oos_window_days, store
 from cosmu.api.models import LeaderboardResponse, LeaderboardRow
 from cosmu.knowledge.store import backtest_symbols_has_oos_window, tracks_has_cell_columns
 from cosmu.master.divergence import divergence as forward_divergence
@@ -117,7 +117,7 @@ def leaderboard() -> LeaderboardResponse:
         """
     )
     if not rows:
-        return LeaderboardResponse(rows=[])
+        return LeaderboardResponse(rows=[], total_strategies=count_total_strategies(store), total_combos=count_total_combos(store))
     out: list[LeaderboardRow] = []
     seen_versions: set[str] = set()  # one row per Version: a Version with >1 backtest fans out the LEFT JOIN
     for row in rows:
@@ -235,4 +235,6 @@ def leaderboard() -> LeaderboardResponse:
         import logging
         logging.getLogger(__name__).warning("leaderboard: skipped a malformed row", exc_info=True)
         continue
-    return LeaderboardResponse(rows=out)
+    # Honest denominators over the WHOLE set (the sidebar's "Strategies" count reads total_strategies instead of
+    # `rows.length`, which is versions-on-the-board capped at 200).
+    return LeaderboardResponse(rows=out, total_strategies=count_total_strategies(store), total_combos=count_total_combos(store))
