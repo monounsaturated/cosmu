@@ -1,3 +1,8 @@
+# ⚠️ QUARANTINED (2026-06-29): the pre-registered voice PANEL belongs to the RETIRED autonomous credibility pass
+# (cosmu/ingest/voices_pass.py). It is superseded by the lean AUTHORITY feature (cosmu/authority/), which scores
+# ANY ingested account (no pre-registered panel) from a LOCAL data feed. This file is no longer on any live path;
+# kept only so the legacy math-core tests + the dormant indexes social lane still import. Do not extend it.
+#
 # intent: the PRE-REGISTERED VOICE PANEL — the single, operator-edited list of voices (X handles, subreddits,
 # RSS/newsletter feeds) the credibility pipeline follows, plus the hard per-pass cost caps. inputs: none (this
 # IS the configuration); outputs: VOICE_PANEL + entity→bar-symbol routing + caps the voices pass enforces.

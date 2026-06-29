@@ -100,6 +100,11 @@ from cosmu.api.models.costs import (  # noqa: F401
     SpendPoint,
     VendorActual,
 )
+from cosmu.api.models.authority import (  # noqa: F401
+    AuthorityMover,
+    AuthorityResponse,
+    AuthorityRow,
+)
 from cosmu.api.models.credibility import (  # noqa: F401
     CredibilityResponse,
     CredibilityRow,
@@ -352,6 +357,10 @@ __all__ = [
     "LlmCallSummary",
     "SpendPoint",
     "VendorActual",
+    # authority (proprietary-data dashboard)
+    "AuthorityMover",
+    "AuthorityResponse",
+    "AuthorityRow",
     # credibility
     "CredibilityResponse",
     # realtime

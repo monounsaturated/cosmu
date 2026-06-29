@@ -22,6 +22,7 @@ from cosmu.api._shared import (  # noqa: F401 — re-exported for backwards-comp
     ensure_recommendations,
 )
 from cosmu.api.routers import (
+    authority,
     autonomy,
     blocks,
     console,
@@ -114,6 +115,7 @@ for _module in (
     universe,
     research,
     mind,
+    authority,
     scores,
     settings_router,
     skills,
@@ -145,7 +147,7 @@ for _module in (
 # Every module that did `from cosmu.api._shared import store, settings` (plus the
 # canonical _shared) — a write to app.store/app.settings must update all of them.
 _INJECTABLE_MODULES = (
-    _shared_mod, autonomy, console, correlations, costs, events, evolution, explorer, health,
+    _shared_mod, authority, autonomy, console, correlations, costs, events, evolution, explorer, health,
     indexes, intelligence, lab, leaderboard, live, memory, mind, ops, overview, population,
     recommendations, research, scores, settings_router, skills, spine,
     strategies, strategy, toggle, universe, verdicts,

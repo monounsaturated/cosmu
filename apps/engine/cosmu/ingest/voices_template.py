@@ -1,3 +1,10 @@
+# ⚠️ QUARANTINED (2026-06-29): the AUTONOMOUS voice-panel credibility pass is RETIRED. It is superseded by the
+# lean AUTHORITY feature (cosmu/authority/) — PROPRIETARY DATA curated LOCALLY by the operator, NOT an autonomous
+# cron over a pre-registered panel. This module is no longer on the Modal tick (remote/app.py) and its CLI (`_main`)
+# REFUSES to run unless VOICES_ALLOW_RETIRED=1 is set, so a stale cron / hand-invocation can't run it stupidly. The
+# `run_*` functions remain importable only so the existing math-core tests + the dormant indexes social lane keep
+# resolving; nothing triggers them automatically. Build new credibility work on cosmu.authority, not here.
+#
 # intent: the LLM-VOICES/AUTHORITY LANE TEMPLATE runner — a clean, minimal, MOCKABLE scaffold the operator EXTENDS
 # in a future chat (see docs/epics/llm-lane-template.md). It wraps the real `run_voices_pass` (ingest/voices_pass.py)
 # with TWO modes and the RATCHET defaults:
@@ -161,6 +168,12 @@ def _main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(
         description="Run the LLM-voices/authority lane TEMPLATE (mock by default; VOICES_LIVE_ENABLED=1 for live-cheap)."
     ).parse_args(argv)
+    # QUARANTINED: the autonomous voice-panel pass is retired (superseded by cosmu.authority). Refuse to run from
+    # the CLI / a stale cron unless explicitly un-retired, so it can never run stupidly.
+    if (os.environ.get("VOICES_ALLOW_RETIRED", "0") or "0").strip().lower() not in ("1", "true", "yes", "on"):
+        print("VOICES TEMPLATE — RETIRED. Superseded by the AUTHORITY feature (cosmu.authority). "
+              "Set VOICES_ALLOW_RETIRED=1 to run the legacy pass anyway. No-op.")
+        return 0
     mode = "LIVE-cheap (keyless retrieval + OpenRouter :free)" if live_enabled() else "MOCK ($0, no network/LLM)"
     report = run_template()
     print(

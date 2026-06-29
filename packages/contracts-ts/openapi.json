@@ -283,6 +283,246 @@
         "title": "AuthorRunRequest",
         "type": "object"
       },
+      "AuthorityMover": {
+        "description": "One of an account's biggest calls by PAYOFF \u2014 the \"wrong most of the time but huge on a few\" surface.\n`signed_return` is the raw direction-mapped return; `payoff` is the echo-discounted contribution to EV.",
+        "properties": {
+          "asset": {
+            "title": "Asset",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "is_echo": {
+            "default": false,
+            "title": "Is Echo",
+            "type": "boolean"
+          },
+          "payoff": {
+            "title": "Payoff",
+            "type": "number"
+          },
+          "signed_return": {
+            "title": "Signed Return",
+            "type": "number"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset",
+          "ts",
+          "direction",
+          "signed_return",
+          "payoff"
+        ],
+        "title": "AuthorityMover",
+        "type": "object"
+      },
+      "AuthorityResponse": {
+        "description": "The authority dashboard: one row per scored account, ordered composite DESC with UNTESTED (null composite)\nlast. `n_accounts` is the row count; `as_of` is the latest scoreboard update (null when empty \u2014 the proprietary\nstore fills once the local ingest + score pass has run on real account-call data).",
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "n_accounts": {
+            "title": "N Accounts",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/AuthorityRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "n_accounts",
+          "rows"
+        ],
+        "title": "AuthorityResponse",
+        "type": "object"
+      },
+      "AuthorityRow": {
+        "description": "One account's flat COMPOSITE row. `n_calls` is volume (NOT skill); `n_resolved` is how many calls were old\nenough to score against the tape; `n_echo` is how many of those were late/echo (discounted). Every derived\nmetric is nullable \u2014 an account with zero resolved calls carries NULL everything (honest UNTESTED, not 0).\n`ev` is the cumulative return trading each call small (the payoff headline, weighted highest in the\ncomposite); `composite` is the [0,1] authority score; `top_movers` is the top-3 calls by payoff;\n`consistency` is the gain spread (LOW when one spike carries the account \u2014 interesting, not bad).",
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "avg_lead_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Lead Days"
+          },
+          "avg_move_when_right": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Move When Right"
+          },
+          "base_hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Hit Rate"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier"
+          },
+          "brier_skill_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brier Skill Score"
+          },
+          "calibration_error": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Error"
+          },
+          "composite": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composite"
+          },
+          "consistency": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consistency"
+          },
+          "ev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ev"
+          },
+          "hit_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hit Rate"
+          },
+          "last_call_ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Call Ts"
+          },
+          "n_calls": {
+            "title": "N Calls",
+            "type": "integer"
+          },
+          "n_echo": {
+            "title": "N Echo",
+            "type": "integer"
+          },
+          "n_resolved": {
+            "title": "N Resolved",
+            "type": "integer"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "top_movers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AuthorityMover"
+            },
+            "title": "Top Movers",
+            "type": "array"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account",
+          "platform",
+          "n_calls",
+          "n_resolved",
+          "n_echo",
+          "updated_at"
+        ],
+        "title": "AuthorityRow",
+        "type": "object"
+      },
       "AutonomyPauseResponse": {
         "properties": {
           "paused": {
@@ -906,6 +1146,218 @@
           "points"
         ],
         "title": "CellCurveResponse",
+        "type": "object"
+      },
+      "CellProvenanceResponse": {
+        "description": "PER-CELL DATA PROVENANCE \u2014 EXACTLY what a backtest cell (algo \u00d7 symbol \u00d7 venue) ran on (the operator's\n'a backtest result must never be a black box' surfacing). Display/audit only; never a gate input.\n\n`available` is False when no provenance was recorded for the cell (e.g. a legacy track opened before this\nshipped). When True, the fields state the bar SOURCE, interval, date range, bar count, holdout split, the\nTODAY's-schedule cost overlay (fees-always-today), and \u2014 the headline \u2014 whether the price SOURCE differed from\nthe live VENUE (a FALLBACK reference was used) plus the divergence metric (corr / median spread) and a\n`divergence_flagged` warning when the source tracks the venue too loosely to silently trust. `log_line` is the\nsame one-line human summary written to the backtest log.",
+        "properties": {
+          "align_corr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align Corr"
+          },
+          "align_overlap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align Overlap"
+          },
+          "align_spread_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Align Spread Bps"
+          },
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "bar_interval": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bar Interval"
+          },
+          "bar_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bar Source"
+          },
+          "divergence_flagged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divergence Flagged"
+          },
+          "fee_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Bps"
+          },
+          "first_bar_ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Bar Ts"
+          },
+          "holdout_split_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Split Index"
+          },
+          "impact_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Bps"
+          },
+          "last_bar_ts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Bar Ts"
+          },
+          "log_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Line"
+          },
+          "n_bars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Bars"
+          },
+          "reuses_reference": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reuses Reference"
+          },
+          "slippage_bps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slippage Bps"
+          },
+          "source_is_fallback": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Is Fallback"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "venue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Venue"
+          },
+          "version_id": {
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "symbol",
+          "venue",
+          "available"
+        ],
+        "title": "CellProvenanceResponse",
         "type": "object"
       },
       "ClassToggleRequest": {
@@ -7935,6 +8387,25 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/authority": {
+      "get": {
+        "description": "The proprietary AUTHORITY scoreboard \u2014 one composite row per scored account (Brier \u00b7 hit-rate \u00b7 EV/payoff \u00b7\nmagnitude \u00b7 lead-time \u00b7 consistency \u00b7 composite \u00b7 top-3 movers), composite DESC, UNTESTED last. Read-only;\nserved from the precomputed `authority_scoreboard` (no live recompute, no LLM on this path).",
+        "operationId": "authority_authority_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Authority"
+      }
+    },
     "/autonomy/pause": {
       "post": {
         "operationId": "autonomy_pause_autonomy_pause_post",
@@ -9967,6 +10438,71 @@
           }
         },
         "summary": "Strategy Cell Curve"
+      }
+    },
+    "/strategies/{version_id}/cell-provenance": {
+      "get": {
+        "description": "PER-CELL DATA PROVENANCE for ONE (symbol, venue) cell \u2014 EXACTLY what the backtest ran on, so a result is\nnever a black box. Surfaces the bar SOURCE, interval, date range, bar count, holdout split, the TODAY's-schedule\nfee/slippage/impact overlay (fees-always-today), and the headline source-vs-venue divergence: whether the price\nSOURCE differed from the live VENUE (a FALLBACK reference was used), the corr/spread divergence metric, and a\n`divergence_flagged` warning. Display/audit only \u2014 never a gate input.\n\nServed from the provenance recorded on the cell's `track_opened` event payload at screen time (the same record\nwritten for every funded cell). `available` is False when no provenance was recorded (e.g. a cell whose track\nopened before this shipped) \u2014 an honest empty state, never a fabricated record. `venue` mirrors the other cell\nroutes: None \u2192 the latest track-open for the symbol; a real id \u2192 that venue's cell.",
+        "operationId": "strategy_cell_provenance_strategies__version_id__cell_provenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "venue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Venue"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CellProvenanceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Strategy Cell Provenance"
       }
     },
     "/strategies/{version_id}/comparison": {

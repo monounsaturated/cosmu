@@ -202,11 +202,10 @@ def tick() -> int:
     #                                          reduce-only drawdown/profit-lock watchdog runs on EVERY paper-clock
     #                                          cron, not only this Modal slot). Strict no-op until a venue is armed.
     _run(["cosmu.research.arm_fleet"])       # advance the documented equity cohort's forward clock
-    _run(["cosmu.ingest.voices_template"])   # LLM-voices/authority lane TEMPLATE: mock by default ($0, no network/
-    #                                          LLM); VOICES_LIVE_ENABLED=1 flips to keyless retrieval + OpenRouter
-    #                                          :free extraction (still ~$0). Observe-only — proposes + scores the
-    #                                          credibility scoreboard + the 2 PIT features; the Gate alone funds.
-    #                                          Runs BEFORE agent_run so the authority signal the Mind reads is fresh.
+    # NOTE: the autonomous voice-panel credibility pass (cosmu.ingest.voices_template) was RETIRED here — it is
+    # superseded by the lean AUTHORITY feature (cosmu.authority), which is PROPRIETARY DATA curated LOCALLY by the
+    # operator (where the xAI key / Claude-in-Chrome live), NOT an autonomous cron. The old pass is quarantined and
+    # its CLI refuses to run; nothing on the tick scores voices anymore.
     _run(["cosmu.strategy.agent_run"])       # observe-only LLM strategies: reason (Mind panel) + record traces ($0)
     if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts + universe refresh
         _run(["cosmu.costs.refresh"])

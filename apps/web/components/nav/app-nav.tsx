@@ -1,9 +1,11 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — EIGHT surfaces: Strategies · Paper · Live · Indexes · Mind · Costs · Keys · Commands
-// (landing = Strategies). Mind is the read-only credibility surface — the followed-voices scoreboard off
-// /mind/credibility. Strategies is now the ONE granular surface: every (algo × asset × venue)
+// frontend — EIGHT surfaces: Strategies · Paper · Live · Indexes · Authority · Costs · Keys · Commands
+// (landing = Strategies). Authority is the read-only proprietary-data surface — the account-authority
+// scoreboard off /authority (which accounts to trust, scored on whether their past asset calls corroborated
+// the tape). It replaced the retired "Mind" voice-scoreboard surface (/mind now redirects here).
+// Strategies is now the ONE granular surface: every (algo × asset × venue)
 // triplet, never pooled — the old per-symbol "Lab" tab was folded into it (its route now redirects).
 // Indexes (2026-06-15) is the operator-defined, deterministically-scored
 // signal-index registry that strategies later key off. (The old Research/experiment-memory route was
@@ -85,7 +87,7 @@ export const navItems: NavItem[] = [
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
-  { href: "/mind", key: "mind", label: "Mind", icon: ICONS.mind },
+  { href: "/authority", key: "authority", label: "Authority", icon: ICONS.mind },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }

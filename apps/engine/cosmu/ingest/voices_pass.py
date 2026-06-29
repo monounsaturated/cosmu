@@ -1,3 +1,9 @@
+# ⚠️ QUARANTINED (2026-06-29): superseded by the lean AUTHORITY feature (cosmu/authority/). This autonomous,
+# pre-registered voice-panel pass (with the skill-anchored citation PageRank in cosmu/mind/authority.py) is no
+# longer on the tick and its CLI (`_main`) refuses to run unless VOICES_ALLOW_RETIRED=1. The Brier/skill math here
+# was kept ONLY as the inspiration for cosmu/authority/scoring.py; `run_voices_pass` + the `_load_all_claims` /
+# `_bars_by_entity` helpers stay importable so the existing tests + the dormant indexes social lane resolve.
+#
 # intent: the CREDIBILITY PASS (realtime-data-lane epic P2) — one bounded cron tick that runs the dormant
 # "PageRank for credibility" pipeline end-to-end on the PRE-REGISTERED voice panel: Phase 0 pull each voice's
 # recent timeline (key-gated providers) → durable, deduped post records in `market_events` (provider="voices",
@@ -365,9 +371,16 @@ def run_voices_pass(
 def _main(argv: list[str] | None = None) -> int:
     import argparse
 
+    import os
+
     argparse.ArgumentParser(
         description="Run one bounded credibility pass over the pre-registered voice panel (Phase 0-3)."
     ).parse_args(argv)
+    # QUARANTINED: retired in favour of cosmu.authority. Refuse the CLI / a stale cron unless explicitly un-retired.
+    if (os.environ.get("VOICES_ALLOW_RETIRED", "0") or "0").strip().lower() not in ("1", "true", "yes", "on"):
+        print("VOICES PASS — RETIRED. Superseded by the AUTHORITY feature (cosmu.authority). "
+              "Set VOICES_ALLOW_RETIRED=1 to run the legacy pass anyway. No-op.")
+        return 0
     report = run_voices_pass()
     print(
         f"VOICES PASS — voices={report.voices} posts={report.posts_fetched} (new={report.posts_new}, "
