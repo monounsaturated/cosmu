@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import cosmu.api.routers.lab as lab_mod
 from cosmu.config.settings import Settings
-from cosmu.knowledge.store import Store
+from cosmu.knowledge.store import Store, utcnow
 
 
 def _store(tmp_path, name="lab_sym_api") -> Store:
@@ -291,6 +291,77 @@ def test_annualized_return_lo_is_null_without_a_window(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- Fix 2: thin-sample flag
+
+
+# --------------------------------------------------------------------------- has_paper_fills (honest "Paper" badge)
+
+
+def _add_paper_fill(store: Store, vid: str, *, venue: str = "binance", is_paper: int = 1) -> None:
+    """Record ONE real fill in the executions ledger — the signal that makes has_paper_fills True (the SAME
+    is_paper=1 signal the leaderboard/detail-sheet read). The web keys the 'Paper' BADGE off this so a paper-status
+    row with NO fill reads 'Backtest', not 'Paper'."""
+    rid = store.insert("runs", {"strategy_version_id": vid, "mode": "paper", "venue_id": venue, "seed": 1, "started_at": utcnow(), "status": "completed"})
+    store.insert("executions", {
+        "run_id": rid, "strategy_version_id": vid, "instrument_id": "i", "venue_id": venue, "side": "buy",
+        "qty": "1", "price": "100", "fee": "0.1", "slippage": "0", "order_type": "market", "is_paper": is_paper,
+        "ts": utcnow(), "fill_log": "{}",
+    })
+
+
+def test_has_paper_fills_true_when_a_paper_fill_exists(tmp_path, monkeypatch):
+    """A paper-status cell whose version has a real is_paper=1 fill carries has_paper_fills=True — so the web's
+    isPaperRow predicate badges it 'Paper' honestly."""
+    store = _store(tmp_path)
+    _, vid = _seed_cell(store, name="Traded", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust", status="paper")
+    _add_paper_fill(store, vid)
+    row = _client(monkeypatch, store).get("/lab/symbols").json()["rows"][0]
+    assert row["has_paper_fills"] is True
+
+
+def test_has_paper_fills_false_for_a_no_fill_watch_lane_reject(tmp_path, monkeypatch):
+    """The badge-truth fix: a PAPER-status cell with NO fill (a zero-capital watch-lane reject) carries
+    has_paper_fills=False — the input the web uses to badge it 'Backtest', not 'Paper'."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="WatchReject", symbol="ETHUSDT", venue="binance", return_pct=0.05, verdict="negative", status="paper")
+    row = _client(monkeypatch, store).get("/lab/symbols").json()["rows"][0]
+    assert row["status"] == "paper"          # overloaded status still says paper…
+    assert row["has_paper_fills"] is False   # …but no fill → the web badges it Backtest
+
+
+# --------------------------------------------------------------------------- fee_bps (stage-aware fees column)
+
+
+def test_fee_bps_is_the_venue_taker_fee(tmp_path, monkeypatch):
+    """Each cell carries its venue's TODAY taker fee (fees-always-today) so the screener's Fees column is real,
+    never fabricated. binance taker = 10 bps in the catalog; an unknown venue is honest None."""
+    store = _store(tmp_path)
+    _seed_cell(store, name="Binance", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
+    _seed_cell(store, name="Bogus", symbol="ETHUSDT", venue="not_a_real_venue", return_pct=0.10, verdict="robust")
+    rows = {r["strategy_name"]: r for r in _client(monkeypatch, store).get("/lab/symbols").json()["rows"]}
+    assert rows["Binance"]["fee_bps"] == 10.0
+    assert rows["Bogus"]["fee_bps"] is None
+
+
+# --------------------------------------------------------------------------- total_combos / total_strategies (honest denominators)
+
+
+def test_total_counts_are_the_full_set_not_the_page(tmp_path, monkeypatch):
+    """total_combos / total_strategies are computed over the WHOLE set, independent of the row `limit` — so the
+    ribbon shows the honest denominator ('loaded of total') instead of passing off a page size as the universe."""
+    store = _store(tmp_path)
+    # Strategy A on two venues (2 combos), strategy B (1 combo), strategy C (1 combo) → 4 combos, 3 strategies.
+    sid_a = store.insert("strategies", {"name": "A", "thesis": "t", "origin": "test", "created_at": "2026-06-17T00:00:00Z"})
+    vid_a = store.insert("strategy_versions", {"strategy_id": sid_a, "spec": {"name": "A"}, "generated_code": "", "code_hash": "h", "params": {}, "origin": "test", "status": "screened", "kind": "quant", "created_at": "2026-06-17T00:00:00Z"})
+    bt_a = store.insert("backtests", {"strategy_version_id": vid_a, "kind": "screen", "oos_return": "0.1", "sharpe": "1.0", "sortino": "1.0", "deflated_sharpe": "1.0", "max_dd": "0.1", "win_rate": "0.5", "num_trades": 40, "pbo": "0.2", "trials_counted": 1, "folds_positive": 4, "passed_gates": 1, "holdout_passed": 0, "created_at": "2026-06-17T00:00:00Z"})
+    for venue in ("binance", "kraken"):
+        store.insert("backtest_symbols", {"backtest_id": bt_a, "strategy_version_id": vid_a, "symbol": "BTCUSDT", "venue_id": venue, "return_pct": "0.2", "sharpe": "1.0", "max_drawdown": "0.05", "trades": 40, "verdict": "robust", "created_at": "2026-06-17T00:00:00Z"})
+    _seed_cell(store, name="B", symbol="ETHUSDT", venue="binance", return_pct=0.10, verdict="robust")
+    _seed_cell(store, name="C", symbol="SOLUSDT", venue="binance", return_pct=0.15, verdict="robust")
+    # A tight limit truncates the rows, but the TRUE totals must NOT shrink with it.
+    body = _client(monkeypatch, store).get("/lab/symbols?limit=1").json()
+    assert len(body["rows"]) == 1                 # the page is capped…
+    assert body["total_combos"] == 4              # …but the denominators count the whole set
+    assert body["total_strategies"] == 3
 
 
 def test_thin_flag_tracks_the_real_gate_floor(tmp_path, monkeypatch):

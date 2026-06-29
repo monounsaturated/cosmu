@@ -129,6 +129,11 @@ class LeaderboardRow(BaseModel):
 
 class LeaderboardResponse(BaseModel):
     rows: list[LeaderboardRow]
+    # TRUE denominators over the WHOLE set (NOT the LIMIT-capped `rows`): distinct strategies (algorithms) and
+    # distinct (algo × asset × venue) combos that carry a backtested cell. The sidebar nav count reads
+    # `total_strategies` so it stops mislabeling "versions on the board (≤200)" as the strategy count. 0 = unknown.
+    total_strategies: int = 0
+    total_combos: int = 0
 
 
 class Execution(BaseModel):
@@ -139,6 +144,30 @@ class Execution(BaseModel):
     fee: float
     venue: str | None
     ts: str
+    # True = a SIMULATED paper fill (priced against the venue's real fees, but NO real order placed); False = a
+    # real/testnet LIVE fill (executions.is_paper = 0). Lets the blotter + the Trades page tag paper vs live money.
+    is_paper: bool = False
+
+
+class ExecutionListItem(BaseModel):
+    """One row of the global Trades feed (GET /executions): a real Execution plus the strategy it belongs to. Paper
+    (simulated) and live (real/testnet) fills together, each tagged `is_paper` so the one Trades table can show both
+    honestly. Read-only — listing a trade never moves money."""
+
+    id: str
+    ts: str
+    strategy_version_id: str
+    strategy_name: str
+    side: str
+    qty: float
+    price: float
+    fee: float
+    venue: str | None
+    is_paper: bool
+
+
+class ExecutionsResponse(BaseModel):
+    rows: list[ExecutionListItem]
 
 
 class Backtest(BaseModel):
@@ -171,6 +200,10 @@ class Backtest(BaseModel):
 class StrategyDetailResponse(BaseModel):
     version_id: str
     name: str
+    # The version's raw lifecycle status (screened / paper / live / killed / …). Lets the sheet derive the TRUE
+    # display stage — in particular "Live"/"Killed", which the trades+backtests SHAPE alone can't recover (a live
+    # version has fills, so the shape heuristic would read "Paper"). Default "" (unknown) for a partial response.
+    status: str = ""
     # The strategy MODEL discriminator (strategy_versions.kind) — "quant" = a typed StrategySpec routed through
     # deterministic Gate A (the only model today), "llm" = an agentic/NL AgentSpec. NOTE: this is the model kind,
     # NOT an asset-class kind.

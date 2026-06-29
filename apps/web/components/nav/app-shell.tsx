@@ -106,11 +106,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       try {
         const res = await engineFetch("/leaderboard");
         if (!res.ok) return;
-        const data = (await res.json()) as { rows?: { status?: string }[] };
+        const data = (await res.json()) as { rows?: { status?: string; has_paper_fills?: boolean }[]; total_strategies?: number };
         const rows = data.rows ?? [];
         if (!alive || rows.length === 0) return;
         setCounts({
-          strategies: rows.length,
+          // The HONEST strategy count is the engine's distinct-over-the-whole-set total — NOT rows.length, which
+          // counts the Versions that fit on the leaderboard (capped at 200) and so mislabeled "59 versions" as
+          // "59 strategies". Fall back to rows.length only when the engine didn't supply the total.
+          strategies: typeof data.total_strategies === "number" && data.total_strategies > 0 ? data.total_strategies : rows.length,
           paper: rows.filter((r) => isPaperRow(r)).length,
           live: rows.filter((r) => (r.status ?? "").toLowerCase() === "live").length
         });

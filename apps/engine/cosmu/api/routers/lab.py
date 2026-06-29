@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
+from functools import lru_cache
+
 from cosmu.api._shared import (
     _metric,
     _summary_to_response,
     annualized_return,
     annualized_return_lo,
+    count_total_combos,
+    count_total_strategies,
     oos_window_days,
     settings,
     store,
@@ -78,12 +82,31 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
 _CELL_SELECT_BASE = (
     "SELECT bs.strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
     "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, "
-    "{cell_window}{cell_timeframe}b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at "
+    "{cell_window}{cell_timeframe}b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at, "
+    # Has this cell's VERSION genuinely traded on paper? A real is_paper=1 fill in the executions ledger — the SAME
+    # signal the leaderboard/detail-sheet read, so the screener's "Paper" badge can never lie over a no-fill row.
+    "EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = bs.strategy_version_id "
+    "AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills "
     "FROM backtest_symbols bs "
     "JOIN strategy_versions sv ON sv.id = bs.strategy_version_id "
     "JOIN strategies s ON s.id = sv.strategy_id "
     "LEFT JOIN backtests b ON b.id = bs.backtest_id"
 )
+
+
+@lru_cache(maxsize=64)
+def _venue_taker_bps(venue_id: str | None) -> float | None:
+    """TODAY's taker fee (bps) for a venue, from the venue catalog — fees-always-today: the backtest charges THIS
+    schedule on every bar, so this is the honest fee the cell pays. None for a NULL/unknown venue. Memoized per
+    venue id (the catalog is a static singleton). Display-only; never a gate."""
+    if not venue_id:
+        return None
+    try:
+        from cosmu.spine.venue import default_catalog
+
+        return float(default_catalog().venue(venue_id).taker_fee_bps)
+    except Exception:  # noqa: BLE001 — unknown venue / catalog miss → honest None, never a fabricated fee
+        return None
 
 
 def _cell_select() -> str:
@@ -134,6 +157,8 @@ def _cell_row(r: dict) -> LabSymbolRow:
         sharpe=_metric(r["sharpe"]),
         max_drawdown=_metric(r["max_drawdown"]),
         trades=trades,
+        has_paper_fills=bool(r.get("has_paper_fills")),
+        fee_bps=_venue_taker_bps(r.get("venue_id")),
         verdict=r.get("verdict"),
         pooled_return_pct=_metric(pooled) if pooled is not None else None,
         created_at=r["created_at"],
@@ -282,7 +307,17 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
         seen_strategies = {r["strategy_id"] for r in deduped}
         fresh = [r for r in track_only if r["strategy_id"] not in seen_strategies]
         out += [_track_only_row(r) for r in fresh[: max(1, limit) - len(out)]]
-    return LabSymbolsResponse(rows=out, symbols=symbols, venues=venues, timeframes=timeframes, min_trades=int(settings.gates.min_trades))
+    # The TRUE denominators over the WHOLE set (not the `limit`-capped slice) so the ribbon shows the honest
+    # "loaded of total" instead of passing off a page size as the universe. Counted outside the response trim.
+    return LabSymbolsResponse(
+        rows=out,
+        symbols=symbols,
+        venues=venues,
+        timeframes=timeframes,
+        min_trades=int(settings.gates.min_trades),
+        total_combos=count_total_combos(store),
+        total_strategies=count_total_strategies(store),
+    )
 
 
 @router.post("/lab/author/run", response_model=CohortSummaryResponse)

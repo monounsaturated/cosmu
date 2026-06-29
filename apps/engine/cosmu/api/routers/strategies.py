@@ -135,12 +135,15 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
     return StrategyDetailResponse(
         version_id=version_id,
         name=row["name"],
+        # The version's raw lifecycle status — so the sheet can show the TRUE stage (Live/Killed), which the
+        # trades+backtests shape can't recover. "" when absent (never invents a stage).
+        status=(row["status"] if "status" in row.keys() and row["status"] else ""),
         kind=_kind if _kind in ("quant", "llm") else "quant",
         spec=_json(row["spec"]),
         generated_code=row["generated_code"],
         params=_json(row["params"]),
         trades=[
-            Execution(id=trade["id"], side=trade["side"], qty=float(trade["qty"]), price=float(trade["price"]), fee=float(trade["fee"]), venue=trade["venue_id"], ts=trade["ts"])
+            Execution(id=trade["id"], side=trade["side"], qty=float(trade["qty"]), price=float(trade["price"]), fee=float(trade["fee"]), venue=trade["venue_id"], ts=trade["ts"], is_paper=bool(trade["is_paper"]))
             for trade in executions
         ],
         backtests=[

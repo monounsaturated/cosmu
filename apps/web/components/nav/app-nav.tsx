@@ -1,8 +1,8 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — EIGHT surfaces: Strategies · Paper · Live · Indexes · Mind · Costs · Keys · Commands
-// (landing = Strategies). Mind is the read-only credibility surface — the followed-voices scoreboard off
+// frontend — NINE surfaces: Strategies · Paper · Live · Trades · Indexes · Mind · Costs · Keys · Commands
+// (landing = Strategies). Trades is the one ledger of every execution (paper + live), tagged. Mind is the read-only credibility surface — the followed-voices scoreboard off
 // /mind/credibility. Strategies is now the ONE granular surface: every (algo × asset × venue)
 // triplet, never pooled — the old per-symbol "Lab" tab was folded into it (its route now redirects).
 // Indexes (2026-06-15) is the operator-defined, deterministically-scored
@@ -56,6 +56,11 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M1.5 7.5h2.6l1.4-3 2.2 6 1.4-3h3.4" />
     </svg>
   ),
+  trades: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 4.5h9" /><path d="m9 2 2.5 2.5L9 7" /><path d="M12.5 10.5h-9" /><path d="m6 8-2.5 2.5L6 13" />
+    </svg>
+  ),
   costs: (
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
       <rect x="1.5" y="3.5" width="12" height="8" rx="2" /><path d="M1.5 6.2h12" />
@@ -84,6 +89,7 @@ export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
+  { href: "/trades", key: "trades", label: "Trades", icon: ICONS.trades },
   { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
   { href: "/mind", key: "mind", label: "Mind", icon: ICONS.mind },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },

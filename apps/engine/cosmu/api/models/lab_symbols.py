@@ -34,6 +34,14 @@ class LabSymbolRow(BaseModel):
     sharpe: float
     max_drawdown: float
     trades: int
+    has_paper_fills: bool = False  # has this cell's VERSION genuinely traded on paper (a real is_paper=1 fill in the
+    #                                executions ledger)? The SAME honest signal the leaderboard/detail-sheet read. The
+    #                                web keys the "Paper" BADGE off isPaper(status) && has_paper_fills, so a paper-status
+    #                                row with NO fills (a zero-capital watch-lane reject) reads "Backtest", not "Paper".
+    fee_bps: float | None = None  # TODAY's taker fee (bps) for this cell's venue, from the venue catalog
+    #                               (fees-always-today: the backtest charges this schedule on every bar). NULL for a
+    #                               NULL/unknown venue. Display-only — the screener shows it, tagged sim (paper) / real
+    #                               (live); never a gate input.
     verdict: str | None           # robust | fragile | thin | negative — the honest cross-symbol label (NULL = legacy)
     pooled_return_pct: float | None  # ADVISORY ONLY: the parent backtest's pooled OOS return (the number the old
     #                                  leaderboard headlined). Surfaced dim/secondary so the granular cell stays the
@@ -50,6 +58,11 @@ class LabSymbolsResponse(BaseModel):
     min_trades: int               # the REAL gate trade floor (settings.gates.min_trades) a cell must clear to be
     #                               judged honestly — surfaced so the web flags `thin` cells against the live
     #                               constant instead of hardcoding 30. Mirrors LabSymbolRow.thin.
+    total_combos: int = 0         # the TRUE number of distinct (algo × asset × venue) combos backtested across the
+    #                               WHOLE set — the honest denominator ("1,000 of 36,065"), independent of the row
+    #                               `limit`/pagination. 0 = unknown (engine could not count). See _shared.count_total_combos.
+    total_strategies: int = 0     # the TRUE number of distinct strategies (algorithms) with ≥1 backtested cell — the
+    #                               honest "Strategies" count over the whole set, not the loaded slice.
 
 
 class TripletCardResponse(BaseModel):
