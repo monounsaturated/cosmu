@@ -25,30 +25,37 @@ from cosmu.spine.venue import Instrument, default_catalog
 # --- Polymarket per-category taker --------------------------------------------------------------
 
 def test_polymarket_category_fee_rates():
-    # geopolitics/world free; sports 3%; politics/finance/tech 4%; econ/culture/weather/other 5%; crypto 7.2%.
+    # geopolitics free (official "Geopolitical & World Events"); sports 3%; politics/finance/tech/mentions 4%;
+    # econ/culture/weather/other 5%; crypto 7%. `world` is not an official category → general 5% (was a bogus 0.00).
+    # Verified vs docs.polymarket.com/trading/fees + help.polymarket.com (per-category, effective 2026-03-23).
     assert polymarket_category_fee_rate("geopolitics") == 0.00
-    assert polymarket_category_fee_rate("world") == 0.00
+    assert polymarket_category_fee_rate("world") == 0.05   # NOT official → general rate (was bogus 0.00 over-credit)
     assert polymarket_category_fee_rate("sports") == 0.03
     assert polymarket_category_fee_rate("politics") == 0.04
     assert polymarket_category_fee_rate("finance") == 0.04
     assert polymarket_category_fee_rate("tech") == 0.04
+    assert polymarket_category_fee_rate("mentions") == 0.04  # was MISSING → fell back to crypto 7% (over-charge)
     assert polymarket_category_fee_rate("economics") == 0.05
     assert polymarket_category_fee_rate("culture") == 0.05
-    assert polymarket_category_fee_rate("crypto") == 0.072
+    assert polymarket_category_fee_rate("weather") == 0.05
+    assert polymarket_category_fee_rate("other") == 0.05
+    assert polymarket_category_fee_rate("crypto") == 0.07
 
 
 def test_polymarket_unknown_category_defaults_to_conservative_crypto():
-    """An unmapped (or absent) category over-charges at the crypto 7.2% rate — never under-charges."""
-    assert polymarket_category_fee_rate("does-not-exist") == 0.072
-    assert polymarket_category_fee_rate(None) == 0.072
+    """An unmapped (or absent) category over-charges at the crypto 7% rate — never under-charges."""
+    assert polymarket_category_fee_rate("does-not-exist") == 0.07
+    assert polymarket_category_fee_rate(None) == 0.07
 
 
 def test_polymarket_taker_bps_uses_pnl_room_term():
     """fee/notional = feeRate × (1 − price) → bps. At price 0.5, sports (3%) → 0.03×0.5×1e4 = 150 bps."""
     after = datetime(2026, 4, 1, tzinfo=UTC)  # post-rollout
     assert polymarket_taker_bps("sports", 0.5, as_of=after) == pytest.approx(Decimal("150"))
-    # A near-resolved market (price 0.95) pays much less room: crypto 7.2% × 0.05 × 1e4 = 36 bps.
-    assert polymarket_taker_bps("crypto", 0.95, as_of=after) == pytest.approx(Decimal("36"))
+    # mentions (4%) at price 0.5 → 0.04 × 0.5 × 1e4 = 200 bps (no longer over-charged at the crypto fallback).
+    assert polymarket_taker_bps("mentions", 0.5, as_of=after) == pytest.approx(Decimal("200"))
+    # A near-resolved market (price 0.95) pays much less room: crypto 7% × 0.05 × 1e4 = 35 bps.
+    assert polymarket_taker_bps("crypto", 0.95, as_of=after) == pytest.approx(Decimal("35"))
     # geopolitics is fee-free at any price.
     assert polymarket_taker_bps("geopolitics", 0.5, as_of=after) == Decimal("0")
 
@@ -57,8 +64,8 @@ def test_polymarket_taker_always_uses_today_fee_even_on_old_bars():
     """Operator rule: fees are pinned to TODAY's schedule on EVERY bar — a historical `as_of` is IGNORED, so an old
     bar (2022, when Polymarket charged 0) is still charged the CURRENT per-category fee → no surprise at live."""
     old = datetime(2022, 1, 1, tzinfo=UTC)
-    # crypto 7.2% × (1 − 0.5) × 1e4 = 360 bps — identical to charging "now".
-    assert polymarket_taker_bps("crypto", 0.5, as_of=old) == pytest.approx(Decimal("360"))
+    # crypto 7% × (1 − 0.5) × 1e4 = 350 bps — identical to charging "now".
+    assert polymarket_taker_bps("crypto", 0.5, as_of=old) == pytest.approx(Decimal("350"))
     assert polymarket_taker_bps("crypto", 0.5, as_of=old) == polymarket_taker_bps("crypto", 0.5)
 
 
@@ -70,7 +77,7 @@ def test_polymarket_dispatch_reads_instrument_category():
     assert bps == pytest.approx(Decimal("150"))
     # No instrument → unknown category → conservative crypto rate.
     bps_none = asset_taker_bps(poly, None, reference_price=0.5, as_of=after)
-    assert bps_none == pytest.approx(Decimal("360"))  # 0.072 × 0.5 × 1e4
+    assert bps_none == pytest.approx(Decimal("350"))  # 0.07 × 0.5 × 1e4
 
 
 # --- IBKR per-asset-class -----------------------------------------------------------------------

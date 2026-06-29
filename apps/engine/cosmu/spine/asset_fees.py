@@ -19,19 +19,27 @@ from cosmu.spine.venue import Instrument, Venue
 # --- Polymarket per-category taker fee --------------------------------------------------------------------------
 # Polymarket charges the TAKER a fee proportional to the realized P&L room of the share: fee = shares × feeRate ×
 # price × (1 − price). feeRate is set PER MARKET CATEGORY. Maker side earns a rebate — modelled here as 0 cost
-# (upside only; never credited in a backtest, which would flatter the edge). Source: Polymarket fee schedule.
+# (upside only; never credited in a backtest, which would flatter the edge).
+# Source: docs.polymarket.com/trading/fees + help.polymarket.com (per-category schedule, effective 2026-03-23):
+# the ONLY fee-free category is the official "Geopolitical & World Events" (keyed here as `geopolitics`); sports 3%;
+# politics/finance/tech/mentions 4%; economics/culture/weather/other 5%; crypto 7% (the most expensive). Verified
+# against the published $/100-shares max table (max fee at p=0.5 = feeRate×0.25: sports $0.75, the 4% tier $1.00,
+# the 5% tier $1.25, crypto $1.80). `world` is NOT a distinct official category — world events fall under the
+# fee-free "Geopolitical & World Events" (use `geopolitics`); a bare `world` tag is treated as the general 5% rate
+# (the old `world: 0.00` was an unjustified over-credit on a non-official key).
 POLYMARKET_CATEGORY_FEE_RATE: dict[str, float] = {
-    "geopolitics": 0.00,
-    "world": 0.00,
+    "geopolitics": 0.00,  # official "Geopolitical & World Events" — the only fee-free category
+    "world": 0.05,        # NOT an official category → general rate (was a bogus 0.00 over-credit)
     "sports": 0.03,
     "politics": 0.04,
     "finance": 0.04,
     "tech": 0.04,
+    "mentions": 0.04,
     "economics": 0.05,
     "culture": 0.05,
     "weather": 0.05,
     "other": 0.05,
-    "crypto": 0.072,
+    "crypto": 0.07,
 }
 # Unknown / unmapped category → the most-expensive (crypto) rate, the conservative default (over-charge, never
 # under-charge, when we don't know the category).
@@ -39,8 +47,8 @@ POLYMARKET_DEFAULT_FEE_RATE: float = POLYMARKET_CATEGORY_FEE_RATE["crypto"]
 
 
 def polymarket_category_fee_rate(category: str | None) -> float:
-    """The Polymarket taker feeRate for a market category (0.00–0.072). Unknown/None → the conservative crypto
-    rate (0.072) — over-charging an unmapped market is honest; under-charging would manufacture edge."""
+    """The Polymarket taker feeRate for a market category (0.00–0.07). Unknown/None → the conservative crypto
+    rate (0.07) — over-charging an unmapped market is honest; under-charging would manufacture edge."""
     if category is None:
         return POLYMARKET_DEFAULT_FEE_RATE
     return POLYMARKET_CATEGORY_FEE_RATE.get(category.strip().lower(), POLYMARKET_DEFAULT_FEE_RATE)
