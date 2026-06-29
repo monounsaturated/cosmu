@@ -574,6 +574,14 @@ class FarmLoop:
             cell_curves[key] = equity_curve_points(run)
             cell_windows[key] = cell_window_days(run)
         candidates = [CohortCandidate(id=key, metrics=m, net_profit=0.0, source="farmloop") for key, m in cell_metrics.items()]
+        # BRUT TRIPWIRE (structural, never a gate input): every candidate handed to the verdict MUST carry PER-CELL
+        # metrics — never the POOLED display BacktestResult (sc.metrics). A per-cell metric from metrics_for_run is
+        # stamped trials_counted=1 (the per-combo signature); the pooled sc.metrics is not its identity. This guards
+        # the one regression that would break the model — pooled OOS-return rescuing a per-cell verdict — and touches
+        # NO gate constant/formula (it only asserts the INPUTS are per-cell). See tests/test_brut_pooling_tripwire.py.
+        assert all(c.metrics is not sc.metrics and c.metrics.trials_counted == 1 for c in candidates), (
+            "BRUT invariant violated: a verdict candidate is not a per-cell metric (pooled rescue would be possible)"
+        )
         promotions = {p.candidate_id: p for p in promote_brut(candidates, self.settings.gates, min_trades=_BRUT_MIN_TRADES)}
         out: dict[str, _BrutCell] = {}
         for key, m in cell_metrics.items():
