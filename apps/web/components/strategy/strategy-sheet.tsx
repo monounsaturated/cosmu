@@ -24,6 +24,7 @@ import { EquityPanel } from "./equity-panel";
 import { SpecBlocks } from "./spec-view";
 import { RegistryBlocks } from "./registry-blocks";
 import { StageControl, type Stage } from "./stage-control";
+import { KpisBox } from "./kpis-box";
 import { LifecycleTrace } from "./lifecycle-trace";
 import { laneOf, provenanceOf, strategyKindOf } from "@/lib/provenance";
 import { type Kind, KIND_LABEL, KIND_BADGE_CLASS } from "@/lib/lifecycle";
@@ -619,6 +620,11 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
       />
 
       <TypeLaneBadges spec={(strategy.spec ?? {}) as Record<string, unknown>} origin={origin} modelKind={strategy.kind} />
+
+      {/* Per-TYPE KPIs box — so the human reads what disposed this strategy without opening code. Quant → the Gate
+          KPIs (DSR / PBO / holdout / OOS); LLM/Conviction → the guardrails + thesis + disconfirmer + max-loss the
+          human signs off (human-armed only). Defaults to the Gate box (every strategy is quant today). */}
+      <KpisBox kind={strategy.kind} spec={(strategy.spec ?? {}) as Record<string, unknown>} backtest={headlineBt} holdout={holdout} />
 
       {/* When the sheet is focused on ONE (asset × venue) cell, surface that cell's symbol/venue + brut gate
           verdict up top — so the reader knows WHICH combo the backtest column below is reporting. */}

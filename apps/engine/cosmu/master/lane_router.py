@@ -81,6 +81,16 @@ def evaluate_by_lane(
     The router only chooses the path and forwards arguments; it does not invent a verdict, and it never relaxes a
     threshold. A lane whose required inputs are missing raises ValueError loudly (so a mis-wired runner fails fast
     rather than silently mis-routing — the very failure this module exists to kill)."""
+    # MODEL guard (taxonomy choke point): a kind='llm' conviction strategy has NO honest backtest to deflate, so it
+    # must NEVER reach the deterministic Gate (promote_cohort/promote_brut) — it belongs on the conviction lane
+    # (cosmu.master.conviction.propose_conviction), a chill check + hard guardrails, human-armed. The gate/deploy/
+    # explore lanes are all QUANT evaluators; refusing kind='llm' here keeps a conviction bet structurally off them.
+    if getattr(spec, "kind", "quant") == "llm":
+        raise ValueError(
+            f"spec {getattr(spec, 'name', '<spec>')!r} is kind='llm' (a conviction strategy) — it must NOT be "
+            f"routed through the quant Gate; use cosmu.master.conviction.propose_conviction (the conviction lane: "
+            f"max-loss + small-size guardrails, human-armed) instead of evaluate_by_lane."
+        )
     lane = lane_of(spec)
 
     if lane == "deploy":

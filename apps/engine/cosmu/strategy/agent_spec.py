@@ -7,9 +7,35 @@
 # carry an exit policy (stop/take/trailing) — no LLM strategy is exit-less. See docs/epics/agentic-lane.md.
 from __future__ import annotations
 
+from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+class ConvictionDecl(BaseModel):
+    """The CONVICTION declaration that turns a kind='llm' agent into a fundable conviction bet — the human-reviewed
+    case + the HARD money guardrails the deterministic conviction lane (master/conviction.py) checks. A kind='llm'
+    AgentSpec WITHOUT this is observe-only (it never proposes a bet); WITH it, the conviction lane can PROPOSE the
+    bet inside these caps for a human to arm. The LLM never arms — every dollar still waits on a human click.
+
+    Mandatory thesis + named disconfirmer (no naked conviction): the human reviews WHY and WHAT-WOULD-PROVE-IT-WRONG
+    before arming. Money is bounded HERE so a malformed/hallucinated declaration can't even be constructed out of
+    range (size/max-loss > 0), and `venue` + `execution` make the bet realistic (it declares where + how it fills).
+    """
+
+    thesis: str = Field(min_length=1)         # the economic WHY the human reviews (no naked conviction)
+    confidence: float = Field(ge=0, le=1)     # the agent/operator's confidence in the thesis [0,1]
+    disconfirmer: str = Field(min_length=1)   # what would prove this WRONG — the skeptic's hook (required)
+    # The HARD max-loss cap: the most this single bet may lose, in USD. The conviction lane rejects a declaration
+    # that exceeds the operator's per-bet cap, and a bet whose stake could lose more than this. Defined $ (not %)
+    # so a non-expert reads the worst case directly.
+    max_loss_usd: Decimal = Field(gt=0)
+    size_usd: Decimal = Field(gt=0)           # the intended stake (small by design; ≤ max_loss_usd for a cash bet)
+    venue: str                                # execution venue — must be a LIVE-capable venue (NOT paper-only Alpaca)
+    execution: Literal["maker", "taker"]      # how it fills — declared so the fee/realism is explicit
+    expiry: datetime | None = None            # optional: do not act on this conviction after this instant
 
 
 class AgentExitPolicy(BaseModel):
@@ -45,6 +71,11 @@ class AgentSpec(BaseModel):
     sources: list[str] = Field(default_factory=list)  # where the agent looks (free-form; no allow/deny list)
     mode: Literal["autonomous", "slack_hitl", "manual"] = "autonomous"
     cadence: Literal["1h", "4h", "1d"] = "4h"  # how often the reasoning loop runs
+    # OPTIONAL conviction declaration. None (default) → observe-only: the agent reasons + records but proposes no
+    # fundable bet (every existing AgentSpec is byte-identical). When set, master/conviction.py routes this spec
+    # through the chill conviction check + HARD guardrails (NEVER the quant Gate / promote_brut) and may PROPOSE a
+    # human-armable bet inside the caps. The LLM never arms — propose-only, a human clicks.
+    conviction: ConvictionDecl | None = None
 
 
 class Decision(BaseModel):
