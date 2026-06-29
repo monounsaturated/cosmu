@@ -283,6 +283,15 @@ def _seed_survivor(store: Store, vid: str, *, age_days: float, net_pct: float, p
     # clock blocks them first.
     from conftest import seed_track_snapshots
     seed_track_snapshots(store, vid, obs=min(int(age_days), 30), now=now)
+    # Register the FLAT funded position the funder always writes (Portfolio.register_track) for BTCUSDT@binance.
+    # This is what the arming attribution guard reads to CONFIRM the requested cell IS the funded one, which in
+    # turn enables live_launch's safe version-scope eligibility fallback (the funder still keys forward evidence
+    # version-only today). Without it the cell-scoped read finds nothing and fail-safe blocks the arm.
+    from cosmu.master.portfolio import Portfolio
+
+    Portfolio(store, bankroll=store.settings.sim_bankroll).register_track(
+        instrument_id="btc-usdt-binance", symbol="BTCUSDT", venue="sim", strategy_version_id=vid
+    )
     origin = now - timedelta(days=age_days)
     ts = origin.isoformat()
     with store.batch() as w:

@@ -66,10 +66,13 @@ class StepReport:
     managed: int = 0
     closed: int = 0
     opened: int = 0
+    rejected: int = 0  # entries the order gauntlet REJECTED this tick (e.g. lot_size on a high-priced ETF) —
+    # surfaced here so an arm that opens NOTHING is never a silent no-op (see `rejections`).
     skipped_deploy: int = 0
     skipped_unmanaged: int = 0
     exits: list[dict] = field(default_factory=list)   # {version_id, symbol, reason, price}
     entries: list[dict] = field(default_factory=list)  # {version_id, symbol, price}
+    rejections: list[dict] = field(default_factory=list)  # {version_id, symbol, venue_id, routing, issues}
 
 
 @dataclass(frozen=True)
@@ -705,10 +708,31 @@ def step_tracks(
                     outcome_by_coid[oc.client_order_id] = oc
                 reconcile_fills(adapter, store, portfolio)  # intended → actual venue fill, out-of-band
         # Counts + events reflect what actually BOOKED. A rejected order was audited by the order path
-        # (order_rejected) — it must not appear in the forward ledger as a trade that happened.
+        # (order_rejected) — it must not appear in the forward ledger as a trade that happened. But a rejected
+        # ENTRY is NO LONGER a silent drop (GAP 2): it is counted + recorded in the report, and a LIVE-armed entry
+        # that the gauntlet rejected (e.g. lot_size — a $1000 track on a ~$550 ETF sizes to < 1 whole share) emits
+        # a LOUD `arm_opened_nothing` audit event so the operator KNOWS the arm opened no position and exactly why.
         for _intent, kind, payload, _routing in pending:
             outcome = outcome_by_coid.get(_intent.coid())
             if outcome is None or not outcome.accepted:
+                if kind == "entry":
+                    issues = list(outcome.issues) if outcome is not None else ["no_outcome"]
+                    report.rejected += 1
+                    report.rejections.append({
+                        "version_id": _intent.strategy_version_id, "symbol": _intent.symbol,
+                        "venue_id": _intent.venue_id, "routing": _routing, "issues": issues,
+                    })
+                    # A live-armed entry that opened NOTHING is the silent-no-op GAP: surface it loudly + audited,
+                    # distinct from a routine sim reject, so the operator sees that a CONFIRMED ARM produced no
+                    # position and the reason (lot_size on a high-priced ETF, combo_wallet_spent, etc.).
+                    if _routing == "live":
+                        store.append_event(
+                            actor="master", kind="arm_opened_nothing", ref_type="strategy_version",
+                            ref_id=_intent.strategy_version_id,
+                            payload={"symbol": _intent.symbol, "venue_id": _intent.venue_id,
+                                     "issues": issues, "client_order_id": _intent.coid(),
+                                     "qty": str(_intent.qty), "price": str(_intent.price)},
+                        )
                 continue
             if kind == "exit":
                 report.closed += 1
@@ -749,6 +773,7 @@ def step_tracks(
             "managed": report.managed,
             "closed": report.closed,
             "opened": report.opened,
+            "rejected": report.rejected,
             "skipped_deploy": report.skipped_deploy,
             "skipped_unmanaged": report.skipped_unmanaged,
         },
