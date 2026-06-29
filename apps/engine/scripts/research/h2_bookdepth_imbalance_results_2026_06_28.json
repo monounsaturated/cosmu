@@ -1,0 +1,229 @@
+{
+  "experiment": "H2 resting-book-depth imbalance (FOLLOW the wall) on small-cap perps",
+  "date": "2026-06-28",
+  "axis": "intraday microstructure (RESTING book depth) \u2014 distinct from H1 executed-flow fade",
+  "mechanism": "Resting BID-depth dominance within \u00b1BAND% of mid (a support wall + queue pressure) drifts price UP on a short horizon (Cont-Kukanov-Stoikov OBI sign). Trade WITH the imbalance (long a bid wall, short an ask wall) \u2014 directionally OPPOSITE H1's executed-flow fade, so it is hypothesis diversity.",
+  "window": {
+    "start": "2025-02-01",
+    "end": "2025-03-31"
+  },
+  "pre_registered": {
+    "band_pct": 2,
+    "depth_window_minutes": 15,
+    "entry_thresh": 0.2,
+    "hold_minutes": 5,
+    "k_shuffle": 200,
+    "disconfirmer": "circular-rotation null on the imbalance series",
+    "symbols": [
+      "SEIUSDT",
+      "ARBUSDT",
+      "FILUSDT",
+      "GALAUSDT",
+      "RUNEUSDT",
+      "JUPUSDT",
+      "OPUSDT"
+    ],
+    "venue": "binance"
+  },
+  "economics": {
+    "lane": "MAKER-ONLY (no taker/latency lane)",
+    "gate_maker_bps": 10.0,
+    "slippage_bps": 5.0,
+    "gate_round_trip_bps": 30.0,
+    "sensitivity_perp_maker_bps": 2.0,
+    "sensitivity_round_trip_bps": 14.0,
+    "note": "GATE VERDICT uses the codebase catalog fee (Binance maker 10bps spot schedule + 5bps slippage = 30bps round-trip). The 14bps column (2bps realistic perp maker + 5bps slippage = 14bps RT) is a TRANSPARENT SENSITIVITY only \u2014 it is NEVER the gate number. The Gate is never loosened."
+  },
+  "gate": {
+    "path": "metrics_for_run -> promote_brut (locked GateSettings)",
+    "min_deflated_sharpe_prob": 0.95,
+    "min_trades": 30,
+    "require_beat_buy_and_hold": true
+  },
+  "cells": [
+    {
+      "symbol": "SEIUSDT",
+      "venue": "binance",
+      "n_bars": 84840,
+      "n_snaps_total": 169664,
+      "n_trades": 3139,
+      "gross_edge": -0.00011822655662622687,
+      "net_edge": -0.003118226556626227,
+      "gross_total_return": -0.3174041622213245,
+      "net_total_return": -0.9999452600480776,
+      "buy_and_hold": -0.48228636226186883,
+      "shuffle_mean_net_edge": -0.003035244377337663,
+      "shuffle_p_value": 0.8905472636815921,
+      "net_edge_14bps": -0.001518226556626227,
+      "net_total_14bps": -0.9916046883024554,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    },
+    {
+      "symbol": "ARBUSDT",
+      "venue": "binance",
+      "n_bars": 84840,
+      "n_snaps_total": 169664,
+      "n_trades": 1689,
+      "gross_edge": -2.857587188923885e-05,
+      "net_edge": -0.003028575871889239,
+      "gross_total_return": -0.05400153399148011,
+      "net_total_return": -0.9940837811250086,
+      "buy_and_hold": -0.49064853033145717,
+      "shuffle_mean_net_edge": -0.003026516532353373,
+      "shuffle_p_value": 0.527363184079602,
+      "net_edge_14bps": -0.001428575871889239,
+      "net_total_14bps": -0.9112435438760487,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    },
+    {
+      "symbol": "FILUSDT",
+      "venue": "binance",
+      "n_bars": 84839,
+      "n_snaps_total": 169663,
+      "n_trades": 7717,
+      "gross_edge": -2.481986041454543e-05,
+      "net_edge": -0.0030248198604145454,
+      "gross_total_return": -0.20686282274636436,
+      "net_total_return": -0.9999999999324225,
+      "buy_and_hold": -0.425749012268663,
+      "shuffle_mean_net_edge": -0.003029371278792096,
+      "shuffle_p_value": 0.43283582089552236,
+      "net_edge_14bps": -0.0014248198604145455,
+      "net_total_14bps": -0.9999840094138732,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    },
+    {
+      "symbol": "GALAUSDT",
+      "venue": "binance",
+      "n_bars": 83400,
+      "n_snaps_total": 166784,
+      "n_trades": 14447,
+      "gross_edge": -6.208359085286733e-05,
+      "net_edge": -0.0030620835908528672,
+      "gross_total_return": -0.632168229000636,
+      "net_total_return": -1.0,
+      "buy_and_hold": -0.5249987429289755,
+      "shuffle_mean_net_edge": -0.0030368332582258405,
+      "shuffle_p_value": 0.9950248756218906,
+      "net_edge_14bps": -0.0014620835908528676,
+      "net_total_14bps": -0.9999999994045169,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    },
+    {
+      "symbol": "RUNEUSDT",
+      "venue": "binance",
+      "n_bars": 84840,
+      "n_snaps_total": 169664,
+      "n_trades": 397,
+      "gross_edge": -6.73677300309307e-05,
+      "net_edge": -0.0030673677300309308,
+      "gross_total_return": -0.030458659703448077,
+      "net_total_return": -0.7058805528737311,
+      "buy_and_hold": -0.46548230297310056,
+      "shuffle_mean_net_edge": -0.003011542867514156,
+      "shuffle_p_value": 0.572139303482587,
+      "net_edge_14bps": -0.001467367730030931,
+      "net_total_14bps": -0.44410220731087846,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    },
+    {
+      "symbol": "JUPUSDT",
+      "venue": "binance",
+      "n_bars": 84839,
+      "n_snaps_total": 169663,
+      "n_trades": 14880,
+      "gross_edge": -4.240678874371853e-05,
+      "net_edge": -0.0030424067887437184,
+      "gross_total_return": -0.525719710608261,
+      "net_total_return": -1.0,
+      "buy_and_hold": -0.5935832203061423,
+      "shuffle_mean_net_edge": -0.003046727908105437,
+      "shuffle_p_value": 0.36318407960199006,
+      "net_edge_14bps": -0.0014424067887437186,
+      "net_total_14bps": -0.9999999995812554,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    },
+    {
+      "symbol": "OPUSDT",
+      "venue": "binance",
+      "n_bars": 84839,
+      "n_snaps_total": 169663,
+      "n_trades": 16836,
+      "gross_edge": -2.719007104097252e-05,
+      "net_edge": -0.0030271900710409725,
+      "gross_total_return": -0.43200376087235026,
+      "net_total_return": -1.0,
+      "buy_and_hold": -0.48854588829637946,
+      "shuffle_mean_net_edge": -0.003032386345358322,
+      "shuffle_p_value": 0.03980099502487562,
+      "net_edge_14bps": -0.0014271900710409726,
+      "net_total_14bps": -0.9999999999676207,
+      "promoted": false,
+      "deflated_sharpe_prob": 0.0,
+      "gate_reasons": [
+        "max_drawdown",
+        "folds_positive",
+        "pbo",
+        "deflated_sharpe",
+        "buy_and_hold"
+      ]
+    }
+  ],
+  "verdict": {
+    "any_cell_cleared_brut_gate": false,
+    "shuffle_null_killed_it": false,
+    "distinguishable_from_shuffle_cells": [
+      "OPUSDT"
+    ],
+    "survivor_cells": [],
+    "kill": true
+  }
+}
