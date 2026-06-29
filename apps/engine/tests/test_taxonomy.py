@@ -2,7 +2,7 @@
 # the signal-family follows the referenced alt-data features, price-only specs fall back to Math/Price, and
 # the orthogonal facets (asset class, venue, timeframe, edge-type) read straight off the spec.
 
-from cosmu.strategy.taxonomy import derive_facets, family_of_feature
+from cosmu.strategy.taxonomy import derive_facets, family_of_feature, strategy_origin_family
 
 
 def _spec(features, *, asset_classes=None, venues=None, bar_size="4h", funding_feature=None, setup=None):
@@ -64,3 +64,35 @@ def test_malformed_spec_is_tolerated():
     assert facets.signal_family == "math_price"
     assert facets.asset_class == "—"
     assert facets.origin == "template"
+
+
+# --- Strategy origin family (operator rule: only Quant/LLM are origins; Index is the indicator layer) -----------
+
+def test_llm_provenances_resolve_to_llm_family():
+    # 'LLM'/'Prompt'/'agent'/'mind' all denote the LLM (= Prompt) strategy origin.
+    assert strategy_origin_family("LLM") == "llm"
+    assert strategy_origin_family("Prompt") == "llm"
+    assert strategy_origin_family("agent") == "llm"
+    assert strategy_origin_family("mind") == "llm"
+
+
+def test_quant_provenances_resolve_to_quant_family():
+    # Every sweep/mutation/documented/import/NL-intake provenance is the Quant (= ML) strategy origin.
+    for o in ("ML", "Quant", "seed", "mutation", "wildcard", "finder",
+              "documented", "pine", "nlp", "inbox", "chat", "vibe", "template"):
+        assert strategy_origin_family(o) == "quant", o
+
+
+def test_index_is_not_an_origin_it_is_the_indicator_layer():
+    """Operator rule: 'Index' is NOT a strategy origin — it's the indicator/feature layer. A legacy
+    origin='Index' reads as a typed quant spec that KEYS OFF an index feature, never a third origin."""
+    assert strategy_origin_family("Index") == "quant"
+    assert strategy_origin_family("index") == "quant"
+    # The resolver only ever returns one of the TWO real families — never 'index'/'ml'/'prompt'.
+    assert strategy_origin_family("Index") in ("quant", "llm")
+
+
+def test_unknown_and_none_origin_default_to_quant():
+    assert strategy_origin_family(None) == "quant"
+    assert strategy_origin_family("") == "quant"
+    assert strategy_origin_family("something-new") == "quant"

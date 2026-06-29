@@ -14,6 +14,63 @@ from cosmu.config.feature_registry import FEATURE_REGISTRY
 
 SignalFamily = Literal["social", "news_events", "math_price", "macro_positioning", "onchain_flow"]
 
+# --- Strategy ORIGIN family (operator rule) -----------------------------------------------------
+# A STRATEGY's origin is one of exactly TWO families: 'quant' (= ML — a typed StrategySpec judged by
+# Gate A) or 'llm' (= Prompt — an agent that reasons over data/corpus judged by Gate B). This mirrors
+# the locked `kind: Literal['quant','llm']` model discriminator on StrategySpec (epic:agentic-lane §3)
+# — origin is the provenance of the same two families. **'Index' is NOT a strategy origin** — an index
+# is the INDICATOR / FEATURE layer (a pre-computed `alt_data` series, `provider='index'`, that a
+# strategy of either origin keys off; see epic:indexes). `origin` is a free-form provenance TEXT column
+# today (seed/mutation/finder/agent/documented/pine/nlp/inbox…), NOT an enum, so this resolver
+# NORMALISES any historical/legacy value to its canonical family without touching the DB or breaking
+# anything — including a legacy `origin='Index'`, read as "keys off an index feature" → the quant
+# family (an index-driven strategy is a typed quant spec), never a third origin.
+StrategyOriginFamily = Literal["quant", "llm"]
+
+# Provenance strings the runtime actually writes, mapped to their canonical strategy-origin family.
+# LLM/Prompt provenances → 'llm'; everything else (sweeps, mutations, documented arms, pine imports,
+# NL intake, and an index-keyed strategy) → 'quant'. Lower-cased lookup; unknown → 'quant' (the
+# conservative default — an unknown strategy is a typed quant spec until proven an LLM agent).
+_ORIGIN_FAMILY: dict[str, StrategyOriginFamily] = {
+    # LLM (= Prompt) provenances
+    "llm": "llm",
+    "prompt": "llm",
+    "agent": "llm",
+    "mind": "llm",
+    # Quant (= ML) provenances
+    "ml": "quant",
+    "quant": "quant",
+    "seed": "quant",
+    "mutation": "quant",
+    "wildcard": "quant",
+    "finder": "quant",
+    "documented": "quant",
+    "pine": "quant",
+    "nlp": "quant",
+    "nl": "quant",
+    "inbox": "quant",
+    "dump": "quant",
+    "idea": "quant",
+    "chat": "quant",
+    "vibe": "quant",
+    "template": "quant",
+    # 'index' is the INDICATOR layer, NOT a strategy origin — a strategy that KEYS OFF an index is a
+    # typed quant spec, so a legacy origin='index' normalises to quant (documented so the rule is explicit).
+    "index": "quant",
+}
+
+
+def strategy_origin_family(origin: str | None) -> StrategyOriginFamily:
+    """Normalise any (historical, free-form) `origin` string to its canonical strategy-origin family — one of the
+    TWO real families {'quant', 'llm'} (operator rule). LLM/Prompt provenances → 'llm'; everything else → 'quant'.
+
+    Backward-compatible by construction: `origin` is a free-form TEXT provenance column, not an enum, so this only
+    READS it — nothing migrates. A legacy `origin='Index'` is read as "keys off an index FEATURE" → 'quant' (an
+    index is the indicator layer, never a strategy origin). Unknown/None → 'quant' (conservative default)."""
+    if not origin:
+        return "quant"
+    return _ORIGIN_FAMILY.get(origin.strip().lower(), "quant")
+
 # Human labels for the five signal-families (the primary leaderboard filter, VISION taxonomy).
 SIGNAL_FAMILY_LABELS: dict[str, str] = {
     "social": "Social",
