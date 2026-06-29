@@ -163,6 +163,21 @@ def paper_mark() -> int:
     return _run(["cosmu.orchestrator.loop"])
 
 
+# REGISTERED-BUT-NOT-DEPLOYED-AS-A-CRON: the Deribit forward options logger. Modal Free already runs its 5-schedule
+# cap (ingest, heartbeat, tick, cold_tier_maintenance, daily_backup), so this ships WITHOUT a `schedule=` — it is
+# runnable on demand (`modal run remote/app.py::deribit_options_log`). To turn it into a forward hoard the operator
+# either (a) calls it from the hourly `ingest` slot (one extra keyless poll, no new schedule), or (b) off Free tier,
+# uncomment the line below for a dedicated cadence. It appends to the local JSONL sink inside the Modal container;
+# for a durable hoard the operator points --root at a mounted volume or runs `upload_day_to_r2` (sink.py). Keyless,
+# propose-only — never an order. See cosmu/options/README.md.
+# @app.function(schedule=modal.Cron("*/30 * * * *"), **_LIGHT)   # operator: uncomment off Modal Free (6th schedule)
+@app.function(**_LIGHT)
+def deribit_options_log() -> int:
+    """One FORWARD poll of the Deribit public options API (BTC/ETH chains: top-of-book + mark_iv + greeks + DVOL,
+    long-tail order-book enrichment) appended to the append-only PIT sink. Keyless, no order. Not yet scheduled."""
+    return _run(["cosmu.options", "poll"])
+
+
 @app.function(**_HEAVY)
 def arm_fleet() -> int:
     """Re-arm + advance the documented equity cohort (Faber/ADM/VAA/PAA/DAA/…) so the forward paper clock
