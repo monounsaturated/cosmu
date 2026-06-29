@@ -48,6 +48,7 @@ from cosmu.knowledge.store import (
     utcnow,
 )
 from cosmu.lab.depth import screen_depth
+from cosmu.lab.placebo_rider import ride_cohort
 from cosmu.master.blinding import BlindingLedger
 from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
@@ -695,6 +696,30 @@ class StrategyFinder:
         record_looks(
             self.store, lane="finder", family=spec.name, looks=looks,
             rho_bar=(sum(fam_rhos) / len(fam_rhos)) if fam_rhos else None,
+        )
+
+        # PLACEBO COHORT-RIDER (flag COSMU_PLACEBO_RIDER, DEFAULT OFF): the standing negative-control tripwire.
+        # After this cohort screened, run the empirical-null placebo panel on the SAME real market the finder just
+        # used (the same tape the survivors were found on) and log where the placebos land; if ANY placebo cleared
+        # the LOCKED Gate (any_cleared = an upstream leak the Gate cannot see), log LOUDLY + write a placebo_leak
+        # event. OBSERVE-ONLY / PROPOSE-ONLY: it NEVER blocks/fails the run and NEVER touches the brut verdict above
+        # — ride_cohort is a no-op when the flag is OFF (byte-identical finder) and swallows any error internally so
+        # the live screen is never put at risk by the observer. Optionally places each promoted survivor's DSR in
+        # the measured null's right tail (the survivor-vs-empirical-null credibility read).
+        survivor_dsrs = {
+            f"{r.config_tag}:{cell.symbol}@{cell.venue_id}": float(cell.deflated_sharpe)
+            for r in results
+            if r.gate_passed
+            for cell in r.cells.values()
+            if cell.passed
+        }
+        ride_cohort(
+            market=market,
+            gates=self.settings.gates,
+            family=spec.name,
+            venue_id=venue.id,
+            survivor_dsrs=survivor_dsrs,
+            store=self.store,
         )
 
         if persist:
