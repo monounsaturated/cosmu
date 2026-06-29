@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -516,6 +517,49 @@ def mark_tracks(
     return snapshot
 
 
+# CAPITAL-GUARD safety pass — default ON (it can only PROTECT; never opens/grows/arms). Flip OFF with
+# COSMU_CAPITAL_GUARD_ENABLED=0 (a cadence knob only; the same value the API kill-switch uses is untouched).
+def _capital_guard_enabled() -> bool:
+    return os.environ.get("COSMU_CAPITAL_GUARD_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+
+
+def run_capital_guard_pass(
+    store: Store,
+    *,
+    catalog: VenueCatalog | None = None,
+    router: PricingRouter | None = None,
+) -> dict[str, int]:
+    """Run ONE automatic capital-guard supervisor pass over the live book, AS PART OF the paper clock — so the
+    drawdown / profit-lock watchdog actually runs on every scheduler/orchestrator cycle instead of only when the
+    operator hits the manual kill-switch in the API. It is a strict NO-OP unless a funded track holds an open
+    position AND breaches a threshold (run_capital_guard returns a clean empty report otherwise), and even on a
+    breach it can ONLY emit a REDUCE-ONLY close (it never opens, grows, arms, or deploys capital). With no armed
+    venue every protective close reduce-fills the SIM/paper book (byte-identical to the paper executor's own
+    exits) — real money moves ONLY once the operator has armed a venue, and even then only ever to REDUCE.
+
+    DEFENSIVE BY CONSTRUCTION: wrapped so a guard error can NEVER crash the marking tick — the worst case is a
+    skipped pass (audited), never a dropped mark or a broken cron. Returns {evaluated, protected} for the caller's
+    log line. Gated by COSMU_CAPITAL_GUARD_ENABLED (default ON; this is a cadence/cost knob, NOT a safety toggle —
+    OFF simply means the next pass doesn't run, the manual API kill-switch is unaffected)."""
+    if not _capital_guard_enabled():
+        return {"evaluated": 0, "protected": 0, "skipped": 1}
+    try:
+        from cosmu.ops import capital_guard
+
+        report = capital_guard.run_capital_guard(store, catalog=catalog, router=router)
+        return {"evaluated": report.evaluated, "protected": report.protected}
+    except Exception as exc:  # noqa: BLE001 — a guard error must NEVER crash the marking tick (fail-safe: skip)
+        log.warning("capital_guard pass failed", exc_info=True)
+        store.append_event(
+            actor="master",
+            kind="capital_guard_failed",
+            ref_type="capital_guard",
+            ref_id="global",
+            payload={"error": type(exc).__name__},
+        )
+        return {"evaluated": 0, "protected": 0, "skipped": 1}
+
+
 def _update_track_returns(store: Store, cells: list[tuple[str, str, str]]) -> int:
     """Refresh tracks.return_pct + tracks.equity for each held CELL from its latest cell-keyed per-track marked
     value (portfolio_snapshots scope='track' ref_id = version:symbol:venue), vs the cell track's own
@@ -799,6 +843,12 @@ def _main(argv: list[str] | None = None) -> int:
               f"skipped(deploy/unmanaged)={step.skipped_deploy}/{step.skipped_unmanaged}")
     snap = mark_tracks(store)
     print(f"SIM MARK-TO-MARKET — equity={float(snap['equity']):.2f} pnl={float(snap['pnl']):+.2f} drawdown={float(snap['drawdown']):.4f}")
+    # CAPITAL-GUARD safety pass — AFTER the mark so it judges the freshest equity. A strict no-op until a funded
+    # track holds an open position AND breaches a floor/give-back threshold; even then it only emits a REDUCE-ONLY
+    # close (never opens/arms/deploys). Wrapped so a guard error can never crash the clock; OFF only via the
+    # COSMU_CAPITAL_GUARD_ENABLED cadence knob. This is what makes the watchdog run on EVERY paper-clock cycle.
+    guard = run_capital_guard_pass(store)
+    print(f"CAPITAL-GUARD PASS — evaluated={guard['evaluated']} protected={guard['protected']} (reduce-only; no-op until a venue is armed)")
     return 0
 
 
