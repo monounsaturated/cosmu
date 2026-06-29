@@ -94,7 +94,7 @@ def test_prediction_branch_builds_odds_panel(tmp_path):
     finder = StrategyFinder(settings=store.settings, store=store, alt_store=_alt_with_odds(tmp_path))
 
     spec = _prediction_spec()
-    market, cell_meta = finder._market(spec)  # noqa: SLF001 — exercising the branch directly
+    market, cell_meta, _sources = finder._market(spec)  # noqa: SLF001 — exercising the branch directly
     # Both conditionIds are in the panel, keyed by conditionId, priced on the odds series (close ∈ (0,1)).
     assert set(market) == {_CID_A, _CID_B}
     assert all(0.0 < float(b.close) < 1.0 for b in market[_CID_A])
@@ -129,7 +129,7 @@ def test_prediction_brut_cells_are_produced_with_verdicts(tmp_path):
     finder = StrategyFinder(settings=store.settings, store=store, alt_store=_alt_with_odds(tmp_path))
     spec = _prediction_spec()
 
-    market, cell_meta = finder._market(spec)  # noqa: SLF001
+    market, cell_meta, _sources = finder._market(spec)  # noqa: SLF001
     grid = build_grid(spec, max_variants=6)
     catalog = default_catalog()
     venue = catalog.venue_for(spec.universe.venues)

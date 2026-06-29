@@ -95,6 +95,39 @@ class CellCurvePoint(BaseModel):
     net: float
 
 
+class CellProvenanceResponse(BaseModel):
+    """PER-CELL DATA PROVENANCE — EXACTLY what a backtest cell (algo × symbol × venue) ran on (the operator's
+    'a backtest result must never be a black box' surfacing). Display/audit only; never a gate input.
+
+    `available` is False when no provenance was recorded for the cell (e.g. a legacy track opened before this
+    shipped). When True, the fields state the bar SOURCE, interval, date range, bar count, holdout split, the
+    TODAY's-schedule cost overlay (fees-always-today), and — the headline — whether the price SOURCE differed from
+    the live VENUE (a FALLBACK reference was used) plus the divergence metric (corr / median spread) and a
+    `divergence_flagged` warning when the source tracks the venue too loosely to silently trust. `log_line` is the
+    same one-line human summary written to the backtest log."""
+
+    version_id: str
+    symbol: str
+    venue: str | None
+    available: bool
+    bar_source: str | None = None
+    bar_interval: str | None = None
+    n_bars: int | None = None
+    first_bar_ts: str | None = None
+    last_bar_ts: str | None = None
+    holdout_split_index: int | None = None
+    fee_bps: float | None = None
+    slippage_bps: float | None = None
+    impact_bps: float | None = None
+    reuses_reference: bool | None = None
+    source_is_fallback: bool | None = None
+    align_corr: float | None = None
+    align_spread_bps: float | None = None
+    align_overlap: int | None = None
+    divergence_flagged: bool | None = None
+    log_line: str | None = None
+
+
 class CellCurveResponse(BaseModel):
     """The PER-CELL (algo × symbol × venue) net-of-fee backtest equity curve — the cumulated per-bar net equity
     the cell's metrics score on, NEVER the pooled basket. Served from the curve persisted at screen time

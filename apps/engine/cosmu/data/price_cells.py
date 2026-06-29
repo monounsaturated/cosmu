@@ -142,6 +142,12 @@ class PriceCell:
     bars: list[Bar]
     reuses_reference: bool
     decision: _AlignmentDecision | None = None  # None for the reference venue itself (no cross-venue check)
+    # PROVENANCE (anti-black-box): the human name of WHERE this cell's scored bars came from — the reference book
+    # ('binance-reference'), the venue's own keyless book ('kraken-keyless' / 'bybit' / 'hyperliquid'), etc. NOT
+    # necessarily the live venue: a UNIFY / native-missing cell is scored on the reference book even though its live
+    # venue is e.g. kraken — surfaced plainly so the backtest states exactly what it ran on. Display-only metadata;
+    # never a gate input (default '' for the byte-identical empty/fallback paths). Set explicitly at build time.
+    bar_source: str = ""
 
 
 def cell_key(symbol: str, venue_id: str) -> str:
@@ -191,6 +197,16 @@ def _fallback_provider(venue_id: str) -> MarketDataProvider | None:
     if venue_id == "binance":
         return default_crypto_reference()
     return None
+
+
+def _bar_source(*, venue_id: str, reuses_reference: bool) -> str:
+    """The human name of WHERE a cell's scored bars came from (PROVENANCE, display-only). A cell scored on the
+    SHARED reference book reads '<reference_venue>-reference' regardless of its live venue (the source-≠-venue case
+    worth surfacing); a cell scored on its venue's OWN keyless book reads '<venue>-keyless'. Pure + deterministic;
+    never a gate input."""
+    if reuses_reference:
+        return f"{REFERENCE_VENUE}-reference"
+    return f"{venue_id}-keyless"
 
 
 def _venue_fetch_symbol(venue_id: str, row_symbol: str, pair: CanonicalPair) -> str:
@@ -250,7 +266,8 @@ def build_crypto_cells(
         return [
             PriceCell(key=sym, symbol=sym, venue_id=REFERENCE_VENUE,
                       bars=ref.fetch_reference(pair_for(sym, REFERENCE_VENUE).id, timeframe, limit=limit),
-                      reuses_reference=True)
+                      reuses_reference=True,
+                      bar_source=_bar_source(venue_id=REFERENCE_VENUE, reuses_reference=True))
             for sym in fallback_symbols
         ]
 
@@ -325,7 +342,8 @@ def build_crypto_cells(
             if venue == REFERENCE_VENUE:
                 if reference_bars:
                     cells.append(PriceCell(key=cell_key(pair.id, venue), symbol=pair.id, venue_id=venue,
-                                           bars=reference_bars, reuses_reference=True))
+                                           bars=reference_bars, reuses_reference=True,
+                                           bar_source=_bar_source(venue_id=venue, reuses_reference=True)))
                 continue
             provider = _fallback_provider(venue)
             if provider is None:
@@ -354,6 +372,7 @@ def build_crypto_cells(
                     cells.append(PriceCell(
                         key=cell_key(pair.id, venue), symbol=pair.id, venue_id=venue,
                         bars=venue_bars, reuses_reference=False, decision=dec,
+                        bar_source=_bar_source(venue_id=venue, reuses_reference=False),
                     ))
                 elif reference_bars:
                     # Native bars missing / too-sparse → fall back to the reference series so the cell can still
@@ -362,6 +381,7 @@ def build_crypto_cells(
                     cells.append(PriceCell(
                         key=cell_key(pair.id, venue), symbol=pair.id, venue_id=venue,
                         bars=reference_bars, reuses_reference=True,
+                        bar_source=_bar_source(venue_id=venue, reuses_reference=True),
                     ))
                 continue
 
@@ -379,5 +399,6 @@ def build_crypto_cells(
             cells.append(PriceCell(
                 key=cell_key(pair.id, venue), symbol=pair.id, venue_id=venue,
                 bars=reference_bars if unify else venue_bars, reuses_reference=unify, decision=dec,
+                bar_source=_bar_source(venue_id=venue, reuses_reference=unify),
             ))
     return cells

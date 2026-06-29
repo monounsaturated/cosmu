@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import logging
 import tempfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -33,7 +34,12 @@ from cosmu.data.market import (
     MarketDataProvider,
     UniversalOHLCVProvider,
 )
-from cosmu.data.price_cells import alt_ingest_symbol, build_crypto_cells
+from cosmu.data.price_cells import REFERENCE_VENUE, alt_ingest_symbol, build_crypto_cells
+from cosmu.data.reference import (
+    AlignmentDecision,
+    CellProvenance,
+    cell_provenance,
+)
 from cosmu.data.universe import PERP_UNIVERSE
 from cosmu.evolution.loop import fit_params
 from cosmu.evolution.seeder import seed_orb_fvg_spec
@@ -76,6 +82,8 @@ from cosmu.spine.venue import default_catalog
 from cosmu.strategy.compiler import compile_spec
 from cosmu.strategy.spec import ParamSpace, StrategySpec
 
+_log = logging.getLogger("cosmu.lab.finder")
+
 # How many points to sample per numeric param when building the grid. Coarse on purpose: the grid is a
 # DISCOVERY pass, not a fine optimizer, and a bounded grid keeps the variant count (and trial count) sane.
 _GRID_POINTS = 3
@@ -98,6 +106,21 @@ _MIN_TRADES_PER_SYMBOL = MIN_TRADES_PER_SYMBOL
 # The BRUT per-cell min-trades floor on the single combo's OWN trades — a cell with fewer than this of its own
 # trades is too thin to score honestly (set as gates.min_trades for the brut promote path).
 _BRUT_MIN_TRADES = 30
+
+
+@dataclass(frozen=True)
+class CellSource:
+    """The raw per-cell PROVENANCE inputs `_market` carries out alongside the bars, so `_screen_timeframe` can
+    assemble a full CellProvenance once the per-cell fee/depth overlay is known. `bar_source` is WHERE the scored
+    bars came from (reference book vs the venue's own keyless book vs the asset-class native source);
+    `reuses_reference` is the leakage-guard flag (True ⇔ scored on a SHARED reference series, not the venue's own);
+    `decision` is the cross-venue alignment verdict (corr/spread), None for a native-source cell. Display-only
+    metadata — never a gate input."""
+
+    bar_source: str
+    reuses_reference: bool
+    is_reference_venue: bool
+    decision: AlignmentDecision | None
 
 
 @dataclass(frozen=True)
@@ -133,6 +156,11 @@ class CellResult:
     # backtest_symbols.oos_window_days so the screener annualizes THIS cell's return over ITS OWN window — a
     # recently-listed coin is no longer annualized over a sibling's far longer window. None when < 2 bars.
     oos_window_days: float | None = None
+    # PROVENANCE (anti-black-box): EXACTLY what this cell ran on — bar source · interval · date-range · #bars ·
+    # holdout split · the TODAY's-schedule fee/slippage/impact · and the source-vs-venue alignment (corr/spread +
+    # fallback flag). Surfaced on the result object, the log, and the track-open event payload. Display-only —
+    # NEVER a gate input, so the locked scorer/FDR/cohort math is byte-unchanged. None when not assembled.
+    provenance: CellProvenance | None = None
 
 
 @dataclass
@@ -428,8 +456,57 @@ class StrategyFinder:
                 out[cid] = (res.ts, res.payout)
         return out
 
-    def _market(self, spec: StrategySpec) -> tuple[dict[str, list[Bar]], dict[str, tuple[str, str]]]:
-        """The screen panel keyed by CELL KEY, plus a cell_meta map (cell_key -> (symbol, venue_id)).
+    def _build_provenance(
+        self,
+        spec: StrategySpec,
+        market: dict[str, list[Bar]],
+        cell_meta: dict[str, tuple[str, str]],
+        cell_sources: dict[str, CellSource],
+        venue,  # noqa: ANN001 — venue catalog row (the scalar-fee/depth fallback for the single-venue path)
+        fee_schedule: dict[str, Decimal] | None,
+        depth_schedule: dict[str, tuple[Decimal, Decimal]] | None,
+    ) -> dict[str, CellProvenance]:
+        """One CellProvenance per cell key — EXACTLY what each cell ran on. Resolves the cell's fee/depth from the
+        per-cell schedule (the cross-venue overlay) when present, else the spec's primary-venue SCALAR (the
+        byte-identical single-venue path), so the recorded cost is the TODAY's-schedule overlay the backtest used
+        (fees-always-today). Source / reference-reuse / alignment come from the cell's CellSource (carried out of
+        _market). A cell with no CellSource (a path that didn't tag one) degrades to a venue-bars native record so
+        a provenance line is always emitted. Pure + display-only — no gate input, never moves a number."""
+        out: dict[str, CellProvenance] = {}
+        for key, bars in market.items():
+            symbol, venue_id = cell_meta.get(key, (key, venue.id))
+            src = cell_sources.get(key)
+            bar_source = src.bar_source if src is not None else f"{venue_id}-bars"
+            reuses_reference = src.reuses_reference if src is not None else False
+            is_reference_venue = src.is_reference_venue if src is not None else (venue_id == REFERENCE_VENUE)
+            decision_ = src.decision if src is not None else None
+            fee = float(fee_schedule[key]) if (fee_schedule and key in fee_schedule) else float(venue.taker_fee_bps)
+            if depth_schedule and key in depth_schedule:
+                slip, impact = depth_schedule[key]
+                slip_f, impact_f = float(slip), float(impact)
+            else:
+                slip_f, impact_f = float(venue.slippage_bps), float(venue.impact_bps)
+            out[key] = cell_provenance(
+                symbol=symbol,
+                venue=venue_id,
+                bar_source=bar_source,
+                bar_interval=spec.horizon.bar_size,
+                bars=bars,
+                fee_bps=fee,
+                slippage_bps=slip_f,
+                impact_bps=impact_f,
+                reuses_reference=reuses_reference,
+                decision_=decision_,
+                is_reference_venue=is_reference_venue,
+            )
+        return out
+
+    def _market(
+        self, spec: StrategySpec
+    ) -> tuple[dict[str, list[Bar]], dict[str, tuple[str, str]], dict[str, CellSource]]:
+        """The screen panel keyed by CELL KEY, a cell_meta map (cell_key -> (symbol, venue_id)), and a cell_sources
+        map (cell_key -> CellSource) carrying each cell's PROVENANCE inputs (bar source, reference-reuse flag,
+        cross-venue alignment decision) so the screen can surface EXACTLY what each cell ran on.
 
         Crypto is built per (pair × venue) from the venue-tagged universe_pairs (UNIVERSAL PRICE LAYER): a UNIFY
         venue reuses the pair's SHARED reference series (one backtest, fee overlay only), a FALLBACK venue gets its
@@ -444,6 +521,7 @@ class StrategyFinder:
         limit = screen_depth(spec)
         out: dict[str, list[Bar]] = {}
         cell_meta: dict[str, tuple[str, str]] = {}
+        cell_sources: dict[str, CellSource] = {}  # PROVENANCE inputs per cell key (source / reference-reuse / align)
         # Crypto panel — per-venue cells from the venue-tagged universe_pairs (de-collapses the venue axis). When
         # the spec/store disable crypto, _symbols() is empty → no crypto cells (same gate as before).
         if self._symbols(spec):
@@ -456,6 +534,12 @@ class StrategyFinder:
                 if cell.bars:
                     out[cell.key] = cell.bars
                     cell_meta[cell.key] = (cell.symbol, cell.venue_id)
+                    cell_sources[cell.key] = CellSource(
+                        bar_source=cell.bar_source or f"{cell.venue_id}-bars",
+                        reuses_reference=cell.reuses_reference,
+                        is_reference_venue=cell.venue_id == REFERENCE_VENUE,
+                        decision=cell.decision,
+                    )
         # Equity panel — read from local cache only (no live fetch in the finder)
         if self._equity_symbols(spec):
             equity_provider = EquityOHLCVProvider()
@@ -465,6 +549,10 @@ class StrategyFinder:
                     if bars:
                         out[symbol] = bars
                         cell_meta[symbol] = (symbol, "ibkr")
+                        cell_sources[symbol] = CellSource(
+                            bar_source="ibkr-equity", reuses_reference=False,
+                            is_reference_venue=False, decision=None,
+                        )
                 except Exception:  # noqa: BLE001
                     continue
         # Hyperliquid perp panel — read from local cache (populated by ingest_hyperliquid_bars.py)
@@ -476,6 +564,10 @@ class StrategyFinder:
                     if bars:
                         out[symbol] = bars
                         cell_meta[symbol] = (symbol, "hyperliquid")
+                        cell_sources[symbol] = CellSource(
+                            bar_source="hyperliquid-keyless", reuses_reference=False,
+                            is_reference_venue=False, decision=None,
+                        )
                 except Exception:  # noqa: BLE001
                     continue
         # Prediction panel — per-market Polymarket odds (the share price IS the probability), read from the
@@ -488,7 +580,11 @@ class StrategyFinder:
             out.update(pred_bars)
             for cid in pred_bars:
                 cell_meta[cid] = (cid, "polymarket")
-        return out, cell_meta
+                cell_sources[cid] = CellSource(
+                    bar_source="polymarket-odds", reuses_reference=False,
+                    is_reference_venue=False, decision=None,
+                )
+        return out, cell_meta, cell_sources
 
     def find(
         self,
@@ -562,7 +658,7 @@ class StrategyFinder:
         market + grid, screen + brut-score every cell, two-pass refine, champion-only per-cell holdout, then persist
         this tf's results + log experiments. Returns (results, grid) so find() can aggregate across timeframes. For a
         single-timeframe spec (the default) find() calls this exactly once with the original spec → byte-identical."""
-        market, cell_meta = self._market(spec)
+        market, cell_meta, cell_sources = self._market(spec)
         grid = build_grid(spec, max_variants=max_variants)
         # trials = the per-combo param-grid count — the number of param variants of THIS algorithm tried (the
         # legitimate own-overfit deflation). NOT the global ledger, NOT len(param_space) inherited blindly: it is
@@ -580,6 +676,18 @@ class StrategyFinder:
         fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(
             spec, market, catalog, crypto_cell_venues=crypto_cell_venues
         )
+        # PER-CELL DATA PROVENANCE (anti-black-box): now that the per-cell fee/depth overlay is known, assemble a
+        # CellProvenance per cell — symbol · venue · bar SOURCE · interval · date-range · #bars · holdout split ·
+        # the TODAY's-schedule fee/slippage/impact (fees-always-today rule) · and the source-vs-venue alignment
+        # (corr/spread + fallback flag). DISPLAY/AUDIT only — built off the assembled bars + the cost overlay + the
+        # alignment decision; it is NO gate input, so the backtest numbers / Gate / money path are byte-unchanged.
+        provenance = self._build_provenance(
+            spec, market, cell_meta, cell_sources, venue, fee_schedule, depth_schedule
+        )
+        # Surface it on the backtest LOG so a run states EXACTLY what each cell ran on (never a black box). One line
+        # per cell; the divergent-fallback cells are explicitly FLAGGED. Logged once per timeframe screen.
+        for prov in provenance.values():
+            _log.info(prov.log_line())
         # Point-in-time alt-data join (funding_rate, fear_greed, …), built ONCE per spec since it depends only on
         # the spec's features + the market, not the swept params. Built per CELL KEY but fetched by the cell's
         # CANONICAL symbol (a 'BTC/USDT@kraken' cell reads BTC/USDT's funding — alt data is per pair, not per cell),
@@ -601,7 +709,8 @@ class StrategyFinder:
             r = self._screen(spec, variant, market, venue, alt, grid_size=grid_size,
                              fee_schedule=fee_schedule, depth_schedule=depth_schedule,
                              asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol,
-                             cell_meta=cell_meta, resolution_by_symbol=resolution_by_symbol)
+                             cell_meta=cell_meta, resolution_by_symbol=resolution_by_symbol,
+                             provenance=provenance)
             if r is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             results.append(r)
@@ -746,6 +855,7 @@ class StrategyFinder:
         venue_id_by_symbol: dict[str, str] | None = None,
         cell_meta: dict[str, tuple[str, str]] | None = None,
         resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
+        provenance: dict[str, CellProvenance] | None = None,
     ) -> VariantResult | None:
         """Compile + backtest one variant on REAL bars, then BUILD AND SCORE ONE CELL PER (symbol, venue) on its
         OWN streams. Returns a VariantResult carrying per-cell verdicts — or None for an invalid grid point.
@@ -786,7 +896,7 @@ class StrategyFinder:
             fitted_params=variant.params,
             per_symbol=detailed.per_symbol,
         )
-        result.cells = self._score_cells(detailed, venue, grid_size, venue_id_by_symbol, cell_meta)
+        result.cells = self._score_cells(detailed, venue, grid_size, venue_id_by_symbol, cell_meta, provenance)
         # Measure this variant's cross-cell return correlation for the honest trial-count ledger (the haircut input
         # so a correlated family decorrelates instead of inflating the count). Audit-only — never a gate input.
         result.rho_bar = measure_family_rho(
@@ -807,6 +917,7 @@ class StrategyFinder:
         grid_size: int,
         venue_id_by_symbol: dict[str, str] | None,
         cell_meta: dict[str, tuple[str, str]] | None = None,
+        provenance: dict[str, CellProvenance] | None = None,
     ) -> dict[str, CellResult]:
         """Build ONE CellResult per (symbol, venue) from the variant's per-symbol RUNS, judged on its OWN data.
 
@@ -822,6 +933,7 @@ class StrategyFinder:
         the cell's OWN trades. A cell passes iff promoted AND it cleared the per-cell trade floor."""
         vmap = venue_id_by_symbol or {}
         meta = cell_meta or {}
+        prov = provenance or {}
         cell_metrics: dict[str, BacktestMetrics] = {}
         cell_curves: dict[str, list] = {}  # each cell's OWN net-of-fee equity curve (cumulated bar_returns)
         cell_windows: dict[str, float | None] = {}  # each cell's OWN validation window (days) — the annualizer denom
@@ -854,6 +966,7 @@ class StrategyFinder:
                 reasons=reasons,
                 equity_curve=cell_curves.get(key, []),
                 oos_window_days=cell_windows.get(key),
+                provenance=prov.get(key),
             )
         return out
 
@@ -1003,16 +1116,23 @@ class StrategyFinder:
                     if not _cell_cols:
                         _opened_version_wide = True
                     proven = sorted(proven_regimes(cell.metrics.regime_returns))
+                    _track_payload = {
+                        "deflated_sharpe": round(cell.deflated_sharpe, 6),
+                        "config_tag": r.config_tag, "origin": "finder",
+                        "lane": "watch" if _is_watch else "finder",
+                        "symbol": cell.symbol, "venue_id": cell.venue_id,
+                        "proven_regimes": proven,
+                    }
+                    # PROVENANCE on the track-open event (anti-black-box): the funded cell records EXACTLY what it
+                    # backtested on — bar source · interval · range · #bars · holdout split · today's-schedule cost ·
+                    # the source-vs-venue divergence (corr/spread) + the fallback flag. Display/audit only; the gate
+                    # verdict, the proven-regime passport, and the money path are untouched.
+                    if cell.provenance is not None:
+                        _track_payload["provenance"] = cell.provenance.to_dict()
                     b.append_event(
                         actor="master", kind="track_opened", ref_type="strategy_version",
                         ref_id=cell_id(version_id, cell.symbol, cell.venue_id),
-                        payload={
-                            "deflated_sharpe": round(cell.deflated_sharpe, 6),
-                            "config_tag": r.config_tag, "origin": "finder",
-                            "lane": "watch" if _is_watch else "finder",
-                            "symbol": cell.symbol, "venue_id": cell.venue_id,
-                            "proven_regimes": proven,
-                        },
+                        payload=_track_payload,
                     )
                     # Only a GATE-lane cell is a finder_survivor (the live-arming passport). A watch cell is observed
                     # forward, never recorded as a survivor — it never enters the gate-pass funding join.
