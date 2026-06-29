@@ -1,3 +1,10 @@
+# ⚠️ QUARANTINED (2026-06-29): the citation-PageRank credibility ranker. Its only autonomous caller (the
+# voice-panel pass, cosmu/ingest/voices_pass.py) is RETIRED, and the lean AUTHORITY feature (cosmu/authority/)
+# deliberately does NOT use PageRank — a per-account composite (Brier · hit-rate · EV/payoff · magnitude ·
+# lead-time · consistency) replaces it. This module is left in place ONLY because the operator-created indexes
+# "social" lane (cosmu/indexes/compute.py::compute_social_point) still references AuthorityProvider; that lane is
+# on NO cron, so nothing here runs stupidly. Build new credibility work on cosmu.authority, not here.
+#
 # intent: PHASE 3 of "PageRank for credibility" — PRIMACY + AUTHORITY. Deterministic, NO LLM. Three signals fuse
 # into a credibility weight per voice and a per-asset signal:
 #   (1) PRIMACY — who said it FIRST. Group claims by (entity, direction); the earliest in a window is primary, the

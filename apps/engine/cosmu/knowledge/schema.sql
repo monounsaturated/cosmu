@@ -632,6 +632,51 @@ CREATE TABLE IF NOT EXISTS voice_scoreboard (
   PRIMARY KEY (platform, handle)
 );
 
+-- AUTHORITY feature (proprietary data, NOT a strategy — see cosmu/authority/). authority_calls = the deduped raw
+-- corpus of directional account CALLS the data-agnostic ingest seam fills (a pasted/JSON dump, an xAI/Grok fetch,
+-- a Claude-in-Chrome scrape). The LLM only EXTRACTS this shape; the composite score downstream is PURE MATH (no
+-- hallucination on the number). authority_scoreboard = ONE flat composite row per account — the dashboard surface,
+-- served PRECOMPUTED (never a live recompute on the request path). UNTESTED accounts (no resolved calls yet) carry
+-- NULL metrics, never a fabricated 0. Replaces the retired autonomous voice-panel / citation-PageRank machinery.
+CREATE TABLE IF NOT EXISTS authority_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  asset TEXT NOT NULL,                       -- UPPERCASE ticker the call is about
+  direction TEXT NOT NULL,                   -- up | down | flat
+  ts TEXT NOT NULL,                          -- when the call was MADE == availability (PIT, UTC ISO)
+  conviction REAL NOT NULL DEFAULT 0.5,
+  call_id TEXT NOT NULL DEFAULT '',          -- stable per-platform id (tweet id / url) — dedup
+  text TEXT NOT NULL DEFAULT '',             -- verbatim call (provenance / display only — NEVER scored)
+  url TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'manual',     -- json | xai | chrome | manual
+  ingested_at TEXT NOT NULL,
+  UNIQUE (account, platform, call_id, asset, direction, ts)
+);
+CREATE INDEX IF NOT EXISTS idx_authority_calls_account ON authority_calls (account, ts);
+
+CREATE TABLE IF NOT EXISTS authority_scoreboard (
+  account TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  n_calls INTEGER NOT NULL DEFAULT 0,        -- calls attributed (volume, NOT skill)
+  n_resolved INTEGER NOT NULL DEFAULT 0,     -- calls old enough to be scored against the tape
+  n_echo INTEGER NOT NULL DEFAULT 0,         -- of the resolved, how many were late/echo (discounted)
+  hit_rate REAL,                             -- fraction of resolved calls that were right
+  base_hit_rate REAL,                        -- unconditional base rate over the same horizon
+  brier REAL,                                -- mean Brier of conviction forecasts (lower = better)
+  brier_skill_score REAL,                    -- >0 beats the base rate; <=0 does not
+  calibration_error REAL,                    -- expected calibration error (0 = perfectly calibrated)
+  ev REAL,                                   -- cumulative return trading each call small (the payoff headline)
+  avg_move_when_right REAL,                  -- mean |move| on correct calls (magnitude)
+  avg_lead_days REAL,                        -- foresight: days the call led the confirmed move
+  consistency REAL,                          -- [0,1] gain spread; low = one spike carries the account
+  composite REAL,                            -- [0,1] headline authority score
+  top_movers TEXT NOT NULL DEFAULT '[]',     -- JSON: the top-3 calls by payoff
+  last_call_ts TEXT,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (platform, account)
+);
+
 -- Per-(provider, metric) rollup of alt_data, refreshed INCREMENTALLY after each ingest pass (an upsert from
 -- the just-written rows, NEVER a full re-aggregate of alt_data). Reads that only need "how fresh / how much"
 -- (the /intelligence data-freshness panel and the /scores source-trust freshness) hit this tiny table

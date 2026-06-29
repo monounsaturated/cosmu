@@ -8,4 +8,4 @@ export * from "./costs";
 export * from "./live";
 export * from "./settings";
 export * from "./research";
-export * from "./mind";
+export * from "./authority";

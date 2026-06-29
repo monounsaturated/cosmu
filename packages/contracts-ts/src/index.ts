@@ -50,6 +50,42 @@ export interface AuthorRunRequest {
   venues?: string[] | null;
 }
 
+export interface AuthorityMover {
+  asset: string;
+  direction: string;
+  is_echo?: boolean;
+  payoff: number;
+  signed_return: number;
+  ts: string;
+}
+
+export interface AuthorityResponse {
+  as_of?: string | null;
+  n_accounts: number;
+  rows: AuthorityRow[];
+}
+
+export interface AuthorityRow {
+  account: string;
+  avg_lead_days?: number | null;
+  avg_move_when_right?: number | null;
+  base_hit_rate?: number | null;
+  brier?: number | null;
+  brier_skill_score?: number | null;
+  calibration_error?: number | null;
+  composite?: number | null;
+  consistency?: number | null;
+  ev?: number | null;
+  hit_rate?: number | null;
+  last_call_ts?: string | null;
+  n_calls: number;
+  n_echo: number;
+  n_resolved: number;
+  platform: string;
+  top_movers?: AuthorityMover[];
+  updated_at: string;
+}
+
 export interface AutonomyPauseResponse {
   paused: boolean;
 }
