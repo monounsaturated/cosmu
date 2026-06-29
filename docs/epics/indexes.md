@@ -11,6 +11,16 @@ An **index** is a named **point-in-time numeric series** stored in `alt_data` (`
 `metric=idx_<id>`), scored the **same way every pass** (frozen transform) from one of four source kinds, monitored
 for freshness + ranking stability, and registered so a StrategySpec can key off it later.
 
+## Taxonomy — an Index is an INDICATOR, not a strategy origin (operator rule)
+A **strategy's origin** is one of exactly **TWO** families: **Quant** (= ML — typed `StrategySpec` → Gate A) or
+**LLM** (= Prompt — an agent reasons over data/corpus → Gate B). These mirror the locked
+`kind: Literal['quant','llm']` model discriminator (epic:agentic-lane §3). **An Index is NOT a third strategy
+origin** — it is the **INDICATOR / FEATURE layer**: a pre-computed `alt_data` series (like a TradingView
+indicator) that a strategy of *either* origin reads as a feature. So the picture is: **2 strategy origins
+(Quant, LLM) + Index = the shared indicator layer they both build on.** (Any legacy `origin='Index'` value should
+be read as "this strategy keys off an index feature", not as a distinct origin — there is no `Index` origin in the
+schema or the runtime origin set today, so nothing migrates.)
+
 ## Why it's not duplicate, and why it's not hallucinated
 - **Reuses the canonical scorers — no second scoring path.** Text indexes (`event_topic`/`prompt_rubric`)
   delegate to `cosmu/lab/indexes.py` (the existing LLM-as-judge: rubric-anchored, CoT-then-JSON, Pydantic
