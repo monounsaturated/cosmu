@@ -154,6 +154,46 @@ def _is_fr_ftt(instrument: Instrument) -> bool:
     return itype == "eu_equity_fr_ftt" or cat == "fr_ftt"
 
 
+# Venues whose REAL taker fee is NOT a flat venue-level bps — they have a per-asset / per-category model
+# (Polymarket per-category P&L-room fee; IBKR per-asset-class per-share/per-contract commission). The ONE source
+# of this set so the screen (master/screen_universe) and the order path (master/execution) can never disagree on
+# which venues need the per-asset override. Plain spot/perp venues (Binance/Kraken/OKX/HL) are NOT in here and
+# keep their flat base/tiered bps untouched.
+ASSET_AWARE_VENUES: frozenset[str] = frozenset({"polymarket", "ibkr"})
+
+
+def effective_taker_bps(
+    venue: Venue,
+    instrument: Instrument | None,
+    *,
+    reference_price: float = 1.0,
+    as_of: datetime | None = None,
+    reference_notional: float = 10_000.0,
+) -> Decimal | None:
+    """The ONE shared per-venue TAKER-fee resolver — the fee analogue of master/sizing.size_fraction.
+
+    Returns the effective taker bps when the venue has a per-asset / per-category model that a flat catalog bps
+    would MISPRICE (Polymarket per-category×(1−price); IBKR per-share/per-contract/min/cap), else **None** — the
+    signal to the caller to keep the venue's own flat base/tiered bps (or its PIT-snapshot read). Both the
+    backtest/screen cost path (`build_cost_context` → `_asset_aware_fee`) and the paper/live order path
+    (`_pit_fee_for_order`) call THIS, so a Polymarket/IBKR cell pays the SAME asset-aware fee in paper that the
+    backtest charged — and crypto spot/perp is byte-identical (this returns None, the catalog/PIT path is unchanged).
+
+    INVARIANT — this can only EQUAL-or-RAISE a non-crypto paper fee vs the flat placeholder (Polymarket 0 bps →
+    per-category; IBKR 0.5 bps → real per-share): it NEVER credits a maker rebate, NEVER lowers a crypto fee, and
+    NEVER touches the Gate. `reference_price` is the order/screen price (Polymarket needs it for (1−price); IBKR for
+    per-share↔notional); `instrument` None → None (no per-asset override possible)."""
+    if venue.id not in ASSET_AWARE_VENUES:
+        return None  # plain spot/perp venue → caller keeps its flat/PIT bps (crypto byte-identical)
+    return asset_taker_bps(
+        venue,
+        instrument,
+        reference_price=reference_price,
+        as_of=as_of,
+        reference_notional=reference_notional,
+    )
+
+
 # --- the dispatcher the cost context calls ----------------------------------------------------------------------
 
 def asset_taker_bps(

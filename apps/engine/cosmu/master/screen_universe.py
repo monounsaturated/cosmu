@@ -13,14 +13,16 @@ from __future__ import annotations
 from decimal import Decimal
 
 from cosmu.data.market import Bar, EquityOHLCVProvider, HyperliquidOHLCVProvider
-from cosmu.spine.asset_fees import asset_taker_bps
+from cosmu.spine.asset_fees import ASSET_AWARE_VENUES, asset_taker_bps
 from cosmu.spine.venue import Instrument, Venue, VenueCatalog
 from cosmu.strategy.spec import StrategySpec
 
 # Venues whose REAL taker fee is NOT a flat venue-level bps — they have a per-asset / per-category model
 # (Polymarket per-category P&L-room fee; IBKR per-asset-class per-share/per-contract commission). The cost
 # context resolves these per (symbol,venue) via spine/asset_fees.asset_taker_bps instead of the flat catalog bps.
-ASSET_AWARE_VENUES = frozenset({"polymarket", "ibkr"})
+# Imported from spine/asset_fees so the screen and the order path (master/execution) share ONE source — the fee
+# analogue of the shared sizing helper, the divergence this parity fix closes.
+# (ASSET_AWARE_VENUES re-exported above for callers that import it from here.)
 
 # Cap equity symbols per screen. More symbols → more trials → stricter gate (correct), but also slower local
 # runs. 50 gives breadth without dominating the trial budget on a correlated sector basket.
