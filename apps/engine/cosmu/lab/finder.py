@@ -64,6 +64,7 @@ from cosmu.master.promotion import freeze_promotion
 from cosmu.master.scorer import BacktestMetrics
 from cosmu.master.screen_universe import (
     build_cost_context,
+    build_maker_fee_schedule,
     equity_symbols,
     hyperliquid_symbols,
     prediction_markets,
@@ -676,6 +677,15 @@ class StrategyFinder:
         fee_schedule, depth_schedule, asset_class_by_symbol, venue_id_by_symbol = build_cost_context(
             spec, market, catalog, crypto_cell_venues=crypto_cell_venues
         )
+        # MAKER mode (spec.execution_mode == "maker"): the per-symbol MAKER fee + the primary-venue maker bps the
+        # backtest charges on the passive entry leg (it applies the honest no-fill/adverse-selection realism on top).
+        # None in taker/both mode → the backtest screens at the taker floor, byte-identical.
+        maker_mode = getattr(spec, "execution_mode", "taker") == "maker"
+        maker_fee_schedule = (
+            build_maker_fee_schedule(spec, market, catalog, crypto_cell_venues=crypto_cell_venues)
+            if maker_mode else None
+        )
+        maker_fee_bps = venue.effective_fee()[0] if maker_mode else None
         # PER-CELL DATA PROVENANCE (anti-black-box): now that the per-cell fee/depth overlay is known, assemble a
         # CellProvenance per cell — symbol · venue · bar SOURCE · interval · date-range · #bars · holdout split ·
         # the TODAY's-schedule fee/slippage/impact (fees-always-today rule) · and the source-vs-venue alignment
@@ -710,7 +720,8 @@ class StrategyFinder:
                              fee_schedule=fee_schedule, depth_schedule=depth_schedule,
                              asset_class_by_symbol=asset_class_by_symbol, venue_id_by_symbol=venue_id_by_symbol,
                              cell_meta=cell_meta, resolution_by_symbol=resolution_by_symbol,
-                             provenance=provenance)
+                             provenance=provenance,
+                             maker_fee_schedule=maker_fee_schedule, maker_fee_bps=maker_fee_bps)
             if r is None:
                 return  # an invalid grid point (e.g. degenerate range) is skipped, never persisted
             results.append(r)
@@ -750,6 +761,7 @@ class StrategyFinder:
                 depth_schedule=depth_schedule, alt_by_symbol=alt,
                 asset_class_by_symbol=asset_class_by_symbol,
                 resolution_by_symbol=resolution_by_symbol,
+                maker_fee_bps=maker_fee_bps, maker_fee_schedule=maker_fee_schedule,
             )  # include_holdout defaults True — the single exam look for this champion variant
             r.target_vol = champion.target_vol  # T1: freeze vol anchor from the full backtest (incl. holdout bars)
             any_cell_holdout = False
@@ -856,6 +868,8 @@ class StrategyFinder:
         cell_meta: dict[str, tuple[str, str]] | None = None,
         resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
         provenance: dict[str, CellProvenance] | None = None,
+        maker_fee_schedule: dict[str, Decimal] | None = None,
+        maker_fee_bps: Decimal | None = None,
     ) -> VariantResult | None:
         """Compile + backtest one variant on REAL bars, then BUILD AND SCORE ONE CELL PER (symbol, venue) on its
         OWN streams. Returns a VariantResult carrying per-cell verdicts — or None for an invalid grid point.
@@ -881,6 +895,7 @@ class StrategyFinder:
             include_holdout=False,
             asset_class_by_symbol=asset_class_by_symbol,
             resolution_by_symbol=resolution_by_symbol,
+            maker_fee_bps=maker_fee_bps, maker_fee_schedule=maker_fee_schedule,
         )
         metrics = detailed.metrics  # POOLED — display only (best_symbol, the leaderboard); never the brut verdict
         net_profit = float(metrics.oos_return) - _round_trip_cost(metrics, venue)

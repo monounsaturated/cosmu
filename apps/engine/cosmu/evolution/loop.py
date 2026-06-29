@@ -38,7 +38,7 @@ from cosmu.master.cohort import Candidate as CohortCandidate
 from cosmu.master.cohort import promote_brut
 from cosmu.master.live_eligibility import cell_id
 from cosmu.master.scorer import BacktestMetrics
-from cosmu.master.screen_universe import build_cost_context
+from cosmu.master.screen_universe import build_cost_context, build_maker_fee_schedule
 from cosmu.master.tracks import (
     WATCH_VERDICT,
     alive_cell_track_exists,
@@ -917,6 +917,14 @@ class FarmLoop:
         fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(
             cand.spec, market, catalog, crypto_cell_venues=crypto_cell_venues
         )
+        # MAKER mode: the per-symbol maker fee + primary maker bps charged on the passive entry leg (the backtest
+        # applies the honest no-fill/adverse-selection realism on top). None in taker/both → taker floor, unchanged.
+        maker_mode = getattr(cand.spec, "execution_mode", "taker") == "maker"
+        maker_fee_schedule = (
+            build_maker_fee_schedule(cand.spec, market, catalog, crypto_cell_venues=crypto_cell_venues)
+            if maker_mode else None
+        )
+        maker_fee_bps = venue.effective_fee()[0] if maker_mode else None
         # Detailed backtest: `.metrics` is BYTE-IDENTICAL to run_strategy_backtest (which is a thin .metrics
         # wrapper over this), so no verdict drifts — but it also exposes per-symbol trade counts so the
         # per-symbol floor can test the true MINIMUM-per-symbol (finder.py semantic), not a pooled total.
@@ -926,6 +934,8 @@ class FarmLoop:
             market,
             fee_bps=venue.taker_fee_bps,
             fee_schedule=fee_schedule,
+            maker_fee_bps=maker_fee_bps,
+            maker_fee_schedule=maker_fee_schedule,
             # Charge the SPEC's own venue depth (half-spread + size-aware impact), not the global 5/50 — a
             # thin-book venue (Polymarket 30/150, Coinbase 8/60, Hyperliquid 6/60) pays the real cost it would
             # live, so a strategy can't pass the screen on costs it'd never survive on its actual venue. The
@@ -962,6 +972,12 @@ class FarmLoop:
         fee_schedule, depth_schedule, asset_class_by_symbol, _venue_id_by_symbol = build_cost_context(
             spec, market, catalog, crypto_cell_venues=crypto_cell_venues
         )
+        maker_mode = getattr(spec, "execution_mode", "taker") == "maker"
+        maker_fee_schedule = (
+            build_maker_fee_schedule(spec, market, catalog, crypto_cell_venues=crypto_cell_venues)
+            if maker_mode else None
+        )
+        maker_fee_bps = venue.effective_fee()[0] if maker_mode else None
         result = run_strategy_backtest_detailed(
             spec, params, market, fee_bps=venue.taker_fee_bps,
             fee_schedule=fee_schedule,
@@ -970,6 +986,7 @@ class FarmLoop:
             alt_by_symbol=self._alt_by_cell(spec, market, cell_meta),
             include_holdout=True,
             asset_class_by_symbol=asset_class_by_symbol,
+            maker_fee_bps=maker_fee_bps, maker_fee_schedule=maker_fee_schedule,
         )
         return result.per_symbol_holdout_runs, result.per_symbol_buy_and_hold
 
