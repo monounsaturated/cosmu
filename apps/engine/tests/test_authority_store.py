@@ -89,6 +89,37 @@ def test_scoreboard_orders_composite_desc_untested_last(tmp_path):
     assert rows[1]["composite"] is None and rows[1]["n_resolved"] == 0  # honest untested, never 0
 
 
+def test_scoreboard_persists_relative_ranking(tmp_path):
+    """Two tested accounts → the scoreboard persists + serves their RELATIVE standing (rank/percentile/z)."""
+    store = _store(tmp_path)
+    persist_calls(store, [_call("@a", "BTC", "up", 10, call_id="a1"), _call("@b", "BTC", "down", 10, call_id="b1")])
+    tape = {"BTC": [PricePoint(ts=T0 + timedelta(days=i), price=100.0 + 2.0 * i) for i in range(60)]}  # ramps up
+
+    persist_scoreboard(store, build_scoreboard(store, tape, now=NOW))
+    rows = {r["account"]: r for r in load_scoreboard(store)}
+
+    assert rows["@a"]["rank"] == 1 and rows["@b"]["rank"] == 2          # @a (up) correct outranks @b (down)
+    assert rows["@a"]["percentile"] == 1.0 and rows["@b"]["percentile"] == 0.0
+    assert rows["@a"]["composite_z"] is not None and rows["@a"]["composite_z"] > 0
+
+
+def test_build_scoreboard_drops_sarcasm_and_neutral_before_scoring(tmp_path):
+    """The pre-scoring actionable filter: a sarcasm call on the corpus never reaches the scorer, so it does not
+    inflate the account's volume. With the filter OFF (diagnostics) the raw corpus is scored."""
+    store = _store(tmp_path)
+    real = AccountCall(account="@a", platform="x", asset="BTC", direction="up", ts=T0 + timedelta(days=10),
+                       conviction=0.6, call_id="r", text="long BTC here, clear breakout", source="json")
+    sarc = AccountCall(account="@a", platform="x", asset="BTC", direction="up", ts=T0 + timedelta(days=12),
+                       conviction=0.6, call_id="s", text="buy BTC when MSTR goes to zero lol", source="json")
+    persist_calls(store, [real, sarc])
+    tape = {"BTC": [PricePoint(ts=T0 + timedelta(days=i), price=100.0 + 2.0 * i) for i in range(60)]}
+
+    scores = build_scoreboard(store, tape, now=NOW)
+    assert len(scores) == 1 and scores[0].n_calls == 1            # the sarcasm call was dropped before scoring
+    raw = build_scoreboard(store, tape, now=NOW, drop_non_actionable=False)
+    assert raw[0].n_calls == 2                                    # filter off → both count
+
+
 def test_empty_store_is_honest_empty(tmp_path):
     store = _store(tmp_path)
     assert load_calls(store) == []

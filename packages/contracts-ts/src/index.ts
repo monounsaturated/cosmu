@@ -74,6 +74,7 @@ export interface AuthorityRow {
   brier_skill_score?: number | null;
   calibration_error?: number | null;
   composite?: number | null;
+  composite_z?: number | null;
   consistency?: number | null;
   ev?: number | null;
   hit_rate?: number | null;
@@ -81,7 +82,9 @@ export interface AuthorityRow {
   n_calls: number;
   n_echo: number;
   n_resolved: number;
+  percentile?: number | null;
   platform: string;
+  rank?: number | null;
   top_movers?: AuthorityMover[];
   updated_at: string;
 }

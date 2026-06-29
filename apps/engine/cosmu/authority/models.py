@@ -173,6 +173,9 @@ class AuthorityScore:
     avg_lead_days: float | None = None
     consistency: float | None = None     # [0,1] — gain spread; low = one call dominates the EV
     composite: float | None = None       # [0,1] headline authority score
+    rank: int | None = None              # 1-based composite rank within the TESTED roster (relative, not absolute)
+    percentile: float | None = None      # [0,1] standing within the tested roster (1.0 = best)
+    composite_z: float | None = None     # z-score of the composite vs the roster mean (None when std == 0 / roster of 1)
     top_movers: tuple[Mover, ...] = field(default_factory=tuple)
     last_call_ts: datetime | None = None
 
@@ -194,6 +197,9 @@ class AuthorityScore:
             "avg_lead_days": self.avg_lead_days,
             "consistency": self.consistency,
             "composite": self.composite,
+            "rank": self.rank,
+            "percentile": self.percentile,
+            "composite_z": self.composite_z,
             "top_movers": [m.to_dict() for m in self.top_movers],
             "last_call_ts": self.last_call_ts.isoformat() if self.last_call_ts else None,
         }

@@ -15,7 +15,7 @@ from cosmu.knowledge.store import Store
 _COLUMNS = (
     "account", "platform", "n_calls", "n_resolved", "n_echo", "hit_rate", "base_hit_rate", "brier",
     "brier_skill_score", "calibration_error", "ev", "avg_move_when_right", "avg_lead_days", "consistency",
-    "composite", "top_movers", "last_call_ts", "updated_at",
+    "composite", "rank", "percentile", "composite_z", "top_movers", "last_call_ts", "updated_at",
 )
 
 
@@ -28,8 +28,8 @@ def _seed(store: Store, **row) -> None:
         "account": "@acct", "platform": "x", "n_calls": 0, "n_resolved": 0, "n_echo": 0,
         "hit_rate": None, "base_hit_rate": None, "brier": None, "brier_skill_score": None,
         "calibration_error": None, "ev": None, "avg_move_when_right": None, "avg_lead_days": None,
-        "consistency": None, "composite": None, "top_movers": "[]", "last_call_ts": None,
-        "updated_at": "2026-06-01T00:00:00+00:00",
+        "consistency": None, "composite": None, "rank": None, "percentile": None, "composite_z": None,
+        "top_movers": "[]", "last_call_ts": None, "updated_at": "2026-06-01T00:00:00+00:00",
     }
     record.update(row)
     with store.batch() as writer:
@@ -84,6 +84,23 @@ def test_rows_ordered_composite_desc_untested_last(tmp_path, monkeypatch):
     assert body["rows"][0]["top_movers"][0]["asset"] == "BTC"
     assert body["rows"][0]["top_movers"][0]["signed_return"] == 1.2
     assert body["as_of"] == "2026-06-10T12:00:00+00:00"
+
+
+def test_relative_ranking_passes_through(tmp_path, monkeypatch):
+    """The relative-standing columns surface typed: rank as int, percentile/z as float, null when unranked."""
+    store = _store(tmp_path)
+    _seed(store, account="@a", n_calls=10, n_resolved=8, composite=0.7, rank=1, percentile=1.0, composite_z=1.1,
+          updated_at="2026-06-10T00:00:00+00:00")
+    _seed(store, account="@b", n_calls=10, n_resolved=8, composite=0.3, rank=2, percentile=0.0, composite_z=-1.1,
+          updated_at="2026-06-10T00:00:00+00:00")
+    _seed(store, account="@u", n_calls=3, updated_at="2026-06-09T00:00:00+00:00")  # untested → unranked
+
+    client = _client(store, monkeypatch)
+    rows = {r["account"]: r for r in client.get("/authority").json()["rows"]}
+
+    assert rows["@a"]["rank"] == 1 and rows["@a"]["percentile"] == 1.0 and rows["@a"]["composite_z"] == 1.1
+    assert rows["@b"]["rank"] == 2 and rows["@b"]["composite_z"] == -1.1
+    assert rows["@u"]["rank"] is None and rows["@u"]["percentile"] is None and rows["@u"]["composite_z"] is None
 
 
 def test_requires_api_key_when_secret_set(tmp_path, monkeypatch):

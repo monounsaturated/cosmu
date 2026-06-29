@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from cosmu.authority.models import AccountCall
 
@@ -173,4 +173,51 @@ def parse_calls(payload: Any, *, source: str = "manual", default_platform: str =
     return out
 
 
-__all__ = ["DIRECTION_SYNONYMS", "parse_call", "parse_calls"]
+# A page fetcher: given the cursor for the page to fetch (None for the first), returns (page_payload, next_cursor).
+# `page_payload` is anything parse_calls eats (a list/dict/JSON string of records); `next_cursor` is the token for
+# the FOLLOWING page, or None when the timeline is exhausted. The local xAI/Grok runner wires this to its HTTP +
+# key; tests inject a pure fake. Kept as a plain Callable alias (no import-time dependency on the runner).
+PageFetcher = Callable[[Any], "tuple[Any, Any]"]
+
+
+def paginate_calls(
+    fetch_page: PageFetcher,
+    *,
+    source: str = "xai",
+    default_platform: str = "x",
+    max_posts: int = 100,
+    max_pages: int = 10,
+    start_cursor: Any = None,
+) -> list[AccountCall]:
+    """Drive a PAGINATED upstream into typed calls — the seam that lets one account contribute 30–100+ posts, COST-
+    MANAGED. `fetch_page(cursor)` returns (page_payload, next_cursor); we parse each page leniently and accumulate
+    until we hit `max_posts` calls, `max_pages` requests, or a None/empty next_cursor — whichever comes FIRST (the
+    cost cap, so the runner never over-pulls a noisy timeline). Calls are de-duplicated ACROSS pages on the same
+    stable key parse_calls uses (a repeated post never double-counts) and returned ordered (ts, account, asset,
+    direction). LENIENT: an empty page with a further cursor is skipped onward; a fetch that RAISES stops the pull
+    and keeps whatever was already collected (a flaky page never aborts the whole run). The cap is INTENTIONAL —
+    the caller sizes max_posts/max_pages to its budget; this returns up to that many, no more."""
+    seen: set[tuple] = set()
+    out: list[AccountCall] = []
+    cursor = start_cursor
+    for _ in range(max(0, max_pages)):
+        try:
+            payload, next_cursor = fetch_page(cursor)
+        except Exception:  # noqa: BLE001 — upstream/page failure: stop, keep what we have (never abort hard)
+            break
+        for call in parse_calls(payload, source=source, default_platform=default_platform):
+            key = (call.account, call.platform, call.call_id, call.asset, call.direction, call.ts.isoformat())
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(call)
+            if len(out) >= max_posts:
+                break
+        if len(out) >= max_posts or not next_cursor:
+            break
+        cursor = next_cursor
+    out.sort(key=lambda c: (c.ts, c.account, c.asset, c.direction))
+    return out
+
+
+__all__ = ["DIRECTION_SYNONYMS", "PageFetcher", "paginate_calls", "parse_call", "parse_calls"]

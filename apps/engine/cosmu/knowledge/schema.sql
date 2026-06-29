@@ -671,6 +671,9 @@ CREATE TABLE IF NOT EXISTS authority_scoreboard (
   avg_lead_days REAL,                        -- foresight: days the call led the confirmed move
   consistency REAL,                          -- [0,1] gain spread; low = one spike carries the account
   composite REAL,                            -- [0,1] headline authority score
+  rank INTEGER,                              -- 1-based composite rank within the TESTED roster (relative, not absolute)
+  percentile REAL,                           -- [0,1] standing within the tested roster (1.0 = best)
+  composite_z REAL,                          -- z-score of the composite vs the roster mean (NULL when no spread)
   top_movers TEXT NOT NULL DEFAULT '[]',     -- JSON: the top-3 calls by payoff
   last_call_ts TEXT,
   updated_at TEXT NOT NULL,

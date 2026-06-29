@@ -11,7 +11,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from cosmu.authority.ingest import parse_call, parse_calls
+from cosmu.authority.ingest import paginate_calls, parse_call, parse_calls
+
+
+def _rec(account: str, asset: str, direction: str, day: int, call_id: str) -> dict:
+    return {"account": account, "asset": asset, "direction": direction,
+            "ts": f"2024-03-{day:02d}T00:00:00Z", "call_id": call_id}
 
 
 def test_json_dump_shape_parses():
@@ -101,3 +106,65 @@ def test_exact_duplicates_collapse_and_output_is_ordered():
 def test_garbage_string_payload_returns_empty():
     assert parse_calls("not json at all") == []
     assert parse_call("nope") is None  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- paginate_calls (the BIGGER-PULL seam)
+
+
+def test_paginate_accumulates_across_pages_and_dedupes():
+    """Two pages drained in order, calls deduped across the page boundary (a repeated post never double-counts),
+    output ordered by ts."""
+    pages = {
+        None: ([_rec("@a", "BTC", "up", 1, "1"), _rec("@a", "ETH", "down", 2, "2")], "c1"),
+        "c1": ([_rec("@a", "ETH", "down", 2, "2"), _rec("@a", "SOL", "up", 3, "3")], None),  # "2" repeats
+    }
+    seen: list = []
+
+    def fetch(cursor):
+        seen.append(cursor)
+        return pages[cursor]
+
+    calls = paginate_calls(fetch, source="xai")
+    assert seen == [None, "c1"]
+    assert [c.call_id for c in calls] == ["1", "2", "3"]  # deduped + ordered
+
+
+def test_paginate_respects_max_posts_cap():
+    """A timeline that never exhausts is capped at max_posts (cost-managed; the runner never over-pulls)."""
+    def fetch(cursor):
+        base = cursor or 0
+        recs = [_rec("@a", "BTC", "up", (base * 5 + i) % 28 + 1, str(base * 5 + i)) for i in range(5)]
+        return recs, base + 1
+
+    assert len(paginate_calls(fetch, max_posts=7, max_pages=100)) == 7
+
+
+def test_paginate_respects_max_pages_cap():
+    def fetch(cursor):
+        n = cursor or 0
+        return [_rec("@a", "BTC", "up", n % 28 + 1, str(n))], n + 1  # one fresh call per page, never exhausts
+
+    assert len(paginate_calls(fetch, max_posts=100, max_pages=3)) == 3
+
+
+def test_paginate_stops_on_none_cursor():
+    def fetch(cursor):
+        return [_rec("@a", "BTC", "up", 1, "1")], None
+
+    assert len(paginate_calls(fetch, max_pages=10)) == 1
+
+
+def test_paginate_survives_a_raising_page():
+    """A fetch that raises mid-pull STOPS the pull and keeps what was already collected (a flaky page never aborts
+    the whole run)."""
+    made: list = []
+
+    def fetch(cursor):
+        made.append(cursor)
+        if cursor is None:
+            return [_rec("@a", "BTC", "up", 1, "1")], "c1"
+        raise RuntimeError("page boom")
+
+    calls = paginate_calls(fetch, max_pages=10)
+    assert [c.call_id for c in calls] == ["1"]
+    assert made == [None, "c1"]

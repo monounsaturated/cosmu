@@ -46,6 +46,9 @@ def authority() -> AuthorityResponse:
                 avg_lead_days=_opt(r["avg_lead_days"]),
                 consistency=_opt(r["consistency"]),
                 composite=_opt(r["composite"]),
+                rank=_opt_int(r.get("rank")),
+                percentile=_opt(r.get("percentile")),
+                composite_z=_opt(r.get("composite_z")),
                 top_movers=[
                     AuthorityMover(
                         asset=str(m.get("asset", "")),
@@ -68,6 +71,11 @@ def authority() -> AuthorityResponse:
 def _opt(value: object) -> float | None:
     """NULL-preserving float: an untested metric stays None — never coerced to 0.0."""
     return None if value is None else float(value)
+
+
+def _opt_int(value: object) -> int | None:
+    """NULL-preserving int: an unranked (untested) account stays None — never coerced to 0."""
+    return None if value is None else int(value)
 
 
 def _opt_str(value: object) -> str | None:

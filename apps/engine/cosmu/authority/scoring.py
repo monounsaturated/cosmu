@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import replace
 from datetime import timedelta
 from typing import Mapping, Sequence
 
@@ -344,6 +345,40 @@ def score_account(
     )
 
 
+def rank_accounts(scores: Sequence[AuthorityScore]) -> list[AuthorityScore]:
+    """Stamp each score with its RELATIVE standing in the roster — authority is a POSITION among peers, not an
+    absolute number, so the operator can see the BEST signal accounts at a glance. Tested accounts (composite not
+    None) are ranked composite DESC: `rank` 1-based, `percentile` in [0,1] (1.0 = best of the roster; the only
+    tested account is 1.0), `composite_z` the z-score vs the roster's composite mean (None when the roster has no
+    spread — std == 0, or a single tested account, where 'relative' is meaningless). UNTESTED accounts keep
+    rank/percentile/composite_z = None (nothing to rank). Pure + deterministic; the input ORDER is preserved (the
+    caller already sorts), only the relative fields are filled."""
+    tested = [s for s in scores if s.composite is not None]
+    n = len(tested)
+    if n == 0:
+        return list(scores)
+    comps = [float(s.composite) for s in tested]  # type: ignore[arg-type]
+    mean = sum(comps) / n
+    std = math.sqrt(sum((c - mean) ** 2 for c in comps) / n)
+    # 1-based rank by composite DESC with a stable account-name tiebreak (matches the scoreboard ordering).
+    order = sorted(tested, key=lambda s: (-(s.composite or 0.0), s.platform, s.account))
+    rank_of = {(s.platform, s.account): i + 1 for i, s in enumerate(order)}
+
+    out: list[AuthorityScore] = []
+    for s in scores:
+        if s.composite is None:
+            out.append(s)
+            continue
+        rank = rank_of[(s.platform, s.account)]
+        percentile = 1.0 if n == 1 else (n - rank) / (n - 1)  # best == 1.0, worst == 0.0
+        z = ((float(s.composite) - mean) / std) if std > 1e-12 else None
+        out.append(replace(
+            s, rank=rank, percentile=round(percentile, 4),
+            composite_z=(round(z, 4) if z is not None else None),
+        ))
+    return out
+
+
 def score_accounts(
     calls: Sequence[AccountCall],
     prices: Mapping[str, Sequence[PricePoint]],
@@ -352,9 +387,10 @@ def score_accounts(
     horizon_days: int = DEFAULT_HORIZON_DAYS,
     prior_strength: float = PRIOR_STRENGTH,
 ) -> list[AuthorityScore]:
-    """Resolve every call against its asset's tape and build each account's composite row. Calls on an asset we
-    hold no tape for resolve as no_data (counted in n_calls, never silently dropped). Deterministic ordering:
-    composite DESC with UNTESTED (None composite) accounts last, then account name as a stable tiebreak."""
+    """Resolve every call against its asset's tape and build each account's composite row, then stamp each with its
+    RELATIVE standing in the roster (rank/percentile/z vs peers — see rank_accounts). Calls on an asset we hold no
+    tape for resolve as no_data (counted in n_calls, never silently dropped). Deterministic ordering: composite
+    DESC with UNTESTED (None composite) accounts last, then account name as a stable tiebreak."""
     by_account: dict[tuple[str, str], list[AccountCall]] = defaultdict(list)
     for c in calls:
         by_account[(c.account, c.platform)].append(c)
@@ -373,7 +409,7 @@ def score_accounts(
         # composite DESC, None last; account name ASC tiebreak.
         return (0 if s.composite is not None else 1, -(s.composite or 0.0), s.account)
 
-    return sorted(scores, key=_rank)
+    return rank_accounts(sorted(scores, key=_rank))
 
 
 __all__ = [
@@ -384,6 +420,7 @@ __all__ = [
     "ECHO_MOVE_THRESHOLD",
     "EV_POSITION",
     "FLAT_BAND",
+    "rank_accounts",
     "resolve_call",
     "score_account",
     "score_accounts",

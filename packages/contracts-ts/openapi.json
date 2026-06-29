@@ -356,7 +356,7 @@
         "type": "object"
       },
       "AuthorityRow": {
-        "description": "One account's flat COMPOSITE row. `n_calls` is volume (NOT skill); `n_resolved` is how many calls were old\nenough to score against the tape; `n_echo` is how many of those were late/echo (discounted). Every derived\nmetric is nullable \u2014 an account with zero resolved calls carries NULL everything (honest UNTESTED, not 0).\n`ev` is the cumulative return trading each call small (the payoff headline, weighted highest in the\ncomposite); `composite` is the [0,1] authority score; `top_movers` is the top-3 calls by payoff;\n`consistency` is the gain spread (LOW when one spike carries the account \u2014 interesting, not bad).",
+        "description": "One account's flat COMPOSITE row. `n_calls` is volume (NOT skill); `n_resolved` is how many calls were old\nenough to score against the tape; `n_echo` is how many of those were late/echo (discounted). Every derived\nmetric is nullable \u2014 an account with zero resolved calls carries NULL everything (honest UNTESTED, not 0).\n`ev` is the cumulative return trading each call small (the payoff headline, weighted highest in the\ncomposite); `composite` is the [0,1] authority score; `top_movers` is the top-3 calls by payoff;\n`consistency` is the gain spread (LOW when one spike carries the account \u2014 interesting, not bad).\n`rank`/`percentile`/`composite_z` are RELATIVE \u2014 the account's standing within the scored ROSTER (rank 1-based,\npercentile [0,1] with 1.0 = best, composite_z vs the roster mean): authority is comparative, so this is how the\noperator spots the BEST signal accounts. All three are null for an UNTESTED account (nothing to rank).",
         "properties": {
           "account": {
             "title": "Account",
@@ -439,6 +439,17 @@
             ],
             "title": "Composite"
           },
+          "composite_z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Composite Z"
+          },
           "consistency": {
             "anyOf": [
               {
@@ -495,9 +506,31 @@
             "title": "N Resolved",
             "type": "integer"
           },
+          "percentile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentile"
+          },
           "platform": {
             "title": "Platform",
             "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
           },
           "top_movers": {
             "default": [],

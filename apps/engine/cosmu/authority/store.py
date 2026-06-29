@@ -12,6 +12,7 @@ import json
 from datetime import datetime
 from typing import Mapping, Sequence
 
+from cosmu.authority.classify import filter_actionable
 from cosmu.authority.models import AccountCall, AuthorityScore, PricePoint
 from cosmu.authority.scoring import DEFAULT_HORIZON_DAYS, score_accounts
 from cosmu.knowledge.store import Store, utcnow
@@ -24,8 +25,12 @@ _CALL_COLUMNS = (
 _SCOREBOARD_COLUMNS = (
     "account", "platform", "n_calls", "n_resolved", "n_echo", "hit_rate", "base_hit_rate", "brier",
     "brier_skill_score", "calibration_error", "ev", "avg_move_when_right", "avg_lead_days", "consistency",
-    "composite", "top_movers", "last_call_ts", "updated_at",
+    "composite", "rank", "percentile", "composite_z", "top_movers", "last_call_ts", "updated_at",
 )
+
+# The relative-standing columns (scoring.rank_accounts) — added after the base scoreboard. Read DEFENSIVELY (a DB
+# still on the base migration lacks them) so deploy-before-migrate never blanks the whole panel.
+_RANK_COLUMNS = ("rank", "percentile", "composite_z")
 
 
 # --------------------------------------------------------------------------- the raw call corpus
@@ -101,10 +106,16 @@ def build_scoreboard(
     *,
     now: datetime,
     horizon_days: int = DEFAULT_HORIZON_DAYS,
+    drop_non_actionable: bool = True,
 ) -> list[AuthorityScore]:
-    """Load the corpus and score every account against the supplied tape. Pure given (corpus, prices, now) — the
-    LLM is nowhere on this path. No calls → [] (honest)."""
+    """Load the corpus, drop NEUTRAL/SARCASM non-calls (the pre-scoring actionable filter — see
+    cosmu.authority.classify), and score every remaining account against the supplied tape. The raw corpus in
+    `authority_calls` is UNTOUCHED (provenance); only what reaches the scorer is filtered, so neutral chatter and
+    sarcasm never inflate an account's volume or pollute its score. Pure given (corpus, prices, now) — the LLM is
+    nowhere on this path. No calls → [] (honest). `drop_non_actionable=False` scores the raw corpus (diagnostics)."""
     calls = load_calls(store)
+    if drop_non_actionable:
+        calls = filter_actionable(calls)
     if not calls:
         return []
     return score_accounts(calls, prices, now=now, horizon_days=horizon_days)
@@ -122,22 +133,25 @@ def persist_scoreboard(store: Store, scores: Sequence[AuthorityScore], *, now: s
                 """
                 INSERT INTO authority_scoreboard (account, platform, n_calls, n_resolved, n_echo, hit_rate,
                   base_hit_rate, brier, brier_skill_score, calibration_error, ev, avg_move_when_right,
-                  avg_lead_days, consistency, composite, top_movers, last_call_ts, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  avg_lead_days, consistency, composite, rank, percentile, composite_z, top_movers, last_call_ts,
+                  updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (platform, account) DO UPDATE SET
                   n_calls = excluded.n_calls, n_resolved = excluded.n_resolved, n_echo = excluded.n_echo,
                   hit_rate = excluded.hit_rate, base_hit_rate = excluded.base_hit_rate, brier = excluded.brier,
                   brier_skill_score = excluded.brier_skill_score, calibration_error = excluded.calibration_error,
                   ev = excluded.ev, avg_move_when_right = excluded.avg_move_when_right,
                   avg_lead_days = excluded.avg_lead_days, consistency = excluded.consistency,
-                  composite = excluded.composite, top_movers = excluded.top_movers,
+                  composite = excluded.composite, rank = excluded.rank, percentile = excluded.percentile,
+                  composite_z = excluded.composite_z, top_movers = excluded.top_movers,
                   last_call_ts = excluded.last_call_ts, updated_at = excluded.updated_at
                 """,
                 (
                     row["account"], row["platform"], row["n_calls"], row["n_resolved"], row["n_echo"],
                     row["hit_rate"], row["base_hit_rate"], row["brier"], row["brier_skill_score"],
                     row["calibration_error"], row["ev"], row["avg_move_when_right"], row["avg_lead_days"],
-                    row["consistency"], row["composite"], json.dumps(row["top_movers"]), row["last_call_ts"], now,
+                    row["consistency"], row["composite"], row["rank"], row["percentile"], row["composite_z"],
+                    json.dumps(row["top_movers"]), row["last_call_ts"], now,
                 ),
             )
             written += 1
@@ -146,17 +160,13 @@ def persist_scoreboard(store: Store, scores: Sequence[AuthorityScore], *, now: s
 
 def load_scoreboard(store: Store) -> list[dict]:
     """The flat scoreboard rows for the API, composite DESC with UNTESTED (NULL composite) last, account as the
-    stable tiebreak. top_movers JSON is parsed back to a list. Defensive: a DB without the additive migration
-    yields [] (honest empty panel), never a 500."""
+    stable tiebreak. top_movers JSON is parsed back to a list. Defensive on TWO axes: a DB without the additive
+    `authority_scoreboard` table yields [] (honest empty panel), never a 500; and `SELECT *` (not a fixed column
+    list) means a DB still on the BASE migration — without the rank/percentile/composite_z columns — degrades those
+    fields to None rather than erroring the whole query, so deploy-before-migrate stays safe for the new columns."""
     try:
         rows = store.rows(
-            """
-            SELECT account, platform, n_calls, n_resolved, n_echo, hit_rate, base_hit_rate, brier,
-                   brier_skill_score, calibration_error, ev, avg_move_when_right, avg_lead_days, consistency,
-                   composite, top_movers, last_call_ts, updated_at
-            FROM authority_scoreboard
-            ORDER BY (composite IS NULL), composite DESC, account
-            """
+            "SELECT * FROM authority_scoreboard ORDER BY (composite IS NULL), composite DESC, account"
         )
     except Exception:  # noqa: BLE001 — table absent on a not-yet-migrated DB → honest empty panel
         return []
@@ -166,6 +176,8 @@ def load_scoreboard(store: Store) -> list[dict]:
             r["top_movers"] = json.loads(raw) if isinstance(raw, str) else (raw or [])
         except (ValueError, TypeError):
             r["top_movers"] = []
+        for col in _RANK_COLUMNS:  # present-but-null on a pre-rank-migration DB → None, never KeyError downstream
+            r.setdefault(col, None)
     return rows
 
 

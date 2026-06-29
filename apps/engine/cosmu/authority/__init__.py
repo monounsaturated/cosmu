@@ -10,8 +10,21 @@
 
 from __future__ import annotations
 
+from cosmu.authority.assets import (
+    AssetRef,
+    build_tape,
+    resolve_asset,
+)
+from cosmu.authority.classify import (
+    CallClassification,
+    build_extraction_prompt,
+    classify_call,
+    filter_actionable,
+    partition_actionable,
+)
 from cosmu.authority.ingest import (
     DIRECTION_SYNONYMS,
+    paginate_calls,
     parse_call,
     parse_calls,
 )
@@ -24,6 +37,7 @@ from cosmu.authority.models import (
     ResolvedCall,
 )
 from cosmu.authority.scoring import (
+    rank_accounts,
     resolve_call,
     score_account,
     score_accounts,
@@ -39,20 +53,30 @@ from cosmu.authority.store import (
 
 __all__ = [
     "AccountCall",
+    "AssetRef",
     "AuthorityScore",
+    "CallClassification",
     "DIRECTION_SYNONYMS",
     "Direction",
     "Mover",
     "PricePoint",
     "ResolvedCall",
+    "build_extraction_prompt",
     "build_scoreboard",
+    "build_tape",
+    "classify_call",
+    "filter_actionable",
     "load_calls",
     "load_scoreboard",
+    "paginate_calls",
     "parse_call",
     "parse_calls",
+    "partition_actionable",
     "persist_calls",
     "persist_scoreboard",
     "prices_from_bars",
+    "rank_accounts",
+    "resolve_asset",
     "resolve_call",
     "score_account",
     "score_accounts",

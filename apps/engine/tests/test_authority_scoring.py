@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from cosmu.authority.models import AccountCall, PricePoint, ResolvedCall
+from cosmu.authority.models import AccountCall, AuthorityScore, PricePoint, ResolvedCall
 from cosmu.authority.scoring import (
     ECHO_DISCOUNT,
     EV_POSITION,
+    rank_accounts,
     resolve_call,
     score_account,
     score_accounts,
@@ -198,3 +199,50 @@ def test_score_accounts_is_deterministic_and_ranks_composite_desc():
 
 def test_empty_corpus_scores_to_empty():
     assert score_accounts([], {}, now=NOW) == []
+
+
+# --------------------------------------------------------------------------- multi-account RANKING (relative)
+
+
+def _scored(account: str, composite: float | None) -> AuthorityScore:
+    """A bare AuthorityScore with a fixed composite — lets the ranking tests control the roster exactly."""
+    return AuthorityScore(account=account, platform="x", n_calls=5, n_resolved=(5 if composite is not None else 0),
+                          n_echo=0, composite=composite)
+
+
+def test_rank_accounts_assigns_relative_standing():
+    """Authority is RELATIVE: rank (1 = best), percentile (1.0 = best, 0.0 = worst) and z vs the roster mean."""
+    ranked = {s.account: s for s in rank_accounts([_scored("@a", 0.8), _scored("@b", 0.5), _scored("@c", 0.2)])}
+    assert ranked["@a"].rank == 1 and ranked["@b"].rank == 2 and ranked["@c"].rank == 3
+    assert ranked["@a"].percentile == 1.0 and ranked["@b"].percentile == 0.5 and ranked["@c"].percentile == 0.0
+    # mean 0.5: @a above (z>0), @c below (z<0), @b at the mean (z==0).
+    assert ranked["@a"].composite_z is not None and ranked["@a"].composite_z > 0
+    assert ranked["@c"].composite_z is not None and ranked["@c"].composite_z < 0
+    assert abs(ranked["@b"].composite_z) < 1e-9
+
+
+def test_untested_account_is_unranked():
+    """An UNTESTED account (None composite) carries no rank/percentile/z; a lone tested account is percentile 1.0
+    with no z (a roster of one has no relative frame)."""
+    ranked = {s.account: s for s in rank_accounts([_scored("@a", 0.8), _scored("@u", None)])}
+    assert ranked["@u"].rank is None and ranked["@u"].percentile is None and ranked["@u"].composite_z is None
+    assert ranked["@a"].rank == 1 and ranked["@a"].percentile == 1.0 and ranked["@a"].composite_z is None
+
+
+def test_zero_spread_roster_has_no_z():
+    """A roster with no composite spread (all equal) yields ranks + percentiles but no z (std == 0)."""
+    ranked = {s.account: s for s in rank_accounts([_scored("@a", 0.5), _scored("@b", 0.5)])}
+    assert ranked["@a"].composite_z is None and ranked["@b"].composite_z is None
+    assert {ranked["@a"].rank, ranked["@b"].rank} == {1, 2}
+
+
+def test_score_accounts_stamps_ranking_end_to_end():
+    """score_accounts wires ranking in: the top account is rank 1, percentile 1.0."""
+    calls = [
+        AccountCall(account="@a", platform="x", asset="BTC", direction="up", ts=T0 + timedelta(days=10), conviction=0.6),
+        AccountCall(account="@b", platform="x", asset="BTC", direction="down", ts=T0 + timedelta(days=12), conviction=0.6),
+    ]
+    prices = {"BTC": _daily([100.0 + i for i in range(60)])}  # ramps up → @a (up) right, @b (down) wrong
+    ranked = score_accounts(calls, prices, now=NOW)
+    assert ranked[0].account == "@a" and ranked[0].rank == 1 and ranked[0].percentile == 1.0
+    assert ranked[1].account == "@b" and ranked[1].rank == 2

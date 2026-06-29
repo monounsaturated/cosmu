@@ -29,7 +29,10 @@ class AuthorityRow(BaseModel):
     metric is nullable — an account with zero resolved calls carries NULL everything (honest UNTESTED, not 0).
     `ev` is the cumulative return trading each call small (the payoff headline, weighted highest in the
     composite); `composite` is the [0,1] authority score; `top_movers` is the top-3 calls by payoff;
-    `consistency` is the gain spread (LOW when one spike carries the account — interesting, not bad)."""
+    `consistency` is the gain spread (LOW when one spike carries the account — interesting, not bad).
+    `rank`/`percentile`/`composite_z` are RELATIVE — the account's standing within the scored ROSTER (rank 1-based,
+    percentile [0,1] with 1.0 = best, composite_z vs the roster mean): authority is comparative, so this is how the
+    operator spots the BEST signal accounts. All three are null for an UNTESTED account (nothing to rank)."""
 
     account: str
     platform: str
@@ -46,6 +49,9 @@ class AuthorityRow(BaseModel):
     avg_lead_days: float | None = None
     consistency: float | None = None
     composite: float | None = None
+    rank: int | None = None
+    percentile: float | None = None
+    composite_z: float | None = None
     top_movers: list[AuthorityMover] = []
     last_call_ts: str | None = None
     updated_at: str
