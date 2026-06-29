@@ -1,9 +1,11 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — NINE surfaces: Strategies · Paper · Live · Trades · Indexes · Mind · Costs · Keys · Commands
+// frontend — TEN surfaces: Strategies · Paper · Live · Trades · Indexes · Mind · Conviction · Costs · Keys · Commands
 // (landing = Strategies). Trades is the one ledger of every execution (paper + live), tagged. Mind is the read-only credibility surface — the followed-voices scoreboard off
-// /mind/credibility. Strategies is now the ONE granular surface: every (algo × asset × venue)
+// /mind/credibility. Conviction is the read-only, PROPOSE-ONLY queue (off /conviction/proposals) of LLM/Conviction
+// trade ideas built from high-authority accounts' fresh asset-calls — a human reviews the authority evidence and
+// arms; nothing on that surface moves money. Strategies is now the ONE granular surface: every (algo × asset × venue)
 // triplet, never pooled — the old per-symbol "Lab" tab was folded into it (its route now redirects).
 // Indexes (2026-06-15) is the operator-defined, deterministically-scored
 // signal-index registry that strategies later key off. (The old Research/experiment-memory route was
@@ -81,6 +83,12 @@ const ICONS: Record<string, ReactNode> = {
     <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
       <rect x="1.5" y="2.6" width="12" height="9.8" rx="1.6" /><polyline points="4,6 6.4,8 4,10" /><line x1="8" y1="10" x2="11" y2="10" />
     </svg>
+  ),
+  conviction: (
+    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="7.5" cy="7.5" r="5.6" /><circle cx="7.5" cy="7.5" r="2.6" />
+      <circle cx="7.5" cy="7.5" r="0.6" fill="currentColor" stroke="none" />
+    </svg>
   )
 };
 
@@ -92,6 +100,7 @@ export const navItems: NavItem[] = [
   { href: "/trades", key: "trades", label: "Trades", icon: ICONS.trades },
   { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
   { href: "/mind", key: "mind", label: "Mind", icon: ICONS.mind },
+  { href: "/conviction", key: "conviction", label: "Conviction", icon: ICONS.conviction },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }

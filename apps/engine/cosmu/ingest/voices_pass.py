@@ -56,6 +56,7 @@ class VoicesPassReport:
     claims_total: int = 0         # all stored claims the scoring ran on
     scoreboard_rows: int = 0
     features_written: int = 0
+    conviction_proposals: int = 0  # propose-only authority-conviction proposals produced this pass (human arms)
     errors: list[str] = field(default_factory=list)
 
 
@@ -337,6 +338,26 @@ def run_voices_pass(
                        [AltDataPoint(ts=now, available_at=now, value=float(signal))])
             report.features_written += 1
 
+        # CONSUMER: turn each followed account's fresh, actionable, non-echo call into a propose-only conviction
+        # proposal (sized by authority × EV, hard max-loss cap) for a HUMAN to review + arm. Schema-probe gated
+        # (cosmu/conviction/store) — a pre-migration prod has no `conviction_proposals` table, so this no-ops and
+        # the /conviction queue stays honest-empty. NOTHING here arms or moves money; it only writes proposals.
+        try:
+            from cosmu.conviction.producer import refresh_conviction_proposals
+
+            produced = refresh_conviction_proposals(
+                store,
+                claims=claims,
+                bars_by_entity=bars,  # the same per-entity bars Phase 2/3 just resolved against
+                accounts=[v.handle for v in panel],
+                now=now,
+                posts=posts_for_graph,
+                events=events,
+            )
+            report.conviction_proposals = len(produced)
+        except Exception as exc:  # noqa: BLE001 — the conviction consumer must never abort the credibility pass
+            report.errors.append(f"conviction: {exc}")
+
     # The scoreboard: one flat row per PANEL voice (zeros/NULLs are honest states, not absences).
     now_iso = utcnow()
     for voice in panel:
@@ -357,7 +378,7 @@ def run_voices_pass(
         payload={"voices": report.voices, "posts_fetched": report.posts_fetched, "posts_new": report.posts_new,
                  "posts_extracted": report.posts_extracted, "claims_new": report.claims_new,
                  "claims_total": report.claims_total, "features_written": report.features_written,
-                 "errors": report.errors[:10]},
+                 "conviction_proposals": report.conviction_proposals, "errors": report.errors[:10]},
     )
     return report
 
@@ -372,7 +393,8 @@ def _main(argv: list[str] | None = None) -> int:
     print(
         f"VOICES PASS — voices={report.voices} posts={report.posts_fetched} (new={report.posts_new}, "
         f"extracted={report.posts_extracted}) claims new={report.claims_new}/total={report.claims_total} "
-        f"scoreboard={report.scoreboard_rows} features={report.features_written} errors={len(report.errors)}"
+        f"scoreboard={report.scoreboard_rows} features={report.features_written} "
+        f"conviction={report.conviction_proposals} errors={len(report.errors)}"
     )
     return 0
 

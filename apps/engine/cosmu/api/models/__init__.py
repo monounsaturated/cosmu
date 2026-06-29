@@ -102,6 +102,12 @@ from cosmu.api.models.costs import (  # noqa: F401
     SpendPoint,
     VendorActual,
 )
+from cosmu.api.models.conviction import (  # noqa: F401
+    ConvictionEvidence,
+    ConvictionProposalRow,
+    ConvictionProposalsResponse,
+    ConvictionTopMover,
+)
 from cosmu.api.models.credibility import (  # noqa: F401
     CredibilityResponse,
     CredibilityRow,

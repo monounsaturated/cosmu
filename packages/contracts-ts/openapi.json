@@ -1313,6 +1313,212 @@
         "title": "CommandResponse",
         "type": "object"
       },
+      "ConvictionEvidence": {
+        "description": "Why this account, why now \u2014 the thesis evidence the human reviews. The authority composite (skill-anchored)\n+ the EV/magnitude profile (profit, not just hit-rate) + the source post + the disconfirmer context.",
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "authority_score": {
+            "title": "Authority Score",
+            "type": "number"
+          },
+          "avg_hit_magnitude": {
+            "title": "Avg Hit Magnitude",
+            "type": "number"
+          },
+          "brier_skill_score": {
+            "title": "Brier Skill Score",
+            "type": "number"
+          },
+          "citation_authority": {
+            "title": "Citation Authority",
+            "type": "number"
+          },
+          "ev_per_call": {
+            "title": "Ev Per Call",
+            "type": "number"
+          },
+          "is_primary": {
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "lead_lag": {
+            "title": "Lead Lag",
+            "type": "string"
+          },
+          "n_resolved": {
+            "title": "N Resolved",
+            "type": "integer"
+          },
+          "skill": {
+            "title": "Skill",
+            "type": "number"
+          },
+          "source_quote": {
+            "title": "Source Quote",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "top_movers": {
+            "items": {
+              "$ref": "#/components/schemas/ConvictionTopMover"
+            },
+            "title": "Top Movers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "account",
+          "authority_score",
+          "skill",
+          "ev_per_call",
+          "brier_skill_score",
+          "avg_hit_magnitude",
+          "n_resolved",
+          "citation_authority",
+          "is_primary",
+          "lead_lag",
+          "source_quote",
+          "source_url",
+          "top_movers"
+        ],
+        "title": "ConvictionEvidence",
+        "type": "object"
+      },
+      "ConvictionProposalRow": {
+        "description": "One propose-only conviction trade proposal for a human to review + arm. `size_usd`/`max_loss_usd` are\nstrings (exact decimal). `status` is always 'proposed' \u2014 this surface NEVER arms or moves money.",
+        "properties": {
+          "account": {
+            "title": "Account",
+            "type": "string"
+          },
+          "asset": {
+            "title": "Asset",
+            "type": "string"
+          },
+          "authority_score": {
+            "title": "Authority Score",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ConvictionEvidence"
+          },
+          "expiry": {
+            "title": "Expiry",
+            "type": "string"
+          },
+          "max_loss_usd": {
+            "title": "Max Loss Usd",
+            "type": "string"
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "size_usd": {
+            "title": "Size Usd",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "thesis": {
+            "title": "Thesis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "account",
+          "asset",
+          "direction",
+          "size_usd",
+          "max_loss_usd",
+          "authority_score",
+          "expiry",
+          "thesis",
+          "status",
+          "source",
+          "created_at",
+          "evidence"
+        ],
+        "title": "ConvictionProposalRow",
+        "type": "object"
+      },
+      "ConvictionProposalsResponse": {
+        "description": "The conviction review queue, highest-authority first. `count` is the number of open proposals; an empty\nqueue (`count` 0) is the honest state until the voices-pass producer fills it. `armed` is ALWAYS false here \u2014\nthe surface is propose-only and exists so a human can review the evidence before arming anything.",
+        "properties": {
+          "armed": {
+            "default": false,
+            "title": "Armed",
+            "type": "boolean"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ConvictionProposalRow"
+            },
+            "title": "Proposals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "proposals"
+        ],
+        "title": "ConvictionProposalsResponse",
+        "type": "object"
+      },
+      "ConvictionTopMover": {
+        "description": "One of the account's prior correct, resolved calls \u2014 magnitude evidence behind its authority.",
+        "properties": {
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "entity": {
+            "title": "Entity",
+            "type": "string"
+          },
+          "realized_return": {
+            "title": "Realized Return",
+            "type": "number"
+          },
+          "ts": {
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "direction",
+          "realized_return",
+          "ts"
+        ],
+        "title": "ConvictionTopMover",
+        "type": "object"
+      },
       "CorrelationFinding": {
         "description": "One persisted correlation_scan finding (one row of correlation_findings): the PIT IC of a feature against\na forward return for one asset \u00d7 horizon, with its sample size, p-value, and BH-FDR survival. `non_causal`\nis DERIVED from `deflated_note` (a registered non-causal / orthogonality control feature) so the UI never lets\na known-false baseline masquerade as an edge \u2014 a strong IC there is a data-snooping red flag, not a hypothesis.\nPropose-only: a finding is a candidate correlation, never an edge.",
         "properties": {
@@ -8482,6 +8688,47 @@
           }
         },
         "summary": "Console Command"
+      }
+    },
+    "/conviction/proposals": {
+      "get": {
+        "description": "The conviction review queue \u2014 highest-authority first. Each row carries the asset + direction, the capped\nsize + hard max-loss + expiry, the plain-language thesis, and the full authority evidence (composite + EV +\ntop-3 movers + the source post) so the operator can review before arming. PROPOSE-ONLY: nothing here arms or\nmoves money. Defensive like /mind/credibility \u2014 a not-yet-migrated prod (no `conviction_proposals` table) or\nan unfilled queue yields count=0, never an error and never a fabricated row.",
+        "operationId": "conviction_proposals_conviction_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvictionProposalsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Conviction Proposals"
       }
     },
     "/correlations": {

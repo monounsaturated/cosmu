@@ -704,3 +704,45 @@ def reset_trial_ledger_cache() -> None:
     prod (the schema is fixed per process)."""
     with _TRIAL_LEDGER_LOCK:
         _TRIAL_LEDGER_TABLE.clear()
+
+
+# The authority-conviction proposal queue (cosmu/conviction). Same schema-probe discipline as `trial_ledger`: the
+# producer (out-of-band, in the voices pass) WRITES proposals only when the table exists, and the /conviction API
+# READS [] when it doesn't — so a pre-migration prod is byte-identical to before (no producer, honest-empty UI).
+_CONVICTION_PROPOSALS_TABLE: dict[str, bool] = {}
+_CONVICTION_PROPOSALS_LOCK = threading.Lock()
+
+
+def conviction_proposals_available(store: Store) -> bool:
+    """True when the live schema carries the `conviction_proposals` table (the propose-only authority-conviction
+    review queue).
+
+    Present → the voices pass produces proposals into it and the /conviction API serves them; absent (pre-
+    migration prod) → the producer no-ops and the API serves the honest-empty queue, exactly as before. Memoized
+    per database_url; tests that create the table in-process call `reset_conviction_proposals_cache()` to re-probe."""
+    key = store.settings.database_url
+    cached = _CONVICTION_PROPOSALS_TABLE.get(key)
+    if cached is not None:
+        return cached
+    with _CONVICTION_PROPOSALS_LOCK:
+        cached = _CONVICTION_PROPOSALS_TABLE.get(key)  # re-check under lock
+        if cached is not None:
+            return cached
+        if store._is_pg:
+            rows = store.rows(
+                "SELECT table_name FROM information_schema.tables WHERE table_name = 'conviction_proposals'"
+            )
+            present = len(rows) > 0
+        else:
+            rows = store.rows(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'conviction_proposals'"
+            )
+            present = len(rows) > 0
+        _CONVICTION_PROPOSALS_TABLE[key] = present
+        return present
+
+
+def reset_conviction_proposals_cache() -> None:
+    """Clear the per-DSN `conviction_proposals` table memo (for tests that create the table in-process)."""
+    with _CONVICTION_PROPOSALS_LOCK:
+        _CONVICTION_PROPOSALS_TABLE.clear()

@@ -500,6 +500,29 @@ CREATE TABLE IF NOT EXISTS trial_ledger (
 );
 CREATE INDEX IF NOT EXISTS idx_trial_ledger_family ON trial_ledger(family);
 
+-- Authority-conviction review queue (cosmu/conviction): one row per PROPOSE-ONLY conviction trade proposal built
+-- from a high-authority account's fresh asset-call. The producer (out-of-band, in the voices pass) upserts by the
+-- deterministic proposal_id; the /conviction API serves the queue for a HUMAN to review + arm. `status` is
+-- 'proposed' from this lane — nothing here arms or moves money (arming is a separate human action off this path).
+-- `evidence` is the JSON AuthorityEvidence (authority composite + EV/magnitude + top-3 movers + the source post).
+CREATE TABLE IF NOT EXISTS conviction_proposals (
+  proposal_id TEXT PRIMARY KEY,
+  account TEXT NOT NULL,              -- the followed account the call came from
+  asset TEXT NOT NULL,               -- the asset/entity the call is about (e.g. BTC)
+  direction TEXT NOT NULL,           -- 'long' | 'short'
+  size_usd NUMERIC NOT NULL,         -- the conviction stake, sized by authority × EV, capped
+  max_loss_usd NUMERIC NOT NULL,     -- the hard stop — always <= the lane's max-loss cap
+  authority_score REAL NOT NULL,     -- the account's authority composite (ranks the queue)
+  expiry TEXT NOT NULL,              -- do not act after this instant
+  thesis TEXT NOT NULL,              -- the plain-language WHY
+  status TEXT NOT NULL DEFAULT 'proposed',           -- propose-only from this lane
+  source TEXT NOT NULL DEFAULT 'authority-conviction',
+  evidence TEXT NOT NULL,            -- JSON: the AuthorityEvidence (composite + EV + top movers + source post)
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_conviction_proposals_authority ON conviction_proposals(authority_score DESC);
+
 -- Correlation ledger: every correlation_scan finding, TRACKED over time (one row per run × feature × source ×
 -- asset × horizon). PROPOSE-ONLY — a finding is a candidate hypothesis, never an edge (the Gate disposes). Lets the
 -- UI + decay-tracking read how a PIT IC moves run-over-run; deflated_note honestly flags known non-causal features.

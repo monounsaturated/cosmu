@@ -438,6 +438,28 @@ create table if not exists trial_ledger (
 );
 create index if not exists idx_trial_ledger_family on trial_ledger(family);
 
+-- Authority-conviction review queue (cosmu/conviction): one row per PROPOSE-ONLY conviction trade proposal built
+-- from a high-authority account's fresh asset-call. The producer (out-of-band, in the voices pass) upserts by the
+-- deterministic proposal_id; the /conviction API serves the queue for a HUMAN to review + arm. `status` is
+-- 'proposed' from this lane — nothing here arms or moves money (arming is a separate human action off this path).
+create table if not exists conviction_proposals (
+  proposal_id text primary key,
+  account text not null,
+  asset text not null,
+  direction text not null,           -- 'long' | 'short'
+  size_usd numeric not null,
+  max_loss_usd numeric not null,
+  authority_score real not null,
+  expiry text not null,
+  thesis text not null,
+  status text not null default 'proposed',
+  source text not null default 'authority-conviction',
+  evidence text not null,            -- JSON: the AuthorityEvidence (composite + EV + top movers + source post)
+  created_at text not null,
+  updated_at text not null
+);
+create index if not exists idx_conviction_proposals_authority on conviction_proposals(authority_score desc);
+
 -- Correlation ledger: every correlation_scan finding, TRACKED over time (one row per run × feature × source ×
 -- asset × horizon). PROPOSE-ONLY — a finding is a candidate hypothesis, never an edge (the Gate disposes).
 -- deflated_note honestly flags known non-causal features; the read path drives the UI + IC decay-tracking.

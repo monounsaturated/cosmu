@@ -244,6 +244,51 @@ export interface CommandResponse {
   reply_md: string;
 }
 
+export interface ConvictionEvidence {
+  account: string;
+  authority_score: number;
+  avg_hit_magnitude: number;
+  brier_skill_score: number;
+  citation_authority: number;
+  ev_per_call: number;
+  is_primary: boolean;
+  lead_lag: string;
+  n_resolved: number;
+  skill: number;
+  source_quote: string;
+  source_url: string;
+  top_movers: ConvictionTopMover[];
+}
+
+export interface ConvictionProposalRow {
+  account: string;
+  asset: string;
+  authority_score: number;
+  created_at: string;
+  direction: string;
+  evidence: ConvictionEvidence;
+  expiry: string;
+  max_loss_usd: string;
+  proposal_id: string;
+  size_usd: string;
+  source: string;
+  status: string;
+  thesis: string;
+}
+
+export interface ConvictionProposalsResponse {
+  armed?: boolean;
+  count: number;
+  proposals: ConvictionProposalRow[];
+}
+
+export interface ConvictionTopMover {
+  direction: string;
+  entity: string;
+  realized_return: number;
+  ts: string;
+}
+
 export interface CorrelationFinding {
   asset: string;
   data_source: string;
