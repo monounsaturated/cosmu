@@ -18,7 +18,7 @@
 7. xAI ~$0.20/day spend fix
 8. IBKR execution adapter (TradFi live path)
 
-**Local (running now):** re-gate the existing strategies vs the current Gate.
+**Local DONE — re-gate ([#487](https://github.com/monounsaturated/cosmu/pull/487)):** of the 10 funded TAA tracks → **3 still PASS the full strict Gate: DAA, VAA, ADM** (the real current survivors + **first live-arm candidates**) · 4 overfit-clean but soft-fail beat-B&H (PAA/Faber/RP/TSMOM — your call, crisis-hedges) · **3 now HARD-FAIL → demote/graveyard: GEM, Sector-Momentum, Dual-Momentum-QQQ** (negative forward P&L corroborates). Read-only — nothing mutated.
 
 ## 🔴 COST FLAGS (action needed)
 - **OpenRouter free path = EXHAUSTED** (`limit_remaining: 0`). The "free models" plan isn't working right now → **check your OpenRouter balance / free-tier** (the $10 may be paid-only or the cap resets). The build itself runs on Claude (your flat sub = $0).
