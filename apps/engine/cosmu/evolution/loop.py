@@ -64,6 +64,11 @@ class Candidate:
     lane: str
     operator: str | None = None
     rationale: str | None = None
+    # Provenance of an authoring-door seed: "human" (an operator's intentional brief/inbox spec — NEVER silently
+    # dropped) vs "agent" (a machine batch — near-dups are HARD-SKIPPED so a clone flood can't eat the FDR budget).
+    # Only the wave-0 inbox/chat seeds carry this; mutation/wildcard children leave it None (they are already
+    # novelty-gated by the same _novelty_ok check). Defaults to "human" for a chat seed with no explicit provenance.
+    authored_by: str = "human"
 
 
 @dataclass
@@ -224,6 +229,7 @@ class FarmLoop:
         explore_pct: float | None = None,
         pine_scripts: list[str] | None = None,
         extra_seeds: list[StrategySpec] | None = None,
+        extra_seeds_authored_by: list[str] | None = None,
     ) -> CohortSummary:
         cfg = self.settings.evolution
         seed = cfg.default_seed if seed is None else seed
@@ -274,8 +280,13 @@ class FarmLoop:
             Candidate(spec=spec, origin="seed", lane="seed", rationale="diverse seed template")
             for spec in seed_population()
         ]
-        for spec in extra_seeds or []:
-            wave0.append(Candidate(spec=spec, origin="chat", lane="chat", operator="chat_author", rationale="human-authored brief"))
+        # The chat/inbox extra_seeds carry a PER-SEED provenance (parallel to extra_seeds, "human" by default) so
+        # the wave-0 novelty gate below can split policy: an AGENT batch near-dup is HARD-SKIPPED (a clone flood
+        # can't eat the FDR budget) while a HUMAN near-dup is KEPT but flagged (respect intentional authorship).
+        _seed_provenance = extra_seeds_authored_by or []
+        for _i, spec in enumerate(extra_seeds or []):
+            _by = _seed_provenance[_i] if _i < len(_seed_provenance) else "human"
+            wave0.append(Candidate(spec=spec, origin="chat", lane="chat", operator="chat_author", rationale="human-authored brief", authored_by=_by))
         for src in pine_scripts or []:
             tr = translate_pine(src)
             pine_notes.extend(tr.notes)
@@ -295,10 +306,28 @@ class FarmLoop:
         # of one candidate's params. No DB writes here except the trial ledger, so persistence stays one batch.
         screened: list[_Screened] = []
         parents: list[_Screened] = []   # the screened wave-0 candidates = the exploit lane's parent pool
+        # WAVE-0 NOVELTY GATE (the authoring door). The dominant intake path (`.json` inbox specs → scan_inbox →
+        # extra_seeds) was the ONE lane never novelty-checked: every near-duplicate seed spent an independent slot
+        # in the Gate's BH-FDR multiple-testing budget. We now check each NON-seed wave-0 candidate (chat/inbox/
+        # pine) against the seeds already admitted THIS wave, with a HUMAN-vs-AGENT policy split. The structural
+        # seeds themselves are the diverse baseline pool (seed_population) and are not inter-checked. `inbox_near_dup`
+        # rows are deferred to the persist batch (one transaction). HARD-SKIPPED agent dups are counted as duplicates.
+        wave0_admitted: list[StrategySpec] = []
+        near_dup_events: list[dict] = []  # {name, authored_by, action, reason} → emitted in the persist batch
 
         for cand in wave0:
             if _is_duplicate(cand.spec, cand.lane):
                 continue
+            verdict = self._wave0_novelty_verdict(cand, wave0_admitted)
+            if verdict == "skip":
+                # AGENT near-dup: HARD-SKIP (a near-clone is not a new hypothesis — admitting it re-spends the FDR
+                # budget without adding information; mirrors the agent-batch author policy). Counted as a duplicate.
+                duplicates += 1
+                near_dup_events.append({"name": cand.spec.name, "authored_by": cand.authored_by, "action": "skipped", "lane": cand.lane})
+                continue
+            if verdict == "flag":
+                # HUMAN near-dup: KEEP (respect intentional authorship) but ANNOTATE so the operator sees it.
+                near_dup_events.append({"name": cand.spec.name, "authored_by": cand.authored_by, "action": "kept_flagged", "lane": cand.lane})
             sc = self._screen_and_register(cand, seed, survival)
             if sc is None:
                 invalid += 1
@@ -306,6 +335,10 @@ class FarmLoop:
             screened.append(sc)
             lanes[cand.lane] += 1
             parents.append(sc)
+            # Track the admitted authoring-door seeds as the live set the NEXT seed's novelty check compares against,
+            # so two near-duplicate inbox seeds in the SAME batch are caught (the second sees the first as live).
+            if cand.lane != "seed":
+                wave0_admitted.append(cand.spec)
 
         # Waves 1..N — fill the cohort with exploit children and explore wildcards.
         remaining = max(0, size - len(wave0))
@@ -417,6 +450,18 @@ class FarmLoop:
                 payload={"seed": seed, "cohort_size": size, "explore_pct": explore},
             )
 
+            # AUDIT the wave-0 novelty verdicts: an agent near-dup that was hard-skipped (FDR-budget protection) and a
+            # human near-dup that was KEPT but flagged (intentional authorship respected). The operator reads these so
+            # a near-duplicate is never silently dropped — it is either explained (agent) or surfaced + kept (human).
+            for _evt in near_dup_events:
+                b.append_event(
+                    actor="master",
+                    kind="inbox_near_dup",
+                    ref_type="cohort",
+                    ref_id=cohort_id,
+                    payload=_evt,
+                )
+
             for sc in screened:
                 parent_vid = vid_by_screened.get(id(sc.parent)) if sc.parent is not None else None
                 result, vid = self._persist(sc, survival, parent_vid, b)
@@ -512,6 +557,25 @@ class FarmLoop:
             pass
 
     # ------------------------------------------------------------------ internals
+
+    def _wave0_novelty_verdict(self, cand: Candidate, admitted: list[StrategySpec]) -> str:
+        """The WAVE-0 (authoring-door) novelty verdict for one inbox/chat/pine seed — "ok" | "skip" | "flag".
+
+        The dominant strategy-authoring door (`.json` inbox specs → scan_inbox → extra_seeds wave-0) was the ONE
+        intake path NEVER novelty-checked: every near-duplicate seed spent an independent slot in the Gate's
+        BH-FDR multiple-testing budget. This applies the SAME structural-distance check the mutation/wildcard
+        children use (`_novelty_ok`), with a HUMAN-vs-AGENT policy split:
+          - SEEDS (the curated diverse baseline / exploit parent pool) are never inter-checked → "ok" (matches the
+            seed-lane exemption in _is_duplicate).
+          - a genuinely-novel seed → "ok" (existing behaviour preserved exactly).
+          - an AGENT near-dup → "skip" (HARD-DEDUPE — a machine batch shouldn't flood the FDR budget with clones).
+          - a HUMAN near-dup → "flag" (KEEP but annotate — never silently drop the operator's intentional work).
+        """
+        if cand.lane == "seed":
+            return "ok"
+        if not admitted or self._novelty_ok(cand.spec, admitted):
+            return "ok"
+        return "skip" if cand.authored_by == "agent" else "flag"
 
     def _novelty_ok(self, spec: StrategySpec, live_specs: list[StrategySpec]) -> bool:
         """Quick novelty gate: reject specs too similar to recent dead-ends or the live population."""
