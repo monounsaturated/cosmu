@@ -18,6 +18,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from cosmu.config.voices import OPENROUTER_FREE_MODEL
 from cosmu.data.altdata import AltDataPoint, GdeltNewsProvider, NewsProvider
 from cosmu.lab.llm import (
     OPENROUTER_URL,
@@ -31,9 +32,10 @@ from cosmu.lab.llm import (
 # Bump this string whenever a rubric or the prompt/schema changes.
 INDEX_TRANSFORM_VERSION = "llm-index-v1"
 
-# Cheap tiers — scoring a handful of snippets into one number needs no frontier model.
+# Cheap tiers — scoring a handful of snippets into one number needs no frontier model. The OpenRouter default
+# is the canonical ":free" model ($0) — the scheduled scorer's path; xAI/grok is the on-demand-only opt-in.
 _XAI_MODEL = "grok-3-mini"
-_OPENROUTER_MODEL = "openai/gpt-4o-mini"
+_OPENROUTER_MODEL = OPENROUTER_FREE_MODEL
 
 _DEFAULT_EVIDENCE_LIMIT = 30  # snippets fed to the judge per call — bounded for cost + context
 
@@ -256,16 +258,18 @@ def build_index_provider_from_settings(
     *,
     evidence: EvidenceProvider | None = None,
 ) -> LlmIndexProvider:
-    """Build the index provider WITH the operator's LLM key wired in — xAI preferred (already on Railway),
-    OpenRouter fallback, both OpenAI-compatible. With NO key the chat seam is None so the provider ingests
-    nothing (honest degradation). Default evidence = GDELT headlines; inject a fixture in tests."""
+    """Build the index provider WITH the operator's LLM key wired in. OpenRouter ":free" is the DEFAULT for
+    this SCHEDULED rubric scorer ($0); xAI/Grok is reserved for ON-DEMAND use and only runs here when opted in
+    (XAI_SCHEDULED_ENABLED=1) — preserving the small xAI credit. Both are OpenAI-compatible. With no usable key
+    the chat seam is None so the provider ingests nothing (honest degradation). Default evidence = GDELT
+    headlines; inject a fixture in tests."""
     chat: ChatFn | None = None
     model_id = _OPENROUTER_MODEL
-    if getattr(settings, "xai_api_key", None):
+    if getattr(settings, "openrouter_api_key", None):
+        chat = openrouter_chat(settings.openrouter_api_key, url=OPENROUTER_URL)
+        model_id = _OPENROUTER_MODEL  # the canonical ":free" model — ~$0
+    elif getattr(settings, "xai_api_key", None) and getattr(settings, "xai_scheduled_enabled", False):
         chat = openrouter_chat(settings.xai_api_key, url=XAI_URL)
         model_id = _XAI_MODEL
-    elif getattr(settings, "openrouter_api_key", None):
-        chat = openrouter_chat(settings.openrouter_api_key, url=OPENROUTER_URL)
-        model_id = _OPENROUTER_MODEL
     ev = evidence if evidence is not None else NewsEvidenceProvider(GdeltNewsProvider())
     return LlmIndexProvider(evidence=ev, chat=chat, model_id=model_id)

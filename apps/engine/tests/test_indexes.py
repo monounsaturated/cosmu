@@ -31,6 +31,8 @@ from cosmu.lab.indexes import (
     IndexScore,
     LlmIndexProvider,
     NewsEvidenceProvider,
+    _OPENROUTER_MODEL,
+    _XAI_MODEL,
     build_index_provider_from_settings,
     score_index,
 )
@@ -170,9 +172,19 @@ def test_build_from_settings_is_key_gated():
     )
     assert prov.chat is None
     assert prov.fetch_series("MARKET", "reg_risk_crypto", limit=10) == []
-    # with a key the chat seam is live (xAI preferred)
-    keyed = build_index_provider_from_settings(Settings(xai_api_key="xai-test"))
-    assert keyed.chat is not None
+    # OpenRouter ":free" is the DEFAULT scheduled scorer ($0) whenever an OpenRouter key is present.
+    keyed_or = build_index_provider_from_settings(Settings(openrouter_api_key="or-test", xai_api_key=None))
+    assert keyed_or.chat is not None
+    assert keyed_or.model_id == _OPENROUTER_MODEL  # the canonical ":free" model
+    # xAI ALONE is reserved for on-demand: the SCHEDULED scorer does NOT auto-spend it (chat None, $0)...
+    reserved = build_index_provider_from_settings(Settings(xai_api_key="xai-test", openrouter_api_key=None))
+    assert reserved.chat is None
+    # ...unless explicitly opted in for scheduled use (XAI_SCHEDULED_ENABLED=1) → live xAI seam.
+    keyed_xai = build_index_provider_from_settings(
+        Settings(xai_api_key="xai-test", openrouter_api_key=None, xai_scheduled_enabled=True)
+    )
+    assert keyed_xai.chat is not None
+    assert keyed_xai.model_id == _XAI_MODEL
 
 
 # --------------------------------------------------------------------------- wiring (registry + store routing)

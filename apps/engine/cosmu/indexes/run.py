@@ -26,15 +26,18 @@ from cosmu.knowledge.store import Store, utcnow
 
 
 def _chat_from_settings(settings) -> tuple[Callable[[str, str], str | None] | None, str]:  # noqa: ANN001
-    """The LLM chat seam for text-index scoring — xAI preferred (already on Railway), OpenRouter fallback. No
-    key → (None, …) so a text index degrades honestly (records nothing) instead of fabricating a score."""
+    """The LLM chat seam for text-index scoring. OpenRouter ":free" is the DEFAULT for this scheduled refresher
+    ($0); xAI/Grok is reserved for ON-DEMAND use and only runs when opted in (XAI_SCHEDULED_ENABLED=1) — so this
+    entrypoint can never silently spend the xAI credit. No usable key → (None, …) so a text index degrades
+    honestly (records nothing) instead of fabricating a score."""
+    from cosmu.config.voices import OPENROUTER_FREE_MODEL
     from cosmu.lab.llm import OPENROUTER_URL, XAI_URL, openrouter_chat
 
-    if getattr(settings, "xai_api_key", None):
-        return openrouter_chat(settings.xai_api_key, url=XAI_URL), "grok-3-mini"
     if getattr(settings, "openrouter_api_key", None):
-        return openrouter_chat(settings.openrouter_api_key, url=OPENROUTER_URL), "openai/gpt-4o-mini"
-    return None, "openai/gpt-4o-mini"
+        return openrouter_chat(settings.openrouter_api_key, url=OPENROUTER_URL), OPENROUTER_FREE_MODEL
+    if getattr(settings, "xai_api_key", None) and getattr(settings, "xai_scheduled_enabled", False):
+        return openrouter_chat(settings.xai_api_key, url=XAI_URL), "grok-3-mini"
+    return None, OPENROUTER_FREE_MODEL
 
 
 def refresh_index(store: Store, spec: IndexSpec, *, settings, now: datetime | None = None) -> tuple[int, int]:  # noqa: ANN001

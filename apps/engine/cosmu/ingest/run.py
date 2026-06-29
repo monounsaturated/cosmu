@@ -198,11 +198,15 @@ class Providers:
             polymarket_clob=PolymarketClobProvider(pin_token=pin),
             # LunarCrush only connects when LUNARCRUSH_API_KEY is set; no key → the provider returns [] (honest).
             lunarcrush=LunarCrushProvider(api_key=settings.lunarcrush_api_key or ""),
-            # xAI/Grok Twitter: key-gated — only live when XAI_API_KEY is set in Railway env.
-            xai_twitter=XaiTwitterProvider(api_key=settings.xai_api_key or ""),
+            # xAI/Grok Twitter LiveSearch is RESERVED for ON-DEMAND use (preserve the small xAI credit). The
+            # scheduled ingest pass only spends xAI when XAI_SCHEDULED_ENABLED=1; otherwise no key → [] (honest
+            # degradation, $0). On-demand tweet ingestion constructs XaiTwitterProvider with the key directly.
+            xai_twitter=XaiTwitterProvider(
+                api_key=(settings.xai_api_key or "") if settings.xai_scheduled_enabled else ""
+            ),
             # Typed event/news scorer via the cheap-OpenRouter formatter — key-gated (None without OPENROUTER_API_KEY).
             event_llm=build_event_formatter_from_settings(settings),
-            # LLM index scorer — xAI preferred, OpenRouter fallback; no key → ingests nothing (honest).
+            # LLM index scorer — OpenRouter ":free" by default ($0); xAI only when opted in (on-demand reserve).
             llm_index=build_index_provider_from_settings(settings),
             # CryptoPanic only connects when CRYPTOPANIC_API_KEY is set; no key → the provider returns [] (honest).
             cryptopanic=CryptoPanicIngestProvider(api_key=settings.cryptopanic_api_key or ""),
