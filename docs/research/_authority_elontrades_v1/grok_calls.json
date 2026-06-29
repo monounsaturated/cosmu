@@ -1,0 +1,89 @@
+{
+  "account": "@ElonTrades",
+  "calls": [
+    {
+      "ts": "2026-06-20T13:28:41Z",
+      "text": "Everyone is saying crypto and bitcoin are dead, I\u2019m not overly bullish myself, but the fact is $BTC is still over $60k and I tend to listen to the chart more than the sentiment.\n\nEverything is cyclical. And the fact is, the crypto market cap is still small relative to other asset classes.\n\nThere\u2019s still money to be made.",
+      "url": "https://x.com/ElonTrades/status/2068325164845064538",
+      "asset": "BTC",
+      "direction": "neutral"
+    },
+    {
+      "ts": "2026-06-06T21:48:23Z",
+      "text": "At what price do you think Vitalik got his ETH?\n\nI hear you, but it\u2019s not a good argument.",
+      "url": "https://x.com/ElonTrades/status/2063377487170597370",
+      "asset": "ETH",
+      "direction": "neutral"
+    },
+    {
+      "ts": "2026-06-06T08:26:34Z",
+      "text": "The strategic reserve is just a wallet where they hold confiscated BTC; No state let alone the country will spend to actually acquire BTC.\n\nHow will the passage of the clarity act help the price of BTC?\n\nI think the upside was much bigger in 22 while the R/R today sucks.",
+      "url": "https://x.com/ElonTrades/status/2063175704905228695",
+      "asset": "BTC",
+      "direction": "bearish"
+    },
+    {
+      "ts": "2026-06-05T18:52:22Z",
+      "text": "When $BTC crashed from $60k to under $20k, people bought in heavily because they still believed in the narratives of sound money, hedge against inflation, a digital gold.\n\nNow when BTC drops to (insert your guess), the question is WHY would people buy it?\n\nWhich of those use-cases held up this cycle?\n\nThat is the elephant in the room.",
+      "url": "https://x.com/ElonTrades/status/2062970802052485125",
+      "asset": "BTC",
+      "direction": "neutral"
+    },
+    {
+      "ts": "2026-06-03T10:44:29Z",
+      "text": "$BTC dominance getting hammered while $HYPE continues making new ATH\u2019s.\n\nUtility season.",
+      "url": "https://x.com/ElonTrades/status/2062123250524569644",
+      "asset": "BTC",
+      "direction": "neutral"
+    },
+    {
+      "ts": "2026-06-02T16:25:37Z",
+      "text": "Buy $BTC when $MSTR goes to zero.",
+      "url": "https://x.com/ElonTrades/status/2061846707881578828",
+      "asset": "BTC",
+      "direction": "bullish"
+    },
+    {
+      "ts": "2026-05-26T11:46:07Z",
+      "text": "And they're down underwater about $7.4B on their $ETH.\n\nNot an entity I'd want holding anything I'm in.",
+      "url": "https://x.com/ElonTrades/status/2059239657905209737",
+      "asset": "ETH",
+      "direction": "bearish"
+    },
+    {
+      "ts": "2026-05-24T19:01:26Z",
+      "text": "Everyone is talking about how crypto is dead, yet the charts are saying something different.\n\nWhat if we're entering an era of utility that's decoupling certain crypto assets from the broader $BTC moves?\n\nWhy do revenue generating protocols and chains have to follow Bitcoin forever? Maybe they don't.\n\n$ZEC $HYPE $NEAR $VVV $RAIL $GRASS",
+      "url": "https://x.com/ElonTrades/status/2058624430709051745",
+      "asset": "BTC",
+      "direction": "neutral"
+    }
+  ],
+  "grok_cost_usd": 0.06570795,
+  "x_search_calls": 7,
+  "usage": {
+    "input_tokens": 32705,
+    "input_tokens_details": {
+      "cached_tokens": 12096
+    },
+    "output_tokens": 1011,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 33716,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 7,
+    "cost_in_usd_ticks": 657079500,
+    "server_side_tool_usage_details": {
+      "web_search_calls": 0,
+      "x_search_calls": 7,
+      "code_interpreter_calls": 0,
+      "file_search_calls": 0,
+      "mcp_calls": 0,
+      "document_search_calls": 0
+    },
+    "context_details": {
+      "input_tokens": 20443,
+      "output_tokens": 770
+    }
+  }
+}
