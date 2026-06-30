@@ -98,15 +98,21 @@ function isUncomputed(r: LabSymbolRow): boolean {
   return r.symbol === "";
 }
 
-// The row's lifecycle lane: a cell-less (uncomputed) row is ALWAYS "New" (lab); otherwise the parent version's
-// normalized status. Single source for the badge, the Status dropdown, the filter and the status sort.
-//
-// HONEST-PAPER FIX: the `status` column is overloaded — most paper-status rows are zero-capital watch-lane rejects
-// (gate near-misses routed to a paper test) that have NEVER traded. Reuse the shared isPaperRow predicate
-// (isPaper(status) && has_paper_fills===true): a paper-status row WITHOUT a real fill is badged "Backtest", not
-// "Paper" — matching the version's own sheet ("no fills yet") and the leaderboard/sidebar paper cohort. Because
-// this is the ONE row-level source, the badge, the Status filter and the status sort all stay in lockstep.
+// The row's lifecycle lane. Precedence, top-down:
+//   1. A FUNDED forward-test track (status=paper AND a real paper fill, via isPaperRow) → "paper", EVEN when it's
+//      cell-less. These are the operationally live bots (the monthly TAA survivors: DAA/VAA/ADM/…); they MUST
+//      badge "Paper" so the grid agrees with the ribbon's "Trading" count (the operator's "Trading 9" vs
+//      "no Paper rows" reconciliation — they were squeezed out / mislabelled "New" before).
+//   2. A genuinely LIVE version → "live" (real money — never hidden behind the cell-less rule).
+//   3. Any OTHER cell-less (uncomputed) row → "New" (lab): authored/armed but nothing executed yet.
+//   4. A paper-STATUS cell row WITHOUT a real fill → "screened" (Backtest) — a zero-capital watch-lane reject
+//      (most paper-status rows are gate near-misses routed to a paper test that have NEVER traded).
+//   5. Otherwise the parent version's normalized status.
+// This is the ONE row-level source, so the badge, the Status dropdown, the filter and the status sort all stay in
+// lockstep — and in lockstep with the ribbon's funded "Trading" count.
 function rowLifeStatus(r: LabSymbolRow): LifeStatus {
+  if (isPaperRow(r)) return "paper";
+  if ((r.status ?? "").toLowerCase() === "live") return "live";
   if (isUncomputed(r)) return "lab";
   if (isPaper(r.status) && !isPaperRow(r)) return "screened";
   return lifeStatusOf(r.status);
@@ -129,15 +135,16 @@ function formatOosShort(days: number | null | undefined): string | null {
   return `${d}d`;
 }
 
-// Sortable column keys. "combo" and "strategy" are the two identity columns (always shown); the rest are pickable.
-// The legacy "verdict" column is gone; "status" is the per-row lifecycle stage. "fees" = the venue's TODAY taker
-// fee (sim while paper/backtest, real while live); "oos" = the out-of-sample validation window duration.
-type ColKey = "status" | "return" | "venue" | "symbol" | "timeframe" | "trades" | "dd" | "sharpe" | "fees" | "oos";
-type SortKey = "combo" | "strategy" | ColKey;
+// Sortable column keys. "status", "combo" and "strategy" are the three identity columns (always shown, in that
+// order — Status is the LEFTMOST column); the rest are pickable. The legacy "verdict" column is gone. "fees" =
+// the venue's TODAY taker fee (sim while paper/backtest, real while live); "oos" = the OOS validation window.
+type ColKey = "return" | "venue" | "symbol" | "timeframe" | "trades" | "dd" | "sharpe" | "fees" | "oos";
+type SortKey = "status" | "combo" | "strategy" | ColKey;
 type SortDir = "asc" | "desc";
 
 const LIFE_RANK: Record<LifeStatus, number> = { lab: 0, screened: 1, paper: 2, live: 3, killed: -1 };
 const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, number>) => number | string> = {
+  status: (r) => LIFE_RANK[rowLifeStatus(r)] ?? 0,
   combo: (r, comboNum) => comboNum?.get(comboKeyOf(r)) ?? 0,
   strategy: (r) => r.strategy_name.toLowerCase(),
   symbol: (r) => r.symbol.toLowerCase(),
@@ -149,16 +156,15 @@ const SORT_VALUE: Record<SortKey, (r: LabSymbolRow, comboNum?: Map<string, numbe
   sharpe: (r) => r.sharpe,
   dd: (r) => r.max_drawdown,
   trades: (r) => r.trades,
-  status: (r) => LIFE_RANK[rowLifeStatus(r)] ?? 0,
   fees: (r) => (typeof r.fee_bps === "number" ? r.fee_bps : -Infinity),
   oos: (r) => (typeof r.oos_window_days === "number" ? r.oos_window_days : -Infinity),
 };
 
-// Column order: status · return · venue · symbol · trades · dd · sharpe.
+// Pickable column order: return · venue · symbol · timeframe · trades · dd · oos · fees · sharpe. (Status is now
+// a fixed identity column rendered FIRST, ahead of Bot/Strategy — see the <thead>/<colgroup>; not in this list.)
 // Sharpe is HIDDEN by default; everything else is visible.
 const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
-  { key: "status", label: "Status", tip: "The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this." },
-  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. The muted '≥ x%/yr' below is a CONFIDENCE FLOOR (Sharpe standard-error shrinkage) — the estimate net of noise, so a short/thin window isn't read as fact. Short windows amplify — read with Trades/Sharpe and the strat sheet's validation window. — = window not yet recorded (re-screened cells fill in)." },
+  { key: "return", label: "Return /yr", align: "right", tip: "ANNUALIZED (CAGR) net-of-fee return on THIS symbol at THIS venue — the ONLY return shown, because comparing totals over different windows is meaningless. Standalone, never a pooled mean. The muted 'floor ≥ x%/yr' below is a CONFIDENCE FLOOR (Sharpe standard-error shrinkage) — the estimate net of noise, so a short/thin window isn't read as fact. Short windows amplify — read with Trades/Sharpe and the OOS window. — = window not yet recorded (re-screened cells fill in)." },
   { key: "venue", label: "Venue" },
   { key: "symbol", label: "Symbol" },
   { key: "timeframe", label: "Timeframe", tip: "The bar size (1h · 4h · 1d) this cell was screened on — the 4th axis of the combo (algo × asset × venue × timeframe). The same edge on two timeframes is two DISTINCT combos. — = not recorded (legacy/single-timeframe cell)." },
@@ -170,20 +176,23 @@ const COLS: { key: ColKey; label: string; align?: "right"; tip?: string }[] = [
 ];
 // Timeframe is HIDDEN by default (in today's single-timeframe world every cell shows the same value, so the column
 // adds no signal); it becomes useful once multi-tf is enabled and is then pickable from the Columns menu.
-const DEFAULT_VISIBLE: Record<ColKey, boolean> = { status: true, return: true, venue: true, symbol: true, timeframe: false, trades: true, dd: true, oos: true, fees: true, sharpe: false };
-const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length;
+const DEFAULT_VISIBLE: Record<ColKey, boolean> = { return: true, venue: true, symbol: true, timeframe: false, trades: true, dd: true, oos: true, fees: true, sharpe: false };
+// Count of the visible DEFAULT columns INCLUDING the three fixed identity columns (status · combo · strategy),
+// so the min-width-floor threshold matches what's actually on screen.
+const FIXED_COL_COUNT = 3;
+const DEFAULT_COL_COUNT = Object.values(DEFAULT_VISIBLE).filter(Boolean).length + FIXED_COL_COUNT;
 
-// Per-column CSS width class (table-layout:fixed honours these). The identity columns (.col-combo, .col-strat)
-// are fixed-size / flex-grow respectively; toggling extra columns adds the min-width floor.
+// Per-column CSS width class (table-layout:fixed honours these). The fixed identity columns use .col-status /
+// .col-combo / .col-strat; the pickable ones map here. "OOS window" gets the WIDER .col-num-wide class so its
+// long header never collides with the neighbouring Max DD header (the prior overlap bug at a normal viewport).
 const COL_CLASS: Record<ColKey, string> = {
-  status: "col-status",
   return: "col-num",
   venue: "col-venue",
   symbol: "col-sym",
   timeframe: "col-venue",
   trades: "col-num-sm",
   dd: "col-num",
-  oos: "col-num-sm",
+  oos: "col-num-wide",
   fees: "col-num-sm",
   sharpe: "col-num",
 };
@@ -216,7 +225,7 @@ export function SymbolsTable({
   venues,
   timeframes = [],
   minTrades = 0,
-  title = "Strategies",
+  title = "Bots",
   caption = true,
   ribbon,
   highlight,
@@ -474,9 +483,11 @@ export function SymbolsTable({
               title={thin ? `Thin sample — only ${r.trades} trades (below the ${minTrades}-trade floor): too few to judge this CAGR honestly.` : undefined}>
             <span style={{ color: ann >= 0 ? "var(--up)" : "var(--down)" }}>{formatPct(ann * 100)}<span className="quiet" style={{ fontSize: "0.85em" }}>/yr</span></span>
             {lo !== null ? (
+              // The Sharpe-SE confidence floor — kept intentionally (it says "the return is AT LEAST this, net of
+              // estimation noise"), but prefixed with the inline word "floor" so the second number isn't cryptic.
               <span className="quiet" style={{ display: "block", fontSize: "0.8em", lineHeight: 1.1 }}
                     title="Conservative confidence floor (Sharpe standard-error shrinkage) — the return is at LEAST this, net of estimation noise.">
-                ≥ {formatPct(lo * 100)}/yr
+                floor ≥ {formatPct(lo * 100)}/yr
               </span>
             ) : null}
           </td>
@@ -487,16 +498,11 @@ export function SymbolsTable({
       case "dd":
         return <td key={key} style={{ textAlign: "right" }} className="quiet">{uncomputed ? "—" : `${(r.max_drawdown * 100).toFixed(1)}%`}</td>;
       case "trades":
-        // Thin-sample flag (Fix 2): a cell below the gate's real min_trades floor carries a small muted "thin" chip
-        // next to its count, so a 3-trade cell is visually distinct from a 300-trade one.
+        // Just the integer trade count (Fix 6) — the muted "thin" chip was removed; the thin signal still mutes the
+        // Return cell. "—" when the row is uncomputed (no cell, nothing to count).
         return (
           <td key={key} style={{ textAlign: "right" }} className={uncomputed ? "quiet" : undefined}>
-            {uncomputed ? "—" : (
-              <>
-                {thin ? <span className="badge" style={{ marginRight: 4, fontSize: "0.7em", background: "transparent", color: "var(--ink-2, #8a8a8a)", borderColor: "var(--ink-2, #8a8a8a)" }} title={`Thin sample — below the ${minTrades}-trade floor the gate needs to judge a cell honestly.`}>thin</span> : null}
-                {r.trades}
-              </>
-            )}
+            {uncomputed ? "—" : r.trades}
           </td>
         );
       case "oos": {
@@ -525,8 +531,6 @@ export function SymbolsTable({
           </td>
         );
       }
-      case "status":
-        return <td key={key}><LifeBadge row={r} /></td>;
     }
   }
 
@@ -596,6 +600,8 @@ export function SymbolsTable({
         ) : (
           <table className="screener-table" style={minWidth !== undefined ? { minWidth } : undefined}>
             <colgroup>
+              {/* Status is the LEFTMOST identity column (before Bot/Strategy) — see Fix 4. */}
+              <col className="col-status" />
               <col className="col-combo" />
               <col className="col-strat" />
               {visibleCols.map((c) => (
@@ -604,6 +610,9 @@ export function SymbolsTable({
             </colgroup>
             <thead>
               <tr>
+                <th onClick={() => toggleSort("status")} style={{ cursor: "pointer" }} title="The lifecycle stage of this Version — Backtest · Paper · Live · Killed. Badge-only; the money path reads forward evidence, not this.">
+                  <div className="th-inner">Status<span className={cn("sort-ind", sort.key === "status" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
+                </th>
                 <th onClick={() => toggleSort("combo")} style={{ cursor: "pointer" }} title="Bot — the stable id of this combo (algo × asset × venue). Most are backtest-only; a combo becomes a live/paper-trading bot once it actually trades (see the Status badge).">
                   <div className="th-inner">Bot<span className={cn("sort-ind", sort.key === "combo" && (sort.dir === "asc" ? "asc" : "desc"))} /></div>
                 </th>
@@ -638,6 +647,8 @@ export function SymbolsTable({
                     style={{ cursor: "pointer", ...(isCurrent ? { background: "var(--iris-dim, rgba(120,120,255,0.08))" } : {}) }}
                     title="Open this strategy"
                   >
+                    {/* STATUS — the leftmost identity column (Fix 4): the lifecycle badge, before the Bot number. */}
+                    <td><LifeBadge row={r} /></td>
                     <td>
                       {comboNum !== undefined ? <span className="combo-num" title={`Bot #${comboNum} — this strategy on this symbol at this venue`}>#{comboNum}</span> : null}
                       {/* Real-money (gold) marker — a live combo trades real money. Reuses the ribbon's gold treatment.
@@ -807,10 +818,12 @@ function MultiSelect({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options, q, selected, renderOption, orderUnselected]);
 
-  // Button label: "All X" when empty (clickable opener); the single value when one is picked; else "n X".
+  // Button label: just the capitalized facet when empty ("Strategies"/"Symbols"/"Venues"/"Status" — no "All "
+  // prefix, Fix 5, frees space); the single value when one is picked; else "n X".
+  const cap = label.charAt(0).toUpperCase() + label.slice(1);
   const btnLabel =
     selected.size === 0
-      ? `All ${label}`
+      ? cap
       : selected.size === 1
         ? valLabel(Array.from(selected)[0])
         : `${selected.size} ${label}`;

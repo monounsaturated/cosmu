@@ -232,6 +232,9 @@ body{
 .col-venue{width:88px}
 .col-num{width:80px}
 .col-num-sm{width:64px}
+/* OOS window header ("OOS WINDOW") is long — give it room so its header never collides with the neighbouring
+   Max DD header at a normal viewport (the prior overlap bug). */
+.col-num-wide{width:104px}
 .col-status{width:96px}
 .col-hidden{display:none!important}
 .screener-table thead th{

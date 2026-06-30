@@ -196,6 +196,12 @@ def _dedup_cells(rows: list[dict]) -> list[dict]:
 # (~420 rows) into the screener; a track is the honest signal that the strategy is actually being forward-tested.
 _TRACK_ONLY_SELECT = (
     "SELECT sv.id AS strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
+    # has_paper_fills for the track-only (TAA) versions too — same predicate as the cell select / leaderboard. A
+    # funded paper track that has genuinely executed a rebalance fill carries True → the web badges it "Paper"
+    # (matching the ribbon's "Trading" count); an armed-but-never-filled track carries False → badges "New". Without
+    # this the funded TAA bots (DAA/VAA/ADM/…) were stamped has_paper_fills=False and mislabelled "New".
+    "EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id = sv.id "
+    "AND CAST(e.is_paper AS INTEGER) = 1) AS has_paper_fills, "
     "sv.created_at "
     "FROM strategy_versions sv "
     "JOIN strategies s ON s.id = sv.strategy_id "
@@ -217,6 +223,9 @@ def _track_only_row(r: dict) -> LabSymbolRow:
         # The version's real status — a track-only strategy is paper/live, NOT "New". Fall back to "lab" only when
         # the status is genuinely absent (never invent a more-advanced stage).
         status=r.get("status") or "lab",
+        # Whether this funded track has actually executed a paper fill — drives the web's "Paper" badge so a funded
+        # forward-test bot (TAA) reads "Paper", while an armed-but-never-filled track reads "New".
+        has_paper_fills=bool(r.get("has_paper_fills")),
         symbol="",
         venue_id=None,
         return_pct=0.0,
@@ -299,14 +308,19 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
             track_only = store.rows(f"{vsql} ORDER BY sv.created_at DESC LIMIT 5000", vparams)
     deduped = _dedup_cells(rows)
     deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
-    out = [_cell_row(r) for r in deduped[: max(1, limit)]]
-    # Append the track-only strategies after the ranked cells (they carry no return to rank by), trimmed so the
-    # whole response still respects `limit`. Skip any strategy ALREADY represented by a cell-backed row — a strategy
-    # that has both cells and a (cell-less) track must NOT be double-counted with a redundant synthetic row.
-    if track_only and len(out) < max(1, limit):
-        seen_strategies = {r["strategy_id"] for r in deduped}
-        fresh = [r for r in track_only if r["strategy_id"] not in seen_strategies]
-        out += [_track_only_row(r) for r in fresh[: max(1, limit) - len(out)]]
+    cap = max(1, limit)
+    # The track-only (armed, cell-less) strategies — the FUNDED forward-test bots (DAA / VAA / ADM / … and any
+    # live track). These are the operationally critical rows (real capital at work), so they must NEVER be squeezed
+    # out by a fat cell universe: RESERVE their space first and trim the ranked CELLS to fit, instead of appending
+    # them only "if room is left" (which silently dropped every funded Paper bot whenever the killed/screened cell
+    # count alone filled the cap — the grid then showed zero Paper rows while the ribbon still counted them as
+    # 'Trading'). Skip any strategy ALREADY represented by a cell-backed row so a strategy with both cells and a
+    # track isn't doubled with a redundant synthetic row.
+    seen_strategies = {r["strategy_id"] for r in deduped}
+    fresh_tracks = [r for r in track_only if r["strategy_id"] not in seen_strategies] if track_only else []
+    track_rows = [_track_only_row(r) for r in fresh_tracks[:cap]]
+    cell_budget = max(0, cap - len(track_rows))
+    out = [_cell_row(r) for r in deduped[:cell_budget]] + track_rows
     # The TRUE denominators over the WHOLE set (not the `limit`-capped slice) so the ribbon shows the honest
     # "loaded of total" instead of passing off a page size as the universe. Counted outside the response trim.
     return LabSymbolsResponse(

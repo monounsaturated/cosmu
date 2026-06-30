@@ -1,14 +1,16 @@
 "use client";
 
 // module: app navigation (Iris Bento `.sb-nav` / `.nav-item`). The v18 redesign IS the whole
-// frontend — NINE surfaces: Strategies · Paper · Live · Trades · Indexes · Mind · Costs · Keys · Commands
-// (landing = Strategies). Trades is the one ledger of every execution (paper + live), tagged. Mind is the read-only credibility surface — the followed-voices scoreboard off
-// /mind/credibility. Strategies is now the ONE granular surface: every (algo × asset × venue)
-// triplet, never pooled — the old per-symbol "Lab" tab was folded into it (its route now redirects).
-// Indexes (2026-06-15) is the operator-defined, deterministically-scored
-// signal-index registry that strategies later key off. (The old Research/experiment-memory route was
-// dropped from the nav to declutter — its gate_verdicts data stays in the DB + /verdicts API and is
-// meant to become a generated report, not a daily surface.) There is no mobile bottom-dock: the bento
+// frontend — surfaces: Bots · Paper · Live · Trades · Social · Costs · Keys · Commands (landing = Bots).
+// "Bots" is the displayed LABEL of the /strategies route (route unchanged so deep links survive) — the ONE
+// granular surface: every (algo × asset × venue) triplet, never pooled (the old per-symbol "Lab" tab was
+// folded in, its route redirects). Trades is the one ledger of every execution (paper + live), tagged.
+// "Social" is the social-authority lane (the old "Mind" credibility surface) — the followed-voices scoreboard
+// off /mind/credibility; its route stays /mind (and /social → /mind redirects). The Indexes page was REMOVED
+// (we scrapped the Index strategy type — an "index" is just DATA an LLM strategy reads, never its own
+// page/type); /indexes now redirects to /strategies. (The old Research/experiment-memory route was dropped
+// from the nav to declutter — its gate_verdicts data stays in the DB + /verdicts API and is meant to become a
+// generated report, not a daily surface.) There is no mobile bottom-dock: the bento
 // sidebar collapses to an icon
 // rail at narrow widths via the `@media (max-width:880px)` rules in globals.css. Active state is the
 // current route; optional per-stage counts come from a client fetch in the shell (shown only when real).
@@ -30,12 +32,6 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="3.2" cy="4" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="4" x2="13" y2="4" />
       <circle cx="3.2" cy="7.5" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="7.5" x2="13" y2="7.5" />
       <circle cx="3.2" cy="11" r="1.1" fill="currentColor" stroke="none" /><line x1="6.2" y1="11" x2="13" y2="11" />
-    </svg>
-  ),
-  indexes: (
-    <svg viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1.7 10.5l3-3.4 2.4 2 3.4-4.4" /><circle cx="12.2" cy="3.4" r="1" fill="currentColor" stroke="none" />
-      <line x1="1.7" y1="13" x2="13" y2="13" />
     </svg>
   ),
   mind: (
@@ -84,14 +80,15 @@ const ICONS: Record<string, ReactNode> = {
   )
 };
 
-// The primary surfaces — the entire app, in canonical sidebar order.
+// The primary surfaces — the entire app, in canonical sidebar order. "Bots" labels the /strategies route
+// (route unchanged so deep links survive); "Social" labels the /mind social-authority route. The Indexes
+// entry was removed (the Index strategy type was scrapped — /indexes now redirects to /strategies).
 export const navItems: NavItem[] = [
-  { href: "/strategies", key: "strategies", label: "Strategies", icon: ICONS.strategies },
+  { href: "/strategies", key: "strategies", label: "Bots", icon: ICONS.strategies },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/trades", key: "trades", label: "Trades", icon: ICONS.trades },
-  { href: "/indexes", key: "indexes", label: "Indexes", icon: ICONS.indexes },
-  { href: "/mind", key: "mind", label: "Mind", icon: ICONS.mind },
+  { href: "/mind", key: "mind", label: "Social", icon: ICONS.mind },
   { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }
