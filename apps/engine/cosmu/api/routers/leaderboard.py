@@ -19,6 +19,15 @@ router = APIRouter()
 # imported above as the same name so this router's call sites are unchanged.
 
 
+def _tracks_cell_cols() -> str:
+    """The brut per-cell `tracks` columns (`symbol`, `venue_id`, 2026-06-18 migration) appended to the collapsed
+    one-row-per-version `tr` subquery — emitted ONLY when they're live, so a pre-migration prod table (no such
+    columns) doesn't raise UndefinedColumn. When present they feed the per-cell backtest match in
+    `_backtest_cell_cols()` (which references `tr.symbol` / `tr.venue_id`); when absent both that and these are
+    omitted together, so the references stay balanced."""
+    return ", t1.symbol, t1.venue_id" if tracks_has_cell_columns(store) else ""
+
+
 def _backtest_cell_cols() -> str:
     """Two schema-adaptive correlated subquery columns — THIS track's OWN (symbol, venue) backtest cell return +
     its own OOS window — so the leaderboard's BACKTEST headline can be re-keyed off the pooled version-level number
@@ -98,19 +107,36 @@ def leaderboard() -> LeaderboardResponse:
         LEFT JOIN (
             SELECT ref_id, MIN(ts) AS funded_at FROM events WHERE kind = 'track_opened' GROUP BY ref_id
         ) ev ON ev.ref_id = sv.id
-        LEFT JOIN tracks tr ON tr.strategy_version_id = sv.id
+        -- ONE row per version from tracks — a version with >1 track (e.g. per-cell crypto tracks) would
+        -- otherwise FAN OUT the join and consume extra LIMIT slots, silently pushing a genuinely-funded
+        -- version (the QQQ/EFA Dual-Momentum paper bot) off the board so the ribbon undercounted Trading vs
+        -- the grid. We collapse to the version's LATEST track (max id) and carry starting_capital (and, when the
+        -- brut cell columns are live, symbol/venue_id for the per-cell backtest match) — exact for the funded TAA
+        -- bots (each has exactly one track) and display-only for the multi-track killed versions (sorted last).
         LEFT JOIN (
-            SELECT ref_id, equity FROM portfolio_snapshots p1
+            SELECT t1.strategy_version_id, t1.starting_capital{_tracks_cell_cols()}
+            FROM tracks t1
+            WHERE t1.id = (SELECT t2.id FROM tracks t2 WHERE t2.strategy_version_id = t1.strategy_version_id
+                           ORDER BY t2.id DESC LIMIT 1)
+        ) tr ON tr.strategy_version_id = sv.id
+        -- ONE row per version from the latest track snapshot — MAX(equity) breaks the rare MAX(ts) tie so a
+        -- version with two same-timestamp snapshots does NOT fan out (another silent LIMIT-slot waster).
+        LEFT JOIN (
+            SELECT ref_id, MAX(equity) AS equity FROM portfolio_snapshots p1
             WHERE scope = 'track' AND ts = (
                 SELECT MAX(ts) FROM portfolio_snapshots p2 WHERE p2.scope = 'track' AND p2.ref_id = p1.ref_id
             )
+            GROUP BY ref_id
         ) ps ON ps.ref_id = sv.id
         -- ACTIVE-FIRST then strength: a funded/active track must NEVER be ranked off the board by a stronger
         -- KILLED one. Killed versions hugely outnumber the live ones (graveyard grows unbounded), so a pure
         -- deflated_sharpe sort + a tight LIMIT silently truncated funded paper tracks below the cut — the
         -- Paper hero (status-filtered Σ allocated) then disagreed with "Invested" (Σ of the rows that survived
         -- the cut). Sorting killed last guarantees every non-killed Version is on the board; killed fill the
-        -- rest by strength. LIMIT lifted to 200 so the active tier is never the thing that gets cut.
+        -- rest by strength. The tracks/snapshot joins above are now collapsed to one row per version so the
+        -- LIMIT counts DISTINCT versions (not fan-out duplicates) — without that, fan-out ate the cap and the
+        -- ribbon's "Trading" count fell short of the grid's funded-Paper rows. LIMIT 200 then comfortably
+        -- clears every non-killed version (≈174) plus its multi-backtest fan-out.
         ORDER BY (CASE WHEN sv.status = 'killed' THEN 1 ELSE 0 END),
                  CAST(COALESCE(b.deflated_sharpe, 0) AS REAL) DESC
         LIMIT 200

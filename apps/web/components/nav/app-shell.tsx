@@ -10,7 +10,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { CosmuMark } from "@/components/brand/logo";
-import { SideNav, type NavCounts } from "@/components/nav/app-nav";
+import { SideNav, FootNav, type NavCounts } from "@/components/nav/app-nav";
 import { TipLayer } from "@/components/ui/tip-layer";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, isPaperRow } from "@/lib/utils";
@@ -99,10 +99,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   // Best-effort nav counts from the leaderboard (client-side via the proxy; never blocks first paint).
+  // Polled every 30s so the sidebar counts track the machine live (cheap — one proxied GET, no first-paint cost).
   useEffect(() => {
     if (!ENGINE_CONFIGURED) return;
     let alive = true;
-    (async () => {
+    async function pull() {
       try {
         const res = await engineFetch("/leaderboard");
         if (!res.ok) return;
@@ -118,11 +119,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           live: rows.filter((r) => (r.status ?? "").toLowerCase() === "live").length
         });
       } catch {
-        /* leave counts hidden */
+        /* leave counts as-is */
       }
-    })();
+    }
+    pull();
+    const id = setInterval(pull, 30_000);
     return () => {
       alive = false;
+      clearInterval(id);
     };
   }, []);
 
@@ -149,6 +153,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <SideNav counts={counts} />
 
         <div className="sb-footer">
+          <FootNav />
           <div className="sb-dot-wrap" data-tip={tip}>
             <span className={cn("sb-dot", dot === "off" && "off", dot === "warn" && "warn")} />
           </div>
