@@ -1,0 +1,939 @@
+{
+  "generated_at": "2026-06-30T07:13:32.812582+00:00",
+  "watchlist": [
+    {
+      "question": "US x Iran diplomatic meeting by July 10, 2026?",
+      "condition_id": "0x79c850d5dd022d89aaf4f92105657d7a2e0518d4e4d4cf6cdce44d385fe029a7",
+      "yes_token": "5146937358519020769008195118872413556730822166860975473115035755844494719521",
+      "yes_prob": 0.465,
+      "end_date": "2026-07-10",
+      "days_to_event": 9.698735821840277,
+      "volume_24h": 156318.79803900007,
+      "volume_1wk": 346726.26009600004,
+      "liquidity": 42582.1161,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 6.8224,
+      "components": {
+        "attention": 6.856,
+        "room_to_move": 0.995,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 42582.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Strait of Hormuz traffic returns to normal by July 31?",
+      "condition_id": "0xb8e6d129a06d0ccb21d7b32eb529ea455eddba3cf29bfa097112202cbdf5bf21",
+      "yes_token": "106929013576622300718402895513457875547556389240247806666273814836599548721421",
+      "yes_prob": 0.375,
+      "end_date": "2026-07-31",
+      "days_to_event": 30.698735832939814,
+      "volume_24h": 167381.99416999996,
+      "volume_1wk": 2986790.1599560115,
+      "liquidity": 494623.7716,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 6.7184,
+      "components": {
+        "attention": 7.166,
+        "room_to_move": 0.938,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 494624.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Will the next diplomatic US-Iran meeting be in Qatar by September 30, 2026?",
+      "condition_id": "0x03c583dd10a5df0d57fd8b32452554da9bbb0dd212fe0e259e8561db3b4f9153",
+      "yes_token": "1465004187879250935275955729729298641755522437620780616285443313153147473640",
+      "yes_prob": 0.595,
+      "end_date": "2026-09-30",
+      "days_to_event": 91.6987358468287,
+      "volume_24h": 171944.21220700006,
+      "volume_1wk": 294582.7427809997,
+      "liquidity": 45560.889,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 6.5971,
+      "components": {
+        "attention": 6.876,
+        "room_to_move": 0.964,
+        "proximity": 0.995,
+        "mappable": 1.0,
+        "liquidity": 45561.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "US x Iran diplomatic meeting by July 3, 2026?",
+      "condition_id": "0x545e1bf6ec42e0e8a776a3c3e11ed225f8d3dfcc74f98656e142f99a2b718383",
+      "yes_token": "15633154783541507670612702084397504431047786317294274565096321513324678298222",
+      "yes_prob": 0.365,
+      "end_date": "2026-07-03",
+      "days_to_event": 2.6987359048263886,
+      "volume_24h": 598761.5965959996,
+      "volume_1wk": 914280.7505149996,
+      "liquidity": 48461.9763,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 6.521,
+      "components": {
+        "attention": 7.566,
+        "room_to_move": 0.927,
+        "proximity": 0.93,
+        "mappable": 1.0,
+        "liquidity": 48462.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Will United Russia (ER) gain the most seats in the next Russian parliamentary election?",
+      "condition_id": "0x502a94e5c525766d5ee7f16c6568131ba1b2cbadb69c703af05a6ef00336ed64",
+      "yes_token": "20915769520649892253891152116814645067070024223185517956799957803974344024878",
+      "yes_prob": 0.575,
+      "end_date": "2026-09-30",
+      "days_to_event": 91.69873578774305,
+      "volume_24h": 79493.49271800004,
+      "volume_1wk": 507369.17936799984,
+      "liquidity": 205942.735,
+      "theme": "geopolitics_broad",
+      "asset_links": [
+        {
+          "asset": "Gold (GC=F / GLD)",
+          "direction": "inverse",
+          "mechanism": "Escalation odds\u2191 \u2192 safe-haven bid \u2192 gold up; so a 'de-escalation/ceasefire' YES\u2191 implies gold down. Gold is deep and reacts to the same headlines, so the lead is usually not tradeable.",
+          "source": "Baur-Lucey (2010) on gold as a safe haven; academic flight-to-safety literature."
+        },
+        {
+          "asset": "Defense equities (ITA)",
+          "direction": "inverse",
+          "mechanism": "Sustained-conflict odds\u2191 support defense order books; a ceasefire/de-escalation YES\u2191 removes that bid.",
+          "source": "Defense-spending event-study literature (e.g. Capelle-Blancard on conflict & equities)."
+        }
+      ],
+      "leverage": 6.4331,
+      "components": {
+        "attention": 6.612,
+        "room_to_move": 0.978,
+        "proximity": 0.995,
+        "mappable": 1.0,
+        "liquidity": 205943.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "US x Iran diplomatic meeting by July 31, 2026?",
+      "condition_id": "0xb838caec0354e09985f2c228c54ba190cb284f390beda5ffd58d163ba00648ec",
+      "yes_token": "95676548525614691656970153001244738030704823210041753577158504248850005676647",
+      "yes_prob": 0.68,
+      "end_date": "2026-07-31",
+      "days_to_event": 30.698735796724538,
+      "volume_24h": 82326.88965099995,
+      "volume_1wk": 206264.61825099992,
+      "liquidity": 64956.031,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 5.6662,
+      "components": {
+        "attention": 6.51,
+        "room_to_move": 0.87,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 64956.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "US x Iran diplomatic meeting by July 17, 2026?",
+      "condition_id": "0x325d2f917428a0d39ac7563770ec519208666b8c926091de1a1934d8570b64cd",
+      "yes_token": "61185693373091340617494150277851514641770797636186465474956889484881632951438",
+      "yes_prob": 0.655,
+      "end_date": "2026-07-17",
+      "days_to_event": 16.698735665520832,
+      "volume_24h": 40839.577063000004,
+      "volume_1wk": 53916.18695799999,
+      "liquidity": 31944.4127,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 5.4511,
+      "components": {
+        "attention": 6.031,
+        "room_to_move": 0.904,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 31944.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Fed rate hike in 2026?",
+      "condition_id": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+      "yes_token": "75028752776148090296091099469912621384650554615761384992997579209329182670110",
+      "yes_prob": 0.525,
+      "end_date": "2026-12-09",
+      "days_to_event": 161.69873509368054,
+      "volume_24h": 18887.479558000003,
+      "volume_1wk": 244475.3561999998,
+      "liquidity": 233380.6261,
+      "theme": "us_rates",
+      "asset_links": [
+        {
+          "asset": "2Y Treasury yield (DGS2 / SHY)",
+          "direction": "same",
+          "mechanism": "The 2Y yield is the purest market proxy for the expected Fed path; a higher 'hike' (or lower 'cut') probability lifts the 2Y. The front end reprices on the same data the PM reprices on.",
+          "source": "Federal Reserve H.15; G\u00fcrkaynak-Sack-Swanson (2005) on policy-expectation sensitivity of the short end."
+        },
+        {
+          "asset": "10Y Treasury yield (DGS10 / TLT inverse)",
+          "direction": "same",
+          "mechanism": "Hawkish repricing lifts the whole curve; 10Y moves less than 2Y (bull/bear flattening), so the 2Y is the higher-beta read on a Fed-decision market.",
+          "source": "Federal Reserve H.15; Nakamura-Steinsson (2018) high-frequency monetary-policy shocks."
+        }
+      ],
+      "leverage": 4.7233,
+      "components": {
+        "attention": 5.893,
+        "room_to_move": 0.997,
+        "proximity": 0.804,
+        "mappable": 1.0,
+        "liquidity": 233381.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Will there be no change in Fed interest rates after the July 2026 meeting?",
+      "condition_id": "0x8bf1c1536ecb1c08fe13c6b71e8ab1f58bf3461c4cb79f5f1679f869a06aef86",
+      "yes_token": "111604417349377875799825956621596386269673370070912696668140891647145772186047",
+      "yes_prob": 0.805,
+      "end_date": "2026-07-29",
+      "days_to_event": 28.698735857488426,
+      "volume_24h": 292804.62368000014,
+      "volume_1wk": 1734667.0454090033,
+      "liquidity": 779855.2053,
+      "theme": "us_rates",
+      "asset_links": [
+        {
+          "asset": "2Y Treasury yield (DGS2 / SHY)",
+          "direction": "same",
+          "mechanism": "The 2Y yield is the purest market proxy for the expected Fed path; a higher 'hike' (or lower 'cut') probability lifts the 2Y. The front end reprices on the same data the PM reprices on.",
+          "source": "Federal Reserve H.15; G\u00fcrkaynak-Sack-Swanson (2005) on policy-expectation sensitivity of the short end."
+        },
+        {
+          "asset": "10Y Treasury yield (DGS10 / TLT inverse)",
+          "direction": "same",
+          "mechanism": "Hawkish repricing lifts the whole curve; 10Y moves less than 2Y (bull/bear flattening), so the 2Y is the higher-beta read on a Fed-decision market.",
+          "source": "Federal Reserve H.15; Nakamura-Steinsson (2018) high-frequency monetary-policy shocks."
+        }
+      ],
+      "leverage": 4.6077,
+      "components": {
+        "attention": 7.338,
+        "room_to_move": 0.628,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 779855.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "US-Iran Final Nuclear Deal by August 31, 2026?",
+      "condition_id": "0xa1b3158fedfddaf2a0d8b364f6a57ee68146fb6ad458222aa8e02bcf0abbb099",
+      "yes_token": "37071201064004867793384227173951609485390907960072244087184888120714199352869",
+      "yes_prob": 0.235,
+      "end_date": "2026-08-31",
+      "days_to_event": 61.69873511945601,
+      "volume_24h": 32680.799320000016,
+      "volume_1wk": 1740450.908026002,
+      "liquidity": 535783.9345,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 4.5925,
+      "components": {
+        "attention": 6.387,
+        "room_to_move": 0.719,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 535784.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Will the Fed increase interest rates by 25 bps after the July 2026 meeting?",
+      "condition_id": "0xb5c0abeecb5502e6e8d83155c27819174d8317af3c425c3afc5a8c45257a3793",
+      "yes_token": "10547381015916960267379463101229159185405356924982461726471550099674011526491",
+      "yes_prob": 0.1755,
+      "end_date": "2026-07-29",
+      "days_to_event": 28.69873582019676,
+      "volume_24h": 140314.655911,
+      "volume_1wk": 1480024.468831,
+      "liquidity": 582043.56663,
+      "theme": "us_rates",
+      "asset_links": [
+        {
+          "asset": "2Y Treasury yield (DGS2 / SHY)",
+          "direction": "same",
+          "mechanism": "The 2Y yield is the purest market proxy for the expected Fed path; a higher 'hike' (or lower 'cut') probability lifts the 2Y. The front end reprices on the same data the PM reprices on.",
+          "source": "Federal Reserve H.15; G\u00fcrkaynak-Sack-Swanson (2005) on policy-expectation sensitivity of the short end."
+        },
+        {
+          "asset": "10Y Treasury yield (DGS10 / TLT inverse)",
+          "direction": "same",
+          "mechanism": "Hawkish repricing lifts the whole curve; 10Y moves less than 2Y (bull/bear flattening), so the 2Y is the higher-beta read on a Fed-decision market.",
+          "source": "Federal Reserve H.15; Nakamura-Steinsson (2018) high-frequency monetary-policy shocks."
+        }
+      ],
+      "leverage": 4.0505,
+      "components": {
+        "attention": 6.998,
+        "room_to_move": 0.579,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 582044.0
+      },
+      "excluded_reason": null
+    },
+    {
+      "question": "Strait of Hormuz traffic returns to normal by July 15?",
+      "condition_id": "0xcacd424332319971356c757c025b45a4eb5643b919fb3bd2f84051afea599b13",
+      "yes_token": "89075579425844467185868633488322759623361856543369509366205030098390192743019",
+      "yes_prob": 0.145,
+      "end_date": "2026-07-15",
+      "days_to_event": 14.698735857152776,
+      "volume_24h": 290840.09061099996,
+      "volume_1wk": 2941240.480614011,
+      "liquidity": 370171.0979,
+      "theme": "oil_geopolitics",
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "leverage": 3.6718,
+      "components": {
+        "attention": 7.404,
+        "room_to_move": 0.496,
+        "proximity": 1.0,
+        "mappable": 1.0,
+        "liquidity": 370171.0
+      },
+      "excluded_reason": null
+    }
+  ],
+  "plays": [
+    {
+      "question": "US x Iran diplomatic meeting by July 10, 2026?",
+      "condition_id": "0x79c850d5dd022d89aaf4f92105657d7a2e0518d4e4d4cf6cdce44d385fe029a7",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.465,
+      "days_to_event": 9.698735821840277,
+      "leverage": 6.8224,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        }
+      ]
+    },
+    {
+      "question": "Strait of Hormuz traffic returns to normal by July 31?",
+      "condition_id": "0xb8e6d129a06d0ccb21d7b32eb529ea455eddba3cf29bfa097112202cbdf5bf21",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.375,
+      "days_to_event": 30.698735832939814,
+      "leverage": 6.7184,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 34,
+          "n_paired": 33,
+          "corr_by_lag": {
+            "-2": -0.0682,
+            "-1": -0.227,
+            "0": -0.1986,
+            "1": -0.4669,
+            "2": 0.036
+          },
+          "best_lag": 1,
+          "sig_threshold": 0.3482,
+          "verdict": "LEADS",
+          "note": "positive-lag |corr|=0.47 beats coincident 0.20 \u2014 lead UNCONFIRMED on daily data (see timestamp caveat); re-run HOURLY before trusting."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 34,
+          "n_paired": 33,
+          "corr_by_lag": {
+            "-2": -0.0673,
+            "-1": -0.2108,
+            "0": -0.2344,
+            "1": -0.5282,
+            "2": 0.0194
+          },
+          "best_lag": 1,
+          "sig_threshold": 0.3482,
+          "verdict": "LEADS",
+          "note": "positive-lag |corr|=0.53 beats coincident 0.23 \u2014 lead UNCONFIRMED on daily data (see timestamp caveat); re-run HOURLY before trusting."
+        }
+      ]
+    },
+    {
+      "question": "Will the next diplomatic US-Iran meeting be in Qatar by September 30, 2026?",
+      "condition_id": "0x03c583dd10a5df0d57fd8b32452554da9bbb0dd212fe0e259e8561db3b4f9153",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.595,
+      "days_to_event": 91.6987358468287,
+      "leverage": 6.5971,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        }
+      ]
+    },
+    {
+      "question": "US x Iran diplomatic meeting by July 3, 2026?",
+      "condition_id": "0x545e1bf6ec42e0e8a776a3c3e11ed225f8d3dfcc74f98656e142f99a2b718383",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.365,
+      "days_to_event": 2.6987359048263886,
+      "leverage": 6.521,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        }
+      ]
+    },
+    {
+      "question": "US x Iran diplomatic meeting by July 31, 2026?",
+      "condition_id": "0xb838caec0354e09985f2c228c54ba190cb284f390beda5ffd58d163ba00648ec",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.68,
+      "days_to_event": 30.698735796724538,
+      "leverage": 5.6662,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 5,
+          "n_paired": 0,
+          "corr_by_lag": {},
+          "best_lag": null,
+          "sig_threshold": Infinity,
+          "verdict": "INSUFFICIENT_DATA",
+          "note": "only 5 common days; need \u22656."
+        }
+      ]
+    },
+    {
+      "question": "Fed rate hike in 2026?",
+      "condition_id": "0x80b3af88cb991980e8da1ce86b9794a0957f96ec98c29319dd7ba65e9744d82b",
+      "theme": "us_rates",
+      "yes_prob": 0.525,
+      "days_to_event": 161.69873509368054,
+      "leverage": 4.7233,
+      "asset_links": [
+        {
+          "asset": "2Y Treasury yield (DGS2 / SHY)",
+          "direction": "same",
+          "mechanism": "The 2Y yield is the purest market proxy for the expected Fed path; a higher 'hike' (or lower 'cut') probability lifts the 2Y. The front end reprices on the same data the PM reprices on.",
+          "source": "Federal Reserve H.15; G\u00fcrkaynak-Sack-Swanson (2005) on policy-expectation sensitivity of the short end."
+        },
+        {
+          "asset": "10Y Treasury yield (DGS10 / TLT inverse)",
+          "direction": "same",
+          "mechanism": "Hawkish repricing lifts the whole curve; 10Y moves less than 2Y (bull/bear flattening), so the 2Y is the higher-beta read on a Fed-decision market.",
+          "source": "Federal Reserve H.15; Nakamura-Steinsson (2018) high-frequency monetary-policy shocks."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "13-week T-bill yield (^IRX)",
+          "n_common_days": 47,
+          "n_paired": 46,
+          "corr_by_lag": {
+            "-2": 0.0304,
+            "-1": 0.2406,
+            "0": 0.1762,
+            "1": 0.1782,
+            "2": -0.1423
+          },
+          "best_lag": -1,
+          "sig_threshold": 0.2949,
+          "verdict": "NONE",
+          "note": "no lag clears the \u22480.29 (2/\u221a46) noise floor \u2014 undetectable at this N."
+        },
+        {
+          "asset": "10Y Treasury yield (^TNX)",
+          "n_common_days": 47,
+          "n_paired": 46,
+          "corr_by_lag": {
+            "-2": 0.0935,
+            "-1": 0.2836,
+            "0": 0.0839,
+            "1": 0.0896,
+            "2": 0.0501
+          },
+          "best_lag": -1,
+          "sig_threshold": 0.2949,
+          "verdict": "NONE",
+          "note": "no lag clears the \u22480.29 (2/\u221a46) noise floor \u2014 undetectable at this N."
+        }
+      ]
+    },
+    {
+      "question": "Will there be no change in Fed interest rates after the July 2026 meeting?",
+      "condition_id": "0x8bf1c1536ecb1c08fe13c6b71e8ab1f58bf3461c4cb79f5f1679f869a06aef86",
+      "theme": "us_rates",
+      "yes_prob": 0.805,
+      "days_to_event": 28.698735857488426,
+      "leverage": 4.6077,
+      "asset_links": [
+        {
+          "asset": "2Y Treasury yield (DGS2 / SHY)",
+          "direction": "same",
+          "mechanism": "The 2Y yield is the purest market proxy for the expected Fed path; a higher 'hike' (or lower 'cut') probability lifts the 2Y. The front end reprices on the same data the PM reprices on.",
+          "source": "Federal Reserve H.15; G\u00fcrkaynak-Sack-Swanson (2005) on policy-expectation sensitivity of the short end."
+        },
+        {
+          "asset": "10Y Treasury yield (DGS10 / TLT inverse)",
+          "direction": "same",
+          "mechanism": "Hawkish repricing lifts the whole curve; 10Y moves less than 2Y (bull/bear flattening), so the 2Y is the higher-beta read on a Fed-decision market.",
+          "source": "Federal Reserve H.15; Nakamura-Steinsson (2018) high-frequency monetary-policy shocks."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "13-week T-bill yield (^IRX)",
+          "n_common_days": 47,
+          "n_paired": 46,
+          "corr_by_lag": {
+            "-2": -0.2363,
+            "-1": -0.3298,
+            "0": -0.4077,
+            "1": -0.3204,
+            "2": -0.0955
+          },
+          "best_lag": 0,
+          "sig_threshold": 0.2949,
+          "verdict": "COINCIDENT",
+          "note": "lag-0 |corr|=0.41 dominates \u2014 the move is already priced same-day (no latency-free edge)."
+        },
+        {
+          "asset": "10Y Treasury yield (^TNX)",
+          "n_common_days": 47,
+          "n_paired": 46,
+          "corr_by_lag": {
+            "-2": 0.0388,
+            "-1": -0.1029,
+            "0": 0.0214,
+            "1": -0.0545,
+            "2": 0.1706
+          },
+          "best_lag": 2,
+          "sig_threshold": 0.2949,
+          "verdict": "NONE",
+          "note": "no lag clears the \u22480.29 (2/\u221a46) noise floor \u2014 undetectable at this N."
+        }
+      ]
+    },
+    {
+      "question": "US-Iran Final Nuclear Deal by August 31, 2026?",
+      "condition_id": "0xa1b3158fedfddaf2a0d8b364f6a57ee68146fb6ad458222aa8e02bcf0abbb099",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.235,
+      "days_to_event": 61.69873511945601,
+      "leverage": 4.5925,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 7,
+          "n_paired": 6,
+          "corr_by_lag": {
+            "-2": -0.4348,
+            "-1": 0.5839,
+            "0": -0.6633,
+            "1": 0.9913,
+            "2": -0.9406
+          },
+          "best_lag": 1,
+          "sig_threshold": 0.8165,
+          "verdict": "COINCIDENT",
+          "note": "lag-0 |corr|=0.66; no positive lag clears the bar."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 7,
+          "n_paired": 6,
+          "corr_by_lag": {
+            "-2": -0.6279,
+            "-1": 0.7314,
+            "0": -0.7515,
+            "1": 0.9459,
+            "2": -0.8045
+          },
+          "best_lag": 1,
+          "sig_threshold": 0.8165,
+          "verdict": "COINCIDENT",
+          "note": "lag-0 |corr|=0.75; no positive lag clears the bar."
+        }
+      ]
+    },
+    {
+      "question": "Will the Fed increase interest rates by 25 bps after the July 2026 meeting?",
+      "condition_id": "0xb5c0abeecb5502e6e8d83155c27819174d8317af3c425c3afc5a8c45257a3793",
+      "theme": "us_rates",
+      "yes_prob": 0.1755,
+      "days_to_event": 28.69873582019676,
+      "leverage": 4.0505,
+      "asset_links": [
+        {
+          "asset": "2Y Treasury yield (DGS2 / SHY)",
+          "direction": "same",
+          "mechanism": "The 2Y yield is the purest market proxy for the expected Fed path; a higher 'hike' (or lower 'cut') probability lifts the 2Y. The front end reprices on the same data the PM reprices on.",
+          "source": "Federal Reserve H.15; G\u00fcrkaynak-Sack-Swanson (2005) on policy-expectation sensitivity of the short end."
+        },
+        {
+          "asset": "10Y Treasury yield (DGS10 / TLT inverse)",
+          "direction": "same",
+          "mechanism": "Hawkish repricing lifts the whole curve; 10Y moves less than 2Y (bull/bear flattening), so the 2Y is the higher-beta read on a Fed-decision market.",
+          "source": "Federal Reserve H.15; Nakamura-Steinsson (2018) high-frequency monetary-policy shocks."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "13-week T-bill yield (^IRX)",
+          "n_common_days": 62,
+          "n_paired": 61,
+          "corr_by_lag": {
+            "-2": 0.2042,
+            "-1": 0.2687,
+            "0": 0.3062,
+            "1": 0.2191,
+            "2": 0.0556
+          },
+          "best_lag": 0,
+          "sig_threshold": 0.2561,
+          "verdict": "COINCIDENT",
+          "note": "lag-0 |corr|=0.31 dominates \u2014 the move is already priced same-day (no latency-free edge)."
+        },
+        {
+          "asset": "10Y Treasury yield (^TNX)",
+          "n_common_days": 62,
+          "n_paired": 61,
+          "corr_by_lag": {
+            "-2": 0.092,
+            "-1": 0.127,
+            "0": 0.0456,
+            "1": 0.107,
+            "2": -0.1577
+          },
+          "best_lag": 2,
+          "sig_threshold": 0.2561,
+          "verdict": "NONE",
+          "note": "no lag clears the \u22480.26 (2/\u221a61) noise floor \u2014 undetectable at this N."
+        }
+      ]
+    },
+    {
+      "question": "Strait of Hormuz traffic returns to normal by July 15?",
+      "condition_id": "0xcacd424332319971356c757c025b45a4eb5643b919fb3bd2f84051afea599b13",
+      "theme": "oil_geopolitics",
+      "yes_prob": 0.145,
+      "days_to_event": 14.698735857152776,
+      "leverage": 3.6718,
+      "asset_links": [
+        {
+          "asset": "WTI crude (CL=F / USO)",
+          "direction": "inverse",
+          "mechanism": "The Strait of Hormuz carries ~20% of global petroleum liquids; a higher 'returns to normal / ceasefire holds' probability removes the supply-disruption risk premium \u2192 crude falls.",
+          "source": "U.S. EIA, 'The Strait of Hormuz is the world's most important oil transit chokepoint' (eia.gov, 2023-11) \u2014 ~20 Mb/d, ~20% of global petroleum liquids consumption."
+        },
+        {
+          "asset": "Brent crude (BZ=F)",
+          "direction": "inverse",
+          "mechanism": "Brent is the seaborne benchmark most exposed to Gulf/Hormuz transit risk; de-escalation odds\u2191 compress the geopolitical premium faster in Brent than in landlocked WTI.",
+          "source": "U.S. EIA chokepoint brief (2023-11); IMF WP/15/268 on oil-price geopolitical risk premia."
+        }
+      ],
+      "lead_lag": [
+        {
+          "asset": "WTI front-month (CL=F)",
+          "n_common_days": 11,
+          "n_paired": 10,
+          "corr_by_lag": {
+            "-2": -0.4109,
+            "-1": -0.1949,
+            "0": 0.4234,
+            "1": -0.3847,
+            "2": 0.4459
+          },
+          "best_lag": 2,
+          "sig_threshold": 0.6325,
+          "verdict": "NONE",
+          "note": "no lag clears the \u22480.63 (2/\u221a10) noise floor \u2014 undetectable at this N."
+        },
+        {
+          "asset": "Brent front-month (BZ=F)",
+          "n_common_days": 11,
+          "n_paired": 10,
+          "corr_by_lag": {
+            "-2": -0.2505,
+            "-1": -0.2403,
+            "0": 0.4072,
+            "1": -0.5127,
+            "2": 0.412
+          },
+          "best_lag": 1,
+          "sig_threshold": 0.6325,
+          "verdict": "NONE",
+          "note": "no lag clears the \u22480.63 (2/\u221a10) noise floor \u2014 undetectable at this N."
+        }
+      ]
+    }
+  ]
+}
