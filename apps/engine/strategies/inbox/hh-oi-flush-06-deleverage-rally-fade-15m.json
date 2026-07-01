@@ -1,0 +1,137 @@
+{
+  "name": "Deleverage-rally fade (15m short the short-cover pop)",
+  "rationale": "MECHANISM (H2 on a faster 15m bar): the participation-less pop mean-reverts quickly, so a 15m cadence fades it nearer the exhaustion of the covering flow. Price rises while OI falls = short-covers buying to close then ceasing; the counterparty is that self-extinguishing bid, and once it is gone the pop rolls over. Run as a perp SHORT. Entry: open_interest cross_down (contracting) AND ret_Nd above a positive floor over a short lookback (rising into the contraction) AND rsi above an overbought floor AND adx below a ceiling (reversion, not a real trend). DISCONFIRMER: swap OI-down for OI-UP \u2014 if it does not flip to a loser, the divergence is cosmetic and you are shorting RSI; and this must be time-disjoint from H1 (no shared profitable bars) or the OI-direction read is a coin-flip. Faster bar = more fee turns, so the fade must clear ~20bps net with margin.",
+  "catalyst": "15m OI contraction + fresh overbought pop, no trend \u2014 short-cover exhaustion",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.75
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_contract_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ret_up_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "rsi_overbought"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "adx_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_contract_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -0.5
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    },
+    "ret_up_floor": {
+      "kind": "float",
+      "lo": 0.01,
+      "hi": 0.06
+    },
+    "rsi_overbought": {
+      "kind": "float",
+      "lo": 66,
+      "hi": 84
+    },
+    "adx_ceiling": {
+      "kind": "float",
+      "lo": 14,
+      "hi": 26
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 54
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.06
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.08
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 0.75
+    }
+  },
+  "direction": -1
+}

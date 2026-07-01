@@ -1,0 +1,41 @@
+{
+  "name": "OI-flush reversal — deleverage bounce gated by ATR expansion (4h)",
+  "rationale": "MECHANISM: same forced-deleverage thesis as the 1h flush, but read on a 4h clock and confirmed by ATR expansion rather than realized-vol z. A sharp open_interest contraction plus a deeply negative 4h return plus an ATR blow-out (atr as a fraction of price stretched high) marks the moment liquidation engines and de-risking market-makers MUST transact regardless of price. The solo steps in AFTER the cascade to supply the liquidity the leveraged crowd was forced to demand; the 4h clock catches slower, deeper washouts that the 1h version fires inside of. SPOT long, hold ~0.3-0.75d. DISCONFIRMER 1: kill if it does not beat a same-ATR-expansion falling-knife baseline that ignores open_interest — the edge must be the deleverage fingerprint, not generic volatility-buying. DISCONFIRMER 2: kill if the net edge comes from a handful of Oct/Nov-2025 mega-cascades (fails effective-N).",
+  "catalyst": "4h OI contraction + deep negative return + ATR expansion — a forced-deleverage washout to fade long.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 0.75
+  },
+  "entry": [
+    {"feature": {"name": "open_interest"}, "op": "lt", "threshold": {"param": "oi_drop_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "lt", "threshold": {"param": "ret_floor"}},
+    {"feature": {"name": "atr"}, "op": "gt", "threshold": {"param": "atr_expand"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "open_interest"}, "op": "cross_up", "threshold": {"param": "oi_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "param_space": {
+    "oi_drop_floor": {"kind": "float", "lo": -2.5, "hi": -0.5},
+    "ret_lb": {"kind": "int", "lo": 1, "hi": 3, "step": 1},
+    "ret_floor": {"kind": "float", "lo": -0.2, "hi": -0.05},
+    "atr_expand": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "oi_relief_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.03, "hi": 0.1},
+    "tp": {"kind": "float", "lo": 0.04, "hi": 0.16},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 0.75}
+  }
+}

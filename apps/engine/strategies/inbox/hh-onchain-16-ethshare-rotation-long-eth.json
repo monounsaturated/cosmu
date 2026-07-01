@@ -1,0 +1,29 @@
+{
+  "name": "Stablecoin ETH-share rotation -> ETH demand nowcast (long ETH, share momentum)",
+  "rationale": "ECONOMIC MECHANISM: stablecoin_eth_share rising means stablecoin supply is migrating onto Ethereum rails specifically (2025: stablecoins ~30% of on-chain volume, growth toward $500B cited as the main ETH-activity driver). When dry powder concentrates on ETH rather than Tron/Solana, it is a directional bet that deployment (DeFi, spot) will happen on ETH — a rotation nowcast that can lead ETH demand. The counterparty is cross-chain arbitrageurs and issuers rebalancing mint venues; the edge is that share shifts reflect where end-demand is forming before it prices in. Entry: stablecoin_eth_share rising above a fitted momentum floor AND aggregate stablecoin_mcap not contracting (so the rotation is into a growing, not shrinking, pool). Long ETH; exit on share rolling over or stop/TP/time. DISCONFIRMER 1: share moves can be driven by a single large mint-venue switch (issuer mechanics), not end-demand -> KILL if the signal is dominated by one discrete jump. DISCONFIRMER 2: KILL if eth_share is coincident with ETH price (no lead) after BH-FDR. DISCONFIRMER 3: data-availability — eth_share history may be short/revised; verify PIT coverage. Net of fees, DSR>=0.95.",
+  "catalyst": "stablecoin supply rotating onto ETH rails ahead of deployment",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "stablecoin_eth_share" }, "op": "gt", "threshold": { "param": "share_mom" } },
+    { "feature": { "name": "stablecoin_mcap" }, "op": "gt", "threshold": { "param": "mcap_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_eth_share" }, "op": "cross_down", "threshold": { "param": "share_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "share_mom":  { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "share_exit": { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "mcap_floor": { "kind": "float", "lo": -0.3, "hi": 0.5 },
+    "stop":       { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "tp":         { "kind": "float", "lo": 0.08, "hi": 0.3 },
+    "time_stop":  { "kind": "int",   "lo": 8, "hi": 18, "step": 1 }
+  },
+  "direction": 1
+}

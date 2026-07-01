@@ -1,0 +1,31 @@
+{
+  "name": "Price-up / active-addresses-down divergence -> exhaustion fade short (BTC)",
+  "rationale": "ECONOMIC MECHANISM: when BTC price makes new highs while btc_active_addresses falls (2025: price ~$87k but active addresses at a 12-month low, -30% from peak), the rally is not backed by organic network demand — it is thin, ETF/derivative-led price with no on-chain participation underneath. This retail-absence divergence historically precedes cooling. The other side is momentum/CTA flow chasing price with no fundamental buyer beneath; the fade harvests the mean-reversion when that flow exhausts. Entry: price stretched to the top of its range (range_position high) AND active addresses low. Fade short; exit on RSI re-cooling or stop/TP/time. DISCONFIRMER 1 (critical confound): active addresses are structurally decoupling from price via L2/Lightning leakage -> if low activity is PERMANENT the signal is always-on and useless; KILL if the activity decline is a one-way secular trend. DISCONFIRMER 2: shorting crypto in an up-trend can blow the DD cap (<=25%). DISCONFIRMER 3: KILL if the divergence has no forward predictive coefficient after BH-FDR. Very high death probability — included to TEST, not to fund. Net of fees, DSR>=0.95.",
+  "catalyst": "new price highs unconfirmed by active-address participation",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "gt", "threshold": { "param": "range_high" } },
+    { "feature": { "name": "btc_active_addresses" }, "op": "lt", "threshold": { "param": "addr_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_cool" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "range_lb":   { "kind": "int",   "lo": 20, "hi": 60, "step": 1 },
+    "range_high": { "kind": "float", "lo": 0.75, "hi": 0.95 },
+    "addr_floor": { "kind": "float", "lo": 0.2, "hi": 0.5 },
+    "rsi_lb":     { "kind": "int",   "lo": 10, "hi": 25, "step": 1 },
+    "rsi_cool":   { "kind": "float", "lo": 45, "hi": 60 },
+    "stop":       { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.22 },
+    "time_stop":  { "kind": "int",   "lo": 4, "hi": 14, "step": 1 }
+  },
+  "direction": -1
+}

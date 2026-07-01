@@ -1,0 +1,30 @@
+{
+  "name": "DeFi TVL contraction beyond price -> capital-leaving-protocols short (ETH)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the two long TVL variants: this trades the DOWNSIDE of the de-beta'd deposit signal — TVL FALLING faster than price explains means real capital is being WITHDRAWN from protocols, deleveraging that leads ETH weakness): the same leakage caveat applies inverted — a TVL drop that is JUST ETH price falling is beta, but TVL contracting while price has NOT yet fallen (ret_Nd still non-negative) isolates genuine deposit outflow / protocol de-risking that precedes ETH downside. Short ETH; exit on TVL stabilizing (cross_up) or stop/TP/time. DISCONFIRMER 1 (most likely): if de-beta'd TVL outflow has no forward power on ETH, it is beta and dies. DISCONFIRMER 2: shorting ETH can blow the DD cap in a squeeze; KILL if maxDD>25%. DISCONFIRMER 3: if a plain negative-momentum short matches it, TVL adds nothing; and DefiLlama recounts can fake outflows -> require PIT TVL. High death probability — a symmetry test. Net of fees, DSR>=0.95.",
+  "catalyst": "TVL deposits withdrawn faster than price falls (protocol de-risking)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "defi_tvl" }, "op": "lt", "threshold": { "param": "tvl_outflow" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gte", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "defi_tvl" }, "op": "cross_up", "threshold": { "param": "tvl_relief" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tvl_outflow": { "kind": "float", "lo": -1.0, "hi": 0.0 },
+    "tvl_relief":  { "kind": "float", "lo": -0.3, "hi": 0.5 },
+    "mom_lb":      { "kind": "int",   "lo": 7, "hi": 30, "step": 1 },
+    "mom_floor":   { "kind": "float", "lo": -0.03, "hi": 0.02 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":          { "kind": "float", "lo": 0.06, "hi": 0.25 },
+    "time_stop":   { "kind": "int",   "lo": 4, "hi": 14, "step": 1 }
+  },
+  "direction": -1
+}

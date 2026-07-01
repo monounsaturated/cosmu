@@ -1,0 +1,43 @@
+{
+  "name": "RSI-pullback re-entry — MA-trend-filtered dip buy (15m)",
+  "rationale": "MECHANISM: same buy-the-dip continuation (shallow RSI pullback in an uptrend is a liquidity add-point, resumption runs the faders) but the uptrend is defined STRUCTURALLY by a moving-average regime filter (setup.ma_trend_filter — only enter when price is above its fitted MA) instead of by adx. This isolates whether the trend confirmation that matters is a price-vs-MA structure or an adx trend-strength — economically distinct definitions of 'uptrend' on the same pullback signal. Entry: price above its MA (regime filter) AND rsi below a fitted dip floor AND positive ret_Nd. DISCONFIRMER: kill if the edge survives with the MA regime filter removed (then it is generic RSI reversion, not trend-continuation — and crypto reversion is largely arbitraged away), or if the MA-filtered version is indistinguishable from the adx-gated sibling at equal DSR (the two trend definitions are redundant, so this is not a distinct edge).",
+  "catalyst": "shallow RSI dip while price holds above its trend MA",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2
+  },
+  "entry": [
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_dip" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_resume" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "setup": {
+    "ma_trend_filter": { "ma_lookback": { "param": "ma_lb" } }
+  },
+  "param_space": {
+    "rsi_lb":     { "kind": "int",   "lo": 6,  "hi": 24, "step": 1 },
+    "rsi_dip":    { "kind": "float", "lo": 35, "hi": 48 },
+    "rsi_resume": { "kind": "float", "lo": 52, "hi": 65 },
+    "mom_lb":     { "kind": "int",   "lo": 8,  "hi": 40, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0, "hi": 0.02 },
+    "ma_lb":      { "kind": "int",   "lo": 20, "hi": 120, "step": 1 },
+    "stop":       { "kind": "float", "lo": 0.012, "hi": 0.05 },
+    "tp":         { "kind": "float", "lo": 0.02, "hi": 0.1 },
+    "time_stop":  { "kind": "float", "lo": 0.5, "hi": 2.0 }
+  }
+}

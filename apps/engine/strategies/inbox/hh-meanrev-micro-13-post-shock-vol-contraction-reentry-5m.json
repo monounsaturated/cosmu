@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: post-shock vol-contraction re-entry (5m)",
+  "rationale": "MECHANISM: two-stage. A washout spikes realized vol, then vol MEAN-REVERTS (contracts toward baseline). The tradeable snapback is NOT at the instant of the spike (too much adverse-selection / knife-catching) but as vol_realized ROLLS OVER from its peak — the point where forced flow is exhausted and makers re-tighten spreads. At entry the other side is the last stop-outs; the fader waits for the vol-contraction confirmation to avoid buying mid-cascade. This persists because vol clustering plus vol mean-reversion are among the most robust stylized facts in crypto, so 'enter the fade only after realized vol turns DOWN from an extreme' is a mechanically-grounded, less-crowded timing rule than raw bb_z. Entry: bb_z extreme (dislocation present) AND vol_realized crossing DOWN through a fitted level (contraction confirmed) AND rsi below a floor (still oversold, room to recover). Long-only spot; exit as bb_z reverts. DISCONFIRMER: if waiting for vol-contraction does NOT beat entering at the spike (the delayed entry just misses the bounce and earns less net), the timing refinement is dead. LEAKAGE guard: 'vol turning down' must be computed strictly from CLOSED bars — re-run with a 1-bar lag; if the edge vanishes it was look-ahead, kill.",
+  "catalyst": "fade entered only as realized vol rolls over from a post-washout peak",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.0,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "cross_down", "threshold": {"param": "vol_rolloff"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -2.0},
+    "vol_rolloff": {"kind": "float", "lo": 0.8, "hi": 2.5},
+    "rsi_floor": {"kind": "float", "lo": 15, "hi": 30},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.005, "hi": 0.03},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.25}
+  },
+  "direction": 1
+}

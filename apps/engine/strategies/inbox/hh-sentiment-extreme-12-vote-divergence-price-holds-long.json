@@ -1,0 +1,30 @@
+{
+  "name": "Cryptopanic bearish-vote divergence — loud pessimism price refuses to confirm (long)",
+  "rationale": "MECHANISM: cryptopanic votes are a direct, granular retail tally distinct from the composite fear_greed. When bearish votes are HIGH but price does NOT confirm — price holds a support, range_position is NOT making new lows — it signals loud retail pessimism the tape refuses to validate: capitulation-without-follow-through, which historically precedes short-term rebounds. Counterparty: informed flow quietly absorbing while the crowd shouts. The DIVERGENCE (sentiment vs price) is the alpha, not sentiment alone. Entry: cryptopanic_bearish_votes above a fitted spike AND range_position above a fitted floor (price holding, not breaking down). Long; exit when votes subside or price breaks out, or stop/TP/time. DISCONFIRMER: check per-symbol vote coverage FIRST — thin data collapses effective-N and the Gate kills it. If bearish-vote spikes predict returns EQUALLY whether or not price diverges (range_position high vs low), the 'divergence' framing is fake and it is just a bearish-vote contrarian — test that simpler form instead.",
+  "catalyst": "bearish votes spike while price holds its range (divergence)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "cryptopanic_bearish_votes" }, "op": "gt", "threshold": { "param": "vote_spike" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "gt", "threshold": { "param": "range_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "cryptopanic_bearish_votes" }, "op": "cross_down", "threshold": { "param": "vote_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vote_spike":       { "kind": "float", "lo": 20.0, "hi": 80.0 },
+    "vote_relief_exit": { "kind": "float", "lo": 5.0,  "hi": 25.0 },
+    "range_lb":         { "kind": "int",   "lo": 14,   "hi": 60, "step": 1 },
+    "range_floor":      { "kind": "float", "lo": 0.35, "hi": 0.60 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":        { "kind": "int",   "lo": 3,    "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

@@ -1,0 +1,50 @@
+{
+  "name": "hh-meanrev-micro: deep fade with ATR stop and break-even runner (1h)",
+  "rationale": "MECHANISM: the snapback fade with an ASYMMETRIC exit — a deep bb_z/rsi washout on the 1h bar is faded, protected by an ATR-multiple stop (regime-scaled risk), and once the first partial take-profit leg fills the stop is moved to BREAK-EVEN and the remainder rides on a trailing stop. Economically this lets the fader bank the reliable first leg of the reversion (where most of the edge lives) while keeping a risk-free runner for the occasional full mean-revert-and-overshoot, without giving back the banked profit. The asymmetry is the point: capitulation bounces have a fat, quick first move and a thinner tail, so partial-then-runner harvests both without symmetric round-tripping. Entry: bb_z deep floor AND rsi oversold. Exit: ATR stop + one partial TP leg, break-even after leg 1, trailing runner. Long-only spot. DISCONFIRMER: ablate the runner — if the multi-TP/break-even/trail machinery does NOT beat a plain single-TP fade on the same 1h signals net of fees, the exit complexity is overfitting and should be stripped. If the runner's extra PnL comes entirely from one or two months, it is a tail bet dressed as an exit rule — kill.",
+  "catalyst": "deep hourly washout faded, bank the first leg, ride a risk-free runner",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2.0
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "atr_mult": {"param": "atr_stop_mult"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ],
+    "plan": {
+      "multi_tp": [
+        {"at": {"param": "tp1_at"}, "size_pct": {"param": "tp1_size"}}
+      ],
+      "break_even_after_tp1": true,
+      "runner_trail": {"param": "runner_trail"}
+    }
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -2.0},
+    "rsi_floor": {"kind": "float", "lo": 12, "hi": 22},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "atr_stop_mult": {"kind": "float", "lo": 1.5, "hi": 4.0},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.09},
+    "tp1_at": {"kind": "float", "lo": 0.008, "hi": 0.03},
+    "tp1_size": {"kind": "float", "lo": 0.3, "hi": 0.7},
+    "runner_trail": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "time_stop": {"kind": "float", "lo": 0.3, "hi": 2.0}
+  },
+  "direction": 1
+}

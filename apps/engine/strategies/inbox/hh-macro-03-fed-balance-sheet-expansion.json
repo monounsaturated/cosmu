@@ -1,0 +1,29 @@
+{
+  "name": "Fed-balance-sheet expansion impulse — long crypto beta when WALCL is re-expanding (independent liquidity read)",
+  "rationale": "MECHANISM: a distinct liquidity axis from the WALCL-TGA net-liquidity composite — here the raw fed_balance_sheet_usd rate-of-change isolates the Fed's own balance-sheet re-expansion (QE / stealth-easing / facility usage) that mechanically adds reserves, independent of the volatile TGA drain leg. When the balance sheet turns up, dealer balance-sheet capacity expands and the highest-beta liquidity sponge (crypto) re-rates. The counterparty is the same slow-clock TradFi allocator set. Trade: gate crypto-beta longs on fed_balance_sheet_usd RoC positive AND a confirming crypto trend (adx building). DISCONFIRMER: fed_balance_sheet_usd is a weekly, revision-prone FRED series with a next-availability lag — most of the lead is gone by the PIT bar. Kill if it adds no OOS lift over the net-liquidity composite variant (hh-macro-01) — if the two liquidity reads are the same trade, keep only the stronger. Also kill if the signal only worked during 2020-2021 outright QE (2026 has no active QE program).",
+  "catalyst": "Fed balance sheet re-expanding into a confirmed crypto trend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 25 },
+  "entry": [
+    { "feature": { "name": "fed_balance_sheet_usd", "lookback": { "param": "bs_roc_lb" } }, "op": "gt", "threshold": { "param": "bs_roc_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fed_balance_sheet_usd", "lookback": { "param": "bs_roc_lb" } }, "op": "lt", "threshold": { "param": "bs_roll_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bs_roc_lb":    { "kind": "int",   "lo": 20,   "hi": 40,   "step": 1 },
+    "bs_roc_floor": { "kind": "float", "lo": 0.0,  "hi": 0.02 },
+    "bs_roll_exit": { "kind": "float", "lo": -0.015, "hi": 0.0 },
+    "adx_floor":    { "kind": "float", "lo": 18,   "hi": 32 },
+    "stop":         { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":           { "kind": "float", "lo": 0.1,  "hi": 0.4 },
+    "time_stop":    { "kind": "int",   "lo": 8,    "hi": 25,   "step": 1 }
+  }
+}

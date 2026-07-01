@@ -1,0 +1,30 @@
+{
+  "name": "Net-liquidity impulse regime — long crypto beta only when net-liquidity RoC is positive AND accelerating (daily)",
+  "rationale": "MECHANISM: the durable edge is the CHANGE in net liquidity (WALCL-TGA) leading crypto beta, NOT the decaying level correlation. When reserves expand they get levered into the far end of the risk curve; crypto absorbs the marginal dollar last and hardest (~7.6x amplification per CrossBorder/Howell). The counterparty is macro/rates desks on a slow institutional clock (mandate + committee lags) while 24/7 retail-heavy crypto front-runs the same plumbing. Trade: gate BTC/ETH-beta longs on net_liquidity_usd 4-8w rate-of-change being positive AND the crypto tape confirming momentum (positive medium-term ret_Nd). DISCONFIRMER: net_liquidity_usd is WEEKLY with a conservative available_at = ts+8 days, so by the time the signal is PIT-legal the 1-2w lead is largely consumed — kill if the T+8-lagged series' OOS Sharpe net of fees is indistinguishable from naive BTC buy-and-hold, or if the edge only exists pre-2024 (RRP is empty in 2026, the mechanical pump is gone).",
+  "catalyst": "positive, accelerating net-liquidity impulse into a confirming crypto uptrend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 25 },
+  "entry": [
+    { "feature": { "name": "net_liquidity_usd", "lookback": { "param": "liq_roc_lb" } }, "op": "gt", "threshold": { "param": "liq_roc_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "net_liquidity_usd", "lookback": { "param": "liq_roc_lb" } }, "op": "lt", "threshold": { "param": "liq_roll_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "liq_roc_lb":    { "kind": "int",   "lo": 20,   "hi": 40,   "step": 1 },
+    "liq_roc_floor": { "kind": "float", "lo": 0.0,  "hi": 0.03 },
+    "liq_roll_exit": { "kind": "float", "lo": -0.02, "hi": 0.0 },
+    "mom_lb":        { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "mom_floor":     { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":          { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":            { "kind": "float", "lo": 0.1,  "hi": 0.4 },
+    "time_stop":     { "kind": "int",   "lo": 8,    "hi": 25,   "step": 1 }
+  }
+}

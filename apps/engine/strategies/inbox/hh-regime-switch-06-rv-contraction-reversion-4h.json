@@ -1,0 +1,44 @@
+{
+  "name": "HH regime-switch 06 — realized-vol CONTRACTION regime → trade mean-reversion (4h)",
+  "rationale": "MECHANISM (the contraction LEG of the vol-regime switch, the mirror of variant 04): in a low realized-vol contraction regime price oscillates around a stable mean because market-maker inventory rebalancing dominates and there is no directional flow. You FADE that liquidity provider by buying statistical dips. This spec ONLY trades reversion, and ONLY when vol_realized is in its lower regime (below a fitted contraction ceiling) so it never fades a genuine trend. Entry: vol_realized low AND price washed down (bb_z below a fitted floor) AND rsi oversold. Exit: bb_z reverts up through zero (mean recovered) or vol_realized breaks UP out of the contraction band (regime flip — stop fading), or stop/TP/time. Pairs with 04 to form the switch. DISCONFIRMER: reversion's edge in the BOTTOM realized-vol tercile must independently clear the Gate net of fees; if it only survives pooled with the expansion leg, the switch is a curve-fit label. Kill if the contraction ceiling has to be re-fit per-asset — a real regime uses one global threshold. Also kill if an unconditional bb_z dip-buy (no vol gate) matches the deflated Sharpe: then the vol regime adds nothing.",
+  "catalyst": "low realized-vol contraction with a washed-out dip — a market-maker mean to fade",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 6
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_contraction_ceiling" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "bb_mean_exit" } },
+      { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "gt", "threshold": { "param": "rv_regime_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb": { "kind": "int", "lo": 10, "hi": 40, "step": 1 },
+    "rv_contraction_ceiling": { "kind": "float", "lo": 0.15, "hi": 0.45 },
+    "rv_regime_exit": { "kind": "float", "lo": 0.45, "hi": 0.8 },
+    "bb_lb": { "kind": "int", "lo": 14, "hi": 40, "step": 1 },
+    "bb_floor": { "kind": "float", "lo": -3.0, "hi": -1.2 },
+    "rsi_lb": { "kind": "int", "lo": 7, "hi": 21, "step": 1 },
+    "rsi_floor": { "kind": "float", "lo": 20, "hi": 38 },
+    "bb_mean_exit": { "kind": "float", "lo": -0.4, "hi": 0.4 },
+    "stop": { "kind": "float", "lo": 0.04, "hi": 0.12 },
+    "tp": { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop": { "kind": "int", "lo": 2, "hi": 6, "step": 1 }
+  }
+}

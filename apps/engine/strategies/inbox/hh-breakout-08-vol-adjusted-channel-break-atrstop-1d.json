@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 08 — channel break with ATR-multiple stop (1d)",
+  "rationale": "MECHANISM: the same Donchian/Turtle convexity (few breaks catch multi-week trends, ~5x payoff on ~33% wins) but on the DAILY clock and — the distinct upgrade — with an ATR-MULTIPLE stop (exit.atr_mult) instead of a fixed stop fraction, which is the actual Turtle risk rule: the stop distance scales with current volatility so a high-vol asset is given room and a low-vol asset is stopped tight, keeping the per-trade risk constant across regimes. Enter long on a range_position break to a new daily-scale high with adx above a trend floor. The daily clock captures the slowest, most-persistent trends and pays the fewest fees. DISCONFIRMER: KILL if it fails to beat buy-and-hold net of fees on the holdout, OR if the ATR-multiple stop does not outperform the fixed-fraction stop (the vol-normalization adds nothing → revert to fixed), OR if maxDD exceeds 25%, OR if removing the adx floor leaves the edge intact (the trend filter is decorative and the survivors are lucky tails).",
+  "catalyst": "break to a new daily-scale high, risk sized by ATR",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 30
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_break"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "atr_mult": {"param": "atr_mult"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_break": {"kind": "float", "lo": 0.9, "hi": 0.99},
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "atr_mult": {"kind": "float", "lo": 1.5, "hi": 4.0},
+    "stop": {"kind": "float", "lo": 0.04, "hi": 0.15},
+    "tp": {"kind": "float", "lo": 0.08, "hi": 0.5},
+    "time_stop": {"kind": "int", "lo": 5, "hi": 30, "step": 1}
+  }
+}

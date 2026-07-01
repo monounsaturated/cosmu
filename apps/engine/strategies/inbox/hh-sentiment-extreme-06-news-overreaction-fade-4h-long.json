@@ -1,0 +1,30 @@
+{
+  "name": "News-sentiment overreaction fade on 4h bars (headline-shock reversal, long)",
+  "rationale": "MECHANISM: GDELT/news-sentiment research shows retail disproportionately reacts to bearish headlines and social sentiment drives 30-40% of short-term volatility; the reaction is an emotional overshoot that reverts once the headline's (usually small) information content is digested. Counterparty: liquidity providers / patient buyers who fade the emotional tape and collect the reversion premium. This lives on 4h because the overreaction-and-snapback happens within hours; fractional-hold + real-fee support let us hold a few bars. Entry: news_sentiment in an extreme LOW tail AND a matching price shock down (ret_Nd below a fitted floor) — fade only large shocks confirmed by price. Long the bounce; exit fast on time_stop or TP. DISCONFIRMER: the reversion premium must survive REAL 4h round-trip fees — if per-trade net edge < 2x fee+slippage, it is a mirage; kill. Second: if the fade works equally on RANDOM 4h bars (not just extreme-tone bars), it is plain short-horizon mean-reversion and news_sentiment adds no information — kill.",
+  "catalyst": "extreme-negative news sentiment confirmed by a price shock down",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.04, "max_hold_days": 1.0 },
+  "entry": [
+    { "feature": { "name": "news_sentiment" }, "op": "lt", "threshold": { "param": "news_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "shock_lb" } }, "op": "lt", "threshold": { "param": "shock_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "news_sentiment" }, "op": "cross_up", "threshold": { "param": "news_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "news_floor":       { "kind": "float", "lo": -1.0,  "hi": -0.3 },
+    "news_relief_exit": { "kind": "float", "lo": -0.2,  "hi": 0.2 },
+    "shock_lb":         { "kind": "int",   "lo": 1,     "hi": 3, "step": 1 },
+    "shock_floor":      { "kind": "float", "lo": -0.10, "hi": -0.02 },
+    "stop":             { "kind": "float", "lo": 0.02,  "hi": 0.08 },
+    "tp":               { "kind": "float", "lo": 0.02,  "hi": 0.10 },
+    "time_stop":        { "kind": "float", "lo": 0.25,  "hi": 1.0 }
+  },
+  "direction": 1
+}

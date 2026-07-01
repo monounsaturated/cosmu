@@ -1,0 +1,42 @@
+{
+  "name": "HH regime-switch 11 — crypto momentum with a VIX-rising risk-off kill-switch (daily)",
+  "rationale": "MECHANISM (defensive, NOT a return source): pure crypto momentum decayed in the 2024-2025 whipsaw (altcoins -44% peak-to-trough, reversals dominated). The claim is NOT that regime adds return but that a macro risk-off tag lets you SIT OUT the choppy tape where whipsaw fees plus adverse moves eat momentum's Sharpe. Here the kill-switch is a VIX ceiling: only take momentum entries when vix_level is BELOW a fitted calm ceiling (risk is on) AND adx confirms a trend AND ret_Nd is positive. When VIX is elevated we simply do not enter — abstention, not extraction. Exit on trend death (ADX collapse) or a VIX spike above the ceiling (regime turned risk-off mid-trade), or stop/TP/time. This is rated a LOW bar on purpose. DISCONFIRMER: compare gated vs UNGATED momentum on the same asset/period — the VIX veto must raise net-of-fee return AND cut maxDD simultaneously; if it only does one, or just trades less for the same Sharpe, the overlay is cosmetic. Most likely the veto merely removes trades fees already made unprofitable, adding nothing — expect this to die.",
+  "catalyst": "confirmed crypto trend taken only while equity-vol says risk is on",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_calm_ceiling" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } },
+      { "feature": { "name": "vix_level" }, "op": "cross_up", "threshold": { "param": "vix_killswitch_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_calm_ceiling": { "kind": "float", "lo": 16, "hi": 28 },
+    "vix_killswitch_exit": { "kind": "float", "lo": 26, "hi": 40 },
+    "adx_floor": { "kind": "float", "lo": 20, "hi": 35 },
+    "adx_exit": { "kind": "float", "lo": 12, "hi": 20 },
+    "mom_lb": { "kind": "int", "lo": 14, "hi": 40, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0, "hi": 0.08 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp": { "kind": "float", "lo": 0.1, "hi": 0.4 },
+    "time_stop": { "kind": "int", "lo": 8, "hi": 25, "step": 1 }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "VRP overshoot short — IV>RV into an exhausted rally (4h perp)",
+  "rationale": "ECONOMIC MECHANISM (the SHORT-side expression of the variance risk premium: when the options market prices a fat premium (dvol>>vol_realized) AND price has rallied into an overbought exhaustion, the calmer-than-priced window favors a mean-reversion DOWN, not up — so we take the short leg on a perp and collect funding if longs are paying. This is the sign-inverted counterpart to the long VRP harvest and only makes sense as a distinct cell because the entry crowding condition is an OVERBOUGHT rally, not a calm dip): a wide IV-over-RV gap means dealers are charging a variance premium to a retail flow overpaying for convexity (Deribit 2025); implied>>realized forecasts realized undershoots implied -> the coming window is calm, and a rally that overshot into overbought mean-reverts within that calm. Entry (short, direction -1): dvol above a fitted floor (premium present) AND vol_realized below a fitted ceiling (calm relative to implied) AND rsi above a fitted overbought floor (the rally is exhausted). With funding_rate wired, a short RECEIVES funding when the rate is positive (longs paying) — extra carry on the mean-reversion. Exit: rsi crosses down out of overbought (reversion paid) or stop/TP/time. DISCONFIRMER 1: if a plain overbought-RSI short (drop both vol legs) matches the deflated Sharpe, the VRP adds nothing and this is generic mean-reversion. DISCONFIRMER 2: if this and the long VRP harvest (hh-volatility-01) both clear on the same symbols, the IV>RV spread is not selecting direction — the RSI leg is doing all the work. HARD CAVEAT: ~148 DVOL points -> paper-only; short-perp adverse-selection and funding-sign risk make this the harder side.",
+  "catalyst": "a variance premium into an overbought exhausted rally — a calm-window fade down",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 4
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_down", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dvol_floor":  { "kind": "float", "lo": 45.0, "hi": 85.0 },
+    "rv_lb":       { "kind": "int",   "lo": 20,   "hi": 60,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.30, "hi": 0.65 },
+    "rsi_lb":      { "kind": "int",   "lo": 8,    "hi": 20,  "step": 1 },
+    "rsi_floor":   { "kind": "float", "lo": 64.0, "hi": 78.0 },
+    "rsi_exit":    { "kind": "float", "lo": 45.0, "hi": 58.0 },
+    "stop":        { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":          { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop":   { "kind": "int",   "lo": 1,    "hi": 4,   "step": 1 }
+  },
+  "lane": "explore",
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

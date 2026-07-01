@@ -1,0 +1,29 @@
+{
+  "name": "Put/call extreme with news-sentiment pessimism confluence (options+headline consensus, long)",
+  "rationale": "MECHANISM: variant of the options-capitulation confluence that cross-checks put/call against NEWS sentiment rather than the fear_greed composite. Extreme put/call (informed hedging) plus a deeply negative news backdrop (headline-driven pessimism) is a different flavor of consensus: the professional hedge is reacting to the same bearish headline flow the retail crowd sees, and when BOTH are stretched the over-hedge unwind is the mechanical buy pressure. Tests whether the options-sentiment edge is robust to which retail-pessimism gauge confirms it. Long spot; exit when put/call normalizes or stop/TP/time. DISCONFIRMER: verify putcall_ratio per-symbol coverage FIRST (likely BTC/ETH-only, short history) — thin N cannot clear FDR. If put/call adds nothing once you control for news_sentiment, it is redundant — kill. If the confluence result is identical to the fear_greed-confluence variant, the two are one signal — keep the better-covered one.",
+  "catalyst": "extreme put/call hedging alongside deeply negative news sentiment",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "putcall_ratio" }, "op": "gt", "threshold": { "param": "pc_ceiling" } },
+    { "feature": { "name": "news_sentiment" }, "op": "lt", "threshold": { "param": "news_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "putcall_ratio" }, "op": "cross_down", "threshold": { "param": "pc_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "pc_ceiling":     { "kind": "float", "lo": 1.1,  "hi": 2.0 },
+    "pc_relief_exit": { "kind": "float", "lo": 0.8,  "hi": 1.1 },
+    "news_floor":     { "kind": "float", "lo": -0.8, "hi": -0.2 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":      { "kind": "int",   "lo": 3,    "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}

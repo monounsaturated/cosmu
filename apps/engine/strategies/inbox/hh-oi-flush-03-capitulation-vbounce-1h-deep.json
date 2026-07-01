@@ -1,0 +1,137 @@
+{
+  "name": "OI-flush capitulation V-bounce (1h deeper-flush spot long)",
+  "rationale": "MECHANISM (H1 on 1h with a DEEPER flush threshold): a slower cadence that only fires on the larger, more decisive OI collapses, trading fewer signals for a cleaner forced-seller-exhausted read. On 1h the ret_Nd 'price is falling' confirmation spans a full multi-hour cascade rather than a single candle, so the capitulation is unambiguous. Counterparty unchanged: a risk engine liquidating into thin books, structurally price-insensitive. Entry: open_interest cross_down through a DEEP normalized floor (bigger magnitude than the 15m variant) AND ret_Nd below a negative floor AND rsi below an oversold floor AND vol_realized above a floor. DISCONFIRMER: strip open_interest \u2014 if the oversold+falling combo matches the deflated Sharpe, OI adds nothing; and swap ret_Nd-down for ret_Nd-UP \u2014 a profitable long means OI is a price-proxy with an incoherent sign. Fewer, larger 1h trades must still clear ~20bps net.",
+  "catalyst": "1h deep OI cross_down + multi-hour price fall + oversold washout",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "ret_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_flush_floor": {
+      "kind": "float",
+      "lo": -4.5,
+      "hi": -2.0
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 12,
+      "step": 1
+    },
+    "ret_down_floor": {
+      "kind": "float",
+      "lo": -0.12,
+      "hi": -0.03
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 34
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.4,
+      "hi": 1.8
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50,
+      "hi": 64
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.16
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 3.0
+    }
+  },
+  "direction": 1
+}

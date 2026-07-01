@@ -1,0 +1,29 @@
+{
+  "name": "Attention-velocity ignition — social_volume_accel z-spike long (4h)",
+  "rationale": "MECHANISM: a fresh day-over-day jump in social attention (social_volume_accel = ln(v_t/v_{t-1})) precedes price on small/mid-cap floats because a few thousand new eyeballs convert to real inflow BEFORE the crowd is fully positioned; the counterparty is slow retail/aggregators who react 24-48h later once the coin trends on their dashboards. The edge is the CHANGE (onset), priced later than the LEVEL, and giants ignore small floats (no capacity). Entry LONG when accel clears a fitted positive spike floor and active contributor breadth confirms real authors (not a wash/bot burst). Exit on accel decay back toward zero (attention fades) or stop/TP/time. DISCONFIRMER: time-shuffle the attention series (recompute accel on shuffled attention, same price) — if forward return survives the shuffle it is price autocorrelation, KILL. Lead-lag must be strong at +1 bar and ~0 at -1 bar; symmetric = coincident not predictive, KILL. Must clear small-cap round-trip fees at 4h cadence.",
+  "catalyst": "fresh social-attention acceleration spike with real author breadth on a small/mid-cap float",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 5 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_spike" } },
+    { "feature": { "name": "contributors_active" }, "op": "gt", "threshold": { "param": "breadth_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_decay_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_spike":       { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "accel_decay_exit":  { "kind": "float", "lo": -0.2, "hi": 0.1 },
+    "breadth_floor":     { "kind": "float", "lo": 5,    "hi": 50 },
+    "stop":              { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":                { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":         { "kind": "float", "lo": 0.5,  "hi": 5 }
+  },
+  "direction": 1
+}

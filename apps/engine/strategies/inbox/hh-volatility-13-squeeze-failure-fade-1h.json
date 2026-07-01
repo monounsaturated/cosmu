@@ -1,0 +1,44 @@
+{
+  "name": "Squeeze-failure fade — bb_z overshoot re-entry (1h)",
+  "rationale": "ECONOMIC MECHANISM (the squeeze-failure fade at 1h reading the failed poke via the band z-score bb_z rather than range_position — a standardized-distance gauge that keys off statistical over-extension, so it is a distinct crowding read from the raw-range versions): a bb_width multi-window floor is a coiled spring; a downside break that fails and snaps back is a false breakdown that trapped the breakdown crowd, whose buy-to-cover fuels the reversion. 2025 BB backtests show naive band-breaks are a coin-flip because false breaks dominate — the failed break is the edge, not the break. Entry (long): bb_width below a fitted floor (spring) AND bb_z below a fitted floor (price statistically stretched below the band -> the overshoot poke) AND rsi in washout (momentum exhausted on the poke). Hold for the snap-back. The counterparty is the mechanical band-break sellers; their stops are our fuel. Distinct from squeeze-then-trend (buys the confirmed break) and from the 15m/30m variants (raw-range vs standardized-z over-extension). Exit: bb_z crosses up through a fitted level (mean-reverted back toward the band) or stop/TP/time. DISCONFIRMER 1: drop the bb_width squeeze pre-condition — if fading any bb_z overshoot works as well, the squeeze is inert and this is a generic z-score dip-buy (already in the inbox), not a squeeze-family edge. DISCONFIRMER 2: if bb_z-floor and rsi-floor fire on the same bars >80% of the time they are one over-extension gauge -> drop one. DISCONFIRMER 3: net of ~20bps at 1h the fades must clear per-trade.",
+  "catalyst": "a squeeze whose downside break statistically overshoots and fails",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2
+  },
+  "entry": [
+    { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "lt", "threshold": { "param": "bbw_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bbz_lb" } }, "op": "lt", "threshold": { "param": "bbz_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bbz_lb" } }, "op": "cross_up", "threshold": { "param": "bbz_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bbw_lb":     { "kind": "int",   "lo": 20,   "hi": 60,  "step": 1 },
+    "bbw_floor":  { "kind": "float", "lo": 0.02, "hi": 0.07 },
+    "bbz_lb":     { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bbz_floor":  { "kind": "float", "lo": -3.0, "hi": -1.5 },
+    "rsi_lb":     { "kind": "int",   "lo": 8,    "hi": 20,  "step": 1 },
+    "rsi_floor":  { "kind": "float", "lo": 22.0, "hi": 38.0 },
+    "bbz_exit":   { "kind": "float", "lo": -0.8, "hi": 0.4 },
+    "stop":       { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":         { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "time_stop":  { "kind": "int",   "lo": 1,    "hi": 2,   "step": 1 }
+  },
+  "lane": "explore",
+  "direction": 1
+}

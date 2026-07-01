@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 06 — fakeout fade with realized-vol gate (30m)",
+  "rationale": "MECHANISM: the same fakeout-fade thesis (most raw breakouts fail; extremes in a range regime revert), but on a 30m clock and with an EXPLICIT vol_realized CEILING instead of relying on bb_width alone — the distinct claim is that fades only pay when realized volatility is genuinely LOW (a calm range), because in a high-vol regime the 'extreme' is a real expansion, not a sweep. Enter LONG at the range-low extreme when vol_realized is below a fitted ceiling AND adx is low. The 30m clock trades fewer, higher-quality fades than 15m so fee drag is lower — a different frequency/regime cell from variants 04/05. Counterparty: breakdown-chasers whose stops are swept in the quiet range. DISCONFIRMER: KILL if the vol_realized gate adds nothing over the plain range-extreme fade (removing it does not change the edge → the 'calm-only' claim is false), or if the reversion does not beat fees on a majority of symbols per-symbol, or if the edge only exists pre-2024 in the holdout. atr is carried for context/sizing but the vol gate is the load-bearing filter.",
+  "catalyst": "range-low sweep in a demonstrably calm (low realized-vol) regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.75
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_extreme"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vr_ceiling"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_extreme": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "vr_ceiling": {"kind": "float", "lo": 0.008, "hi": 0.03},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "rp_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.012, "hi": 0.055},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1.5}
+  }
+}

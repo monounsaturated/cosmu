@@ -1,0 +1,33 @@
+{
+  "name": "Fear-greed velocity crash — flush (not drift) as the contrarian trigger (long)",
+  "rationale": "MECHANISM: overreaction concentrates in the SPEED of the sentiment move, not the level — a fear_greed that PLUNGES marks panic-in-progress where forced sellers are actively hitting bids, versus a slow grind to extreme fear that is fully anticipated and does NOT snap back. This separates 'flush' from 'grinding bear'. We express the crash as fear_greed CROSSING DOWN through a fitted level on the bar (a fresh break, not a standing low) confirmed by a sharp same-window price drop (ret_Nd), and require realized vol elevated (vol_realized above a fitted floor) so we only act inside an actual liquidity vacuum. Counterparty: patient capital absorbing transient forced flow. Long the snapback; exit on fear relief or time. DISCONFIRMER: regress forward return on fear LEVEL vs the cross event jointly — if the standing level dominates and the fresh break carries no independent sign, this collapses into the level spec (hh-01) and is a duplicate; kill. Also: fear_greed partly embeds price/vol momentum, so verify the velocity is orthogonal to vol_realized (not just realized-vol under another name) or kill.",
+  "catalyst": "a violent fear_greed plunge into a high-volatility flush",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "cross_down", "threshold": { "param": "fear_break" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "drop_lb" } }, "op": "lt", "threshold": { "param": "drop_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "gt", "threshold": { "param": "vol_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_break":       { "kind": "float", "lo": 20.0, "hi": 40.0 },
+    "fear_relief_exit": { "kind": "float", "lo": 45.0, "hi": 60.0 },
+    "drop_lb":          { "kind": "int",   "lo": 1,    "hi": 3, "step": 1 },
+    "drop_floor":       { "kind": "float", "lo": -0.12,"hi": -0.03 },
+    "vol_lb":           { "kind": "int",   "lo": 7,    "hi": 20, "step": 1 },
+    "vol_floor":        { "kind": "float", "lo": 0.50, "hi": 1.00 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":        { "kind": "int",   "lo": 2,    "hi": 10, "step": 1 }
+  },
+  "direction": 1
+}

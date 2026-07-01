@@ -1,0 +1,38 @@
+{
+  "name": "HH regime-switch 01 — VIX-extreme contrarian long on crypto beta (daily)",
+  "rationale": "MECHANISM: when VIX spikes to an extreme top-decile level (>~40), forced deleveraging in equity/vol-control funds mechanically drags high-beta crypto down past fundamentals. The counterparty is a margin-called, price-insensitive seller (CTAs, vol-target funds, liquidated perp longs) who MUST sell regardless of price — you are paid the mean-reversion premium for warehousing risk when everyone is forced out. VIX reverts to its 50d MA in ~7 trading days after a >30 spike, and Feb-2026 study (VIX>45) shows significant positive 3-month forward reversals robust to valuation/credit/sentiment controls. Entry: vix_level above a fitted extreme floor AND price stretched down (ret_Nd below a fitted floor — a genuine dislocation, not a mid-range dip). Exit: VIX crosses back DOWN toward normalcy (the forced flow is done), or stop/TP/time. DISCONFIRMER: on the subset of vix_level>40 entries (min 25 events), median forward 5-10d return must be >0 net of ~20bps round-trip fees; if a >35% adverse excursion recurs in >20% of events (LUNA/FTX-style tail) or the signal only 'works' because 2020-2021 dominates while post-2023 events are flat, it is a stale regime artifact — kill it.",
+  "catalyst": "top-decile VIX spike forcing price-insensitive deleveraging into crypto beta",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_extreme_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "dislocation_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_down", "threshold": { "param": "vix_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_extreme_floor": { "kind": "float", "lo": 34, "hi": 48 },
+    "vix_relief_exit": { "kind": "float", "lo": 22, "hi": 33 },
+    "mom_lb": { "kind": "int", "lo": 3, "hi": 10, "step": 1 },
+    "dislocation_floor": { "kind": "float", "lo": -0.18, "hi": -0.04 },
+    "stop": { "kind": "float", "lo": 0.08, "hi": 0.2 },
+    "tp": { "kind": "float", "lo": 0.08, "hi": 0.3 },
+    "time_stop": { "kind": "int", "lo": 4, "hi": 12, "step": 1 }
+  }
+}

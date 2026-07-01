@@ -1,0 +1,32 @@
+{
+  "name": "Stablecoin supply regime gate on a BTC/ETH trend sleeve (mcap-expanding = risk-on)",
+  "rationale": "ECONOMIC MECHANISM: aggregate stablecoin_mcap expansion vs contraction is the cleanest risk-appetite regime axis in crypto (2025 Q3 saw +$45B, the largest ever = risk-on; Q4 collapsed to +$8B during a 22% crypto-backed-stable contraction = risk-off). Contracting stable supply means capital physically leaving the perimeter (redemptions to fiat), which precedes/accompanies de-risking. This is a FILTER, not a standalone alpha: stablecoin_mcap growth positive GATES when a simple trend-follow (positive medium-term ret_Nd + ADX confirming a real trend) is allowed to be long. The edge is avoiding drawdown regimes, not out-predicting a counterparty. Exit on trend death (ADX collapse). DISCONFIRMER 1: the gate must IMPROVE DSR and CUT maxDD vs the ungated trend sleeve — if it only reduces trade count without improving risk-adjusted return it is a curve-fit filter and dies. DISCONFIRMER 2: mcap is smooth/laggy -> KILL if it flips too slowly to matter and whipsaws at turns. DISCONFIRMER 3: if a plain price-vol / 200d-MA regime filter does the same job, the on-chain feature is redundant. Net of fees.",
+  "catalyst": "expanding stablecoin supply gating a long trend sleeve",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "stablecoin_mcap" }, "op": "gt", "threshold": { "param": "regime_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "regime_floor": { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "mom_lb":       { "kind": "int",   "lo": 14, "hi": 45, "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": 0.0, "hi": 0.06 },
+    "adx_floor":    { "kind": "float", "lo": 18, "hi": 32 },
+    "adx_exit":     { "kind": "float", "lo": 12, "hi": 20 },
+    "stop":         { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":           { "kind": "float", "lo": 0.1, "hi": 0.4 },
+    "time_stop":    { "kind": "int",   "lo": 8, "hi": 20, "step": 1 }
+  },
+  "direction": 1
+}

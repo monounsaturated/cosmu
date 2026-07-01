@@ -1,0 +1,29 @@
+{
+  "name": "VIX-spike RSI-washout reversion — daily capitulation long gated on an extreme fear print",
+  "rationale": "MECHANISM: same forced-deleverage reversion as the 4h variant, but on a DAILY bar where the FRED VIX print is fresh (next-day availability aligns with a daily close) and the washout is read via rsi rather than bb_z — a different, momentum-based over-extension gauge. In a genuine macro fear spike crypto is dumped by price-insensitive VaR sellers and the daily RSI collapses; fading that oversold print after the fear peak captures the covering bounce. DISCONFIRMER: this must add OOS lift OVER a pure oversold-RSI crypto reversion baseline — if the VIX gate only trims trades without improving risk-adjusted return, the macro feature is decoration and it dies as a multiple-testing artifact. Also kill if the VIX floor is so high it fires <15 times (no effective N). Distinct from hh-macro-05 by bar_size AND by the over-extension gauge (rsi vs bb_z), not just a threshold twiddle.",
+  "catalyst": "extreme VIX print into a daily oversold crypto washout",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_floor": { "kind": "float", "lo": 24,  "hi": 42 },
+    "rsi_lb":    { "kind": "int",   "lo": 7,   "hi": 21,   "step": 1 },
+    "rsi_floor": { "kind": "float", "lo": 20,  "hi": 35 },
+    "rsi_exit":  { "kind": "float", "lo": 45,  "hi": 60 },
+    "stop":      { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":        { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop": { "kind": "int",  "lo": 3,   "hi": 14,   "step": 1 }
+  }
+}

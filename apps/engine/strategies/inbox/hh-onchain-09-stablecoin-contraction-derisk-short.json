@@ -1,0 +1,30 @@
+{
+  "name": "Stablecoin supply contraction -> de-risk / short (BTC/ETH, redemptions leaving perimeter)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the two long-gate variants: this trades the OTHER side of the same regime axis — it goes SHORT when stablecoin supply CONTRACTS, harvesting the de-risking leg rather than gating a long): a shrinking stablecoin_mcap means capital physically leaving the crypto perimeter (redemptions to fiat), which precedes/accompanies de-risking and drawdowns (2025 Q4: 22% crypto-backed-stable contraction into a falling tape). When contraction coincides with weakening price momentum (ret_Nd turning negative), a short harvests the liquidity-withdrawal down-leg. Exit when supply stabilizes (mcap cross_up back to flat) or stop/TP/time. DISCONFIRMER 1: shorting crypto is dangerous — KILL if the DD cap (<=25%) is blown by shorting into a squeeze. DISCONFIRMER 2: mcap is laggy -> the contraction may register AFTER the drop; require a positive forward predictive coefficient for the short at k>=1 after BH-FDR, else it is coincident and useless. DISCONFIRMER 3: if a plain negative-momentum short matches it, the stablecoin feature adds nothing. High death probability — a regime-symmetry test. Net of fees, DSR>=0.95.",
+  "catalyst": "stablecoin supply contraction into weakening momentum",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "stablecoin_mcap" }, "op": "lt", "threshold": { "param": "contraction_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_mcap" }, "op": "cross_up", "threshold": { "param": "regime_relief" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "contraction_floor": { "kind": "float", "lo": -1.0, "hi": 0.0 },
+    "regime_relief":     { "kind": "float", "lo": -0.3, "hi": 0.5 },
+    "mom_lb":            { "kind": "int",   "lo": 7, "hi": 30, "step": 1 },
+    "mom_ceiling":       { "kind": "float", "lo": -0.06, "hi": 0.0 },
+    "stop":              { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":                { "kind": "float", "lo": 0.06, "hi": 0.25 },
+    "time_stop":         { "kind": "int",   "lo": 4, "hi": 14, "step": 1 }
+  },
+  "direction": -1
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Vol-expansion breakout — realized breaks out of compression (1d)",
+  "rationale": "ECONOMIC MECHANISM: the realized-vol-only expansion-momentum edge — the ECONOMIC COMPLEMENT to the low-vol tilt and calm-window reversion in this family. Volatility clusters: a period of compressed realized vol that then EXPANDS with an up-move is the start of a new trending regime (the coiled spring finally releasing on the daily grid, where the compression is a genuine multi-week base rather than intraday noise). We ride the expansion WITH price momentum so we take the confirmed breakout, not a fakeout. Entry (long): vol_realized crosses UP through a fitted floor (realized is expanding out of compression) AND ret_Nd positive (the expansion is to the upside) AND bb_width above a fitted floor (bands are widening, confirming the regime shift, not a single-bar spike). The counterparty is the range-bound mean-reversion crowd that keeps fading the base and is now offside as the range breaks. Realized features only (no DVOL) -> dodges the 148-point data wall. Exit: vol_realized crosses down through a fitted level (expansion fading -> the trend regime is ending) or stop/TP/time. DISCONFIRMER 1: if a plain daily momentum long (drop the vol_realized cross-up) matches the deflated Sharpe, the expansion trigger adds no timing edge and this is plain trend-following. DISCONFIRMER 2: if this expansion-breakout AND the low-vol-anomaly tilt (hh-volatility-08) both clear on the same symbols, they are trading opposite signs of the same feature and one is spurious -> the vol regime is not selecting. DISCONFIRMER 3: net of fees vs buy-and-hold BTC, the breakout must beat B&H or it's disguised beta.",
+  "catalyst": "realized vol expanding out of a compressed base with upside momentum",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 15
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "cross_up", "threshold": { "param": "rv_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "ret_lb" } }, "op": "gt", "threshold": { "param": "ret_floor" } },
+    { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "gt", "threshold": { "param": "bbw_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "cross_down", "threshold": { "param": "rv_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":      { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "rv_floor":   { "kind": "float", "lo": 0.45, "hi": 0.85 },
+    "ret_lb":     { "kind": "int",   "lo": 3,    "hi": 14,  "step": 1 },
+    "ret_floor":  { "kind": "float", "lo": 0.005, "hi": 0.05 },
+    "bbw_lb":     { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bbw_floor":  { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "rv_exit":    { "kind": "float", "lo": 0.30, "hi": 0.65 },
+    "stop":       { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":  { "kind": "int",   "lo": 3,    "hi": 15,  "step": 1 }
+  },
+  "direction": 1
+}

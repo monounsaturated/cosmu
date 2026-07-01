@@ -1,0 +1,29 @@
+{
+  "name": "Put/call extreme with retail fear confluence (options+spot consensus pessimism, long)",
+  "rationale": "MECHANISM: putcall_ratio is a PROFESSIONAL/informed-money positioning gauge — options are traded by sharper participants than the fear_greed crowd. An extreme put/call spike = heavy downside hedging among sophisticated players; when it hits a tail AND retail spot sentiment (fear_greed) is ALSO extreme, you get consensus pessimism that historically over-hedges: puts get bid up, spot gets a fear discount, and the hedge unwind (expiry/roll-off) provides mechanical buy pressure. The confluence of informed AND retail pessimism is the specific edge (either alone is noisier). Long spot; exit when put/call normalizes down or stop/TP/time. DISCONFIRMER: putcall_ratio coverage is likely BTC/ETH-only and short-history — verify per-symbol effective-N BEFORE anything or it cannot clear FDR. Mechanism check: if high put/call does NOT precede positive spot returns once you control for fear_greed (redundant with the fear composite, or sign corrupted by cash-secured-put yield flows), there is no independent options-sentiment edge — kill.",
+  "catalyst": "extreme put/call hedging alongside extreme retail fear",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "putcall_ratio" }, "op": "gt", "threshold": { "param": "pc_ceiling" } },
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "putcall_ratio" }, "op": "cross_down", "threshold": { "param": "pc_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "pc_ceiling":     { "kind": "float", "lo": 1.1,  "hi": 2.0 },
+    "pc_relief_exit": { "kind": "float", "lo": 0.8,  "hi": 1.1 },
+    "fear_floor":     { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":      { "kind": "int",   "lo": 3,    "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}

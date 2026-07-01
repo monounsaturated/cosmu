@@ -1,0 +1,138 @@
+{
+  "name": "Crowded-short funding capitulation squeeze (1h long the cleansed short crowd)",
+  "rationale": "MECHANISM: when perp funding crosses DOWN through a negative floor, perp SHORTS are crowded and PAYING to stay short (BTC funding <-6% annualized Mar-2025; a 46-day negative streak Apr-2026, longest since post-FTX). The counterparty is an over-crowded short who must eventually cover \u2014 a single bid ignites a self-reinforcing squeeze as covers chase price. We buy the INSTANT of the funding cross (a capitulation-in-progress, not a static level), require price to have STOPPED falling (ret_Nd above a knife-guard) so we are not catching a free-fall, and require contained vol so the funding print is not lagging a crash. With funding_feature wired, our open long is not charged carry while funding is negative \u2014 the positioning extreme IS the edge (non-economic forced-to-cover flow). DISCONFIRMER: replace the funding cross_down with a funding-LEVEL lt \u2014 if the static level does as well, the cross adds nothing and this is a re-skin of funding-reversion (memory: funding-carry HARVEST decayed to ~0 in 2025, so only the cross-EVENT can carry the Sharpe); also drop the open_interest-rising arm \u2014 if it does not degrade, the crowding read is cosmetic. Net of fees.",
+  "catalyst": "funding cross_down into a crowded-short extreme while price stops falling and OI rises",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "funding_neg_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ret_knife_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "oi_rising_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_relief_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_neg_floor": {
+      "kind": "float",
+      "lo": -0.0015,
+      "hi": -0.0003
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    },
+    "ret_knife_floor": {
+      "kind": "float",
+      "lo": -0.03,
+      "hi": 0.0
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.8,
+      "hi": 2.5
+    },
+    "oi_rising_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.5
+    },
+    "funding_relief_exit": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.09
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.14
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 3.0
+    }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

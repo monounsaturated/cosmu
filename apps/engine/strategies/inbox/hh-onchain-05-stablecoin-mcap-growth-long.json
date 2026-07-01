@@ -1,0 +1,30 @@
+{
+  "name": "Stablecoin market-cap growth surge -> demand nowcast (BTC/ETH, mcap not flow)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the net-flow variant: this reads the STOCK growth of stablecoin_mcap rather than the exchange net-flow rate — a smoother, less exchange-visibility-dependent measure of fresh fiat entering the perimeter, capturing on-chain mint supply that has NOT necessarily hit an exchange yet): expanding total stablecoin market cap is capital freshly parked in the crypto perimeter that must eventually be deployed into a risk asset. Rising stablecoin_mcap growth is a leading demand nowcast independent of where the coins currently sit. Entry: stablecoin_mcap above a fitted growth threshold AND price not already extended (range_position below a ceiling, so we buy demand before the top). Hold 4-14d. DISCONFIRMER 1: mcap growth is smooth and may lag price -> KILL if it is coincident with, not leading, forward returns (require positive predictive coefficient at k>=1 after BH-FDR). DISCONFIRMER 2: if net-flow (variant 04) and mcap growth give the same result they are one spec; the stock measure must add distinct information. DISCONFIRMER 3: supply that funds arb collateral not spot longs is the null. Must clear DSR>=0.95 net of fees, beat buy-and-hold.",
+  "catalyst": "expanding stablecoin market cap signaling fresh fiat demand",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "stablecoin_mcap" }, "op": "gt", "threshold": { "param": "mcap_growth" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "lt", "threshold": { "param": "range_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_mcap" }, "op": "cross_down", "threshold": { "param": "mcap_stall" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mcap_growth":   { "kind": "float", "lo": 0.5, "hi": 2.0 },
+    "mcap_stall":    { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "range_lb":      { "kind": "int",   "lo": 20, "hi": 60, "step": 1 },
+    "range_ceiling": { "kind": "float", "lo": 0.6, "hi": 0.9 },
+    "stop":          { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":            { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":     { "kind": "int",   "lo": 4, "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}

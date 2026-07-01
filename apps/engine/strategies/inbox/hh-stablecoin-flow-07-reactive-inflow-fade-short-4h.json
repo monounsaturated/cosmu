@@ -1,0 +1,34 @@
+{
+  "name": "Reactive stablecoin-inflow FADE short (4h, late money into an extended up-move)",
+  "rationale": "MECHANISM: the best-documented empirical fact is that issuance/inflows LAG price — flows react to demand, not cause it (Wei VAR: no causal issuance->BTC). A big stablecoin_net_flow_usd inflow arriving AFTER an already-extended up-move marks late, reactive, trend-chasing money — a crowding/exhaustion tell. Entry: large inflow spike coinciding with STRETCHED price (bb_z high AND ret_Nd strongly positive) — short/fade. Other side = momentum retail piling in at the top via freshly-moved stables; the reactive flow is structurally late and mean-reverts. DISCONFIRMER: requires inflow to coincide with EXTENDED price; if the fade also works when inflow coincides with neutral/oversold price, it is just a generic overbought short and the flow feature is decorative. Also fails if net-of-fees the short cannot overcome crypto's structural long-drift — a weak inflow signal (corr<0.3) is unlikely to deliver a reliable reversal.",
+  "catalyst": "reactive stablecoin inflow into an already-stretched 4h up-move",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 4 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "gt", "threshold": { "param": "flow_spike_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "gt", "threshold": { "param": "bb_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_down", "threshold": { "param": "bb_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_lb":          { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 },
+    "flow_spike_floor": { "kind": "float", "lo": 0.5,   "hi": 2.5 },
+    "bb_lb":            { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bb_ceiling":       { "kind": "float", "lo": 1.3,   "hi": 3.0 },
+    "mom_lb":           { "kind": "int",   "lo": 1,    "hi": 5,   "step": 1 },
+    "mom_ceiling":      { "kind": "float", "lo": 0.03,  "hi": 0.15 },
+    "bb_relief_exit":   { "kind": "float", "lo": 0.0,   "hi": 1.0 },
+    "stop":             { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":               { "kind": "float", "lo": 0.04, "hi": 0.15 },
+    "time_stop":        { "kind": "int",   "lo": 1,    "hi": 4,   "step": 1 }
+  },
+  "direction": -1
+}

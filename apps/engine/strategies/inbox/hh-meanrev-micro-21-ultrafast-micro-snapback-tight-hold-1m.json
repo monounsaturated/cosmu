@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: ultra-fast micro snapback, tight hold (1m)",
+  "rationale": "MECHANISM: the fastest cut of the liquidation-fade family — on the 1m bar a genuine multi-sigma bb_z washout is a sub-minute air pocket left by a price-insensitive market seller, and the snapback is a scalp measured in minutes. The economic edge is identical (fade the forced flow, collect the maker reversion premium as it exhausts) but the hold is deliberately tiny so the position is out before the next potential leg down — trading adverse-selection risk for many small, fast reversions. A tight vol_realized capacity veto is mandatory here because at 1m the spread/fee is the largest fraction of any expected move: skip when vol is high enough that the round-trip swamps the scalp. Entry: bb_z deep washout AND rsi oversold AND vol_realized below a fitted cap. Long-only spot; very short time stop; exit on bb_z reversion. DISCONFIRMER: at 1m taker fee + spread is almost certainly larger than the ~0.1-0.3% scalp on all but the very deepest books — if net-of-fee PnL is not clearly positive on the most liquid pairs, this is untradeable and must die. If gross is positive but net is zero, the 'edge' is entirely the fees you pay — kill, do not tune.",
+  "catalyst": "sub-minute washout air-pocket scalped before the next leg",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1m",
+    "min_hold_days": 0.0,
+    "max_hold_days": 0.04
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_cap"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -4.0, "hi": -2.5},
+    "rsi_floor": {"kind": "float", "lo": 10, "hi": 20},
+    "vol_cap": {"kind": "float", "lo": 0.3, "hi": 1.2},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.002, "hi": 0.012},
+    "tp": {"kind": "float", "lo": 0.003, "hi": 0.015},
+    "time_stop": {"kind": "float", "lo": 0.007, "hi": 0.04}
+  },
+  "direction": 1
+}

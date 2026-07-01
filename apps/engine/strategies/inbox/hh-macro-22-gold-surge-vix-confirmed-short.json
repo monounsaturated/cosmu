@@ -1,0 +1,30 @@
+{
+  "name": "Gold surge + elevated VIX confirmed flight — short crypto only when the gold bid is a VERIFIED risk-off (not debasement)",
+  "rationale": "MECHANISM: same Great-Decoupling fade, but adds the key disconfirmer as a HARD ENTRY GATE — require vix_level elevated ALONGSIDE the gold up-thrust so the gold bid is a VERIFIED risk-off flight, not a joint debasement/weak-dollar rally (where gold and crypto rise together and a short is backwards). When gold surges AND equity vol is elevated, the rotation into the true safe haven is real and crypto's digital-gold bid fails. Short crypto beta into that confirmed flight. Distinct from hh-macro-21 by the VIX confirmation gate (which directly neutralizes the joint-debasement failure mode) and by dropping the crypto-momentum leg. DISCONFIRMER: even a VIX-confirmed risk-off can see crypto and gold both bid if the shock is a dollar-debasement scare; kill if entries still cluster in joint up-moves. And a crypto short pays funding/borrow — the net-of-carry short edge must clear it, or the confirmed-flight signal is a mirage after costs.",
+  "catalyst": "gold surge confirmed by elevated equity vol (verified flight to safety)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "gold_xau", "lookback": { "param": "gold_roc_lb" } }, "op": "gt", "threshold": { "param": "gold_roc_floor" } },
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "gold_roc_lb":    { "kind": "int",   "lo": 5,    "hi": 30,   "step": 1 },
+    "gold_roc_floor": { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "vix_floor":      { "kind": "float", "lo": 20,   "hi": 34 },
+    "vix_relief_exit":{ "kind": "float", "lo": 16,   "hi": 24 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":      { "kind": "int",   "lo": 2,    "hi": 12,   "step": 1 }
+  },
+  "direction": -1
+}

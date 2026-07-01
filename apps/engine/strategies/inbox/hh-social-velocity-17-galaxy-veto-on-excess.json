@@ -1,0 +1,29 @@
+{
+  "name": "Galaxy-score-z REGIME veto ON the excess-attention long (overlay ablation) (1d)",
+  "rationale": "MECHANISM: galaxy_score_z used strictly as a low-confidence crowd-health TAG (rejected as a standalone on priors — internally non-replicating, externally redundant with price/vol) to filter the STRONGEST documented finding, the excess-attention continuation (chatter loud vs dollars → flow not yet arrived → price continues up ~a week). Take the social_excess_attention_z entry only when galaxy_score_z is not deteriorating, aiming to strip manipulated/unhealthy spikes out of the excess signal. DISCONFIRMER: pure ablation — spec+galaxy_veto must beat the excess-attention spec ALONE out of sample; if the veto does not lift net-of-fee OOS Sharpe, drop it. Independently, the excess core must survive vol/dollar-volume neutralization (the AUC-redundancy warning). Must beat buy-and-hold net of ~7d fees on the native daily universe.",
+  "catalyst": "loud-chatter-vs-dollars regime confirmed by healthy crowd rank",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "social_excess_attention_z" }, "op": "gt", "threshold": { "param": "excess_floor" } },
+    { "feature": { "name": "galaxy_score_z" }, "op": "gt", "threshold": { "param": "galaxy_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_excess_attention_z" }, "op": "lt", "threshold": { "param": "excess_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "excess_floor": { "kind": "float", "lo": 1.0,  "hi": 2.5 },
+    "excess_exit":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "galaxy_floor": { "kind": "float", "lo": -0.5, "hi": 1.0 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":    { "kind": "int",   "lo": 4,    "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

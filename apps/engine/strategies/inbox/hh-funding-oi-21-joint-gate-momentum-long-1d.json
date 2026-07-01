@@ -1,0 +1,42 @@
+{
+  "name": "Funding-OI joint fragility gate — daily momentum continuation on confirmed positioning (long, 1d)",
+  "rationale": "MECHANISM: the joint-fragility continuation gate read on a DAILY clock with a multi-day hold — targeting the slower swing trend rather than the intraday leg. A daily momentum entry (positive ret_Nd) is taken ONLY when positioning confirms a healthy new-money trend: funding_rate NEUTRAL (no crowded-long carry drag) AND open_interest RISING with price (fresh OI sustaining the move). We ride continuation SPOT (direction +1) while the book is healthy and step aside when funding spikes or OI stalls. Distinct from variant 19 (4h clock / faster hold) — the daily cadence isolates the multi-day swing component and uses funding accrual (funding_feature) over the longer hold. DISCONFIRMER 1: kill if the positioning gate does not improve a plain daily-momentum baseline on the SAME bars net of fees — else decorative curve-fit. DISCONFIRMER 2: kill if the four-condition daily gate fires too rarely for effective-N, or if the benefit is entirely from dodging 1-2 crash days (regime-luck, not repeatable structure).",
+  "catalyst": "positive daily momentum gated by neutral funding and rising OI — a healthy multi-day trend to ride long.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 6
+  },
+  "entry": [
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}},
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "funding_neutral_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_rising"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "gt", "threshold": {"param": "funding_hot_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "mom_lb": {"kind": "int", "lo": 3, "hi": 20, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.08},
+    "funding_neutral_ceiling": {"kind": "float", "lo": 0.0002, "hi": 0.0008},
+    "oi_rising": {"kind": "float", "lo": 0.1, "hi": 1.0},
+    "funding_hot_exit": {"kind": "float", "lo": 0.0006, "hi": 0.0015},
+    "stop": {"kind": "float", "lo": 0.04, "hi": 0.16},
+    "tp": {"kind": "float", "lo": 0.05, "hi": 0.26},
+    "time_stop": {"kind": "int", "lo": 1, "hi": 6, "step": 1}
+  }
+}

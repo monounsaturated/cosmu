@@ -1,0 +1,39 @@
+{
+  "name": "OI-flush reversal — fast intrabar liquidation snap (OI cross-down + washout, 15m)",
+  "rationale": "MECHANISM: the fastest expression of the deleverage-washout thesis. On a 15m clock, open_interest crossing DOWN through a fitted normalized floor tags the exact liquidation event; paired with a deeply negative short-window return it isolates the mechanical snap-back that follows the last forced seller. This is distinct from the 1h/4h variants: it aims to capture the immediate 15m-to-1h rebound (very short hold ~0.04-0.25d) rather than the slower recovery, and uses cross_down (an event) not lt (a level). The other side is liquidation engines that MUST close; the solo supplies liquidity right after the cascade. SPOT long. DISCONFIRMER 1: kill if the fast snap does not beat a same-return washout that ignores open_interest — otherwise it is a generic 15m knife-catch. DISCONFIRMER 2: kill if net-of-fee edge evaporates once real 6bps taker fees are charged on the high 15m turnover, or if it rides on <5 cascade days.",
+  "catalyst": "15m open_interest crosses down through a fitted floor into a sharp return washout — the liquidation snap to fade long.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "open_interest"}, "op": "cross_down", "threshold": {"param": "oi_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "lt", "threshold": {"param": "ret_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "gt", "threshold": {"param": "ret_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "param_space": {
+    "oi_floor": {"kind": "float", "lo": -2.0, "hi": -0.3},
+    "ret_lb": {"kind": "int", "lo": 1, "hi": 4, "step": 1},
+    "ret_floor": {"kind": "float", "lo": -0.08, "hi": -0.015},
+    "ret_relief_exit": {"kind": "float", "lo": 0.0, "hi": 0.02},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.012, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.04, "hi": 0.25}
+  }
+}

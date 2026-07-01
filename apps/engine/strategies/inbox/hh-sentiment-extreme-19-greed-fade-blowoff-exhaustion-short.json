@@ -1,0 +1,33 @@
+{
+  "name": "Greed-extreme fade ONLY on volatility-blowoff exhaustion (asymmetric short)",
+  "rationale": "MECHANISM: the family thesis says do NOT symmetrically short greed — the herd runs you over in the reinforcing phase. This spec fades greed ONLY in the narrow regime where it historically resolves down: a volatility BLOWOFF top. When fear_greed is at an extreme high AND realized vol has SPIKED above a fitted ceiling (parabolic exhaustion, not orderly herding) AND price is over-extended above its band (bb_z above a fitted high), the marginal buyer is the last FOMO holder and the move is unsustainable. This is the disciplined, asymmetric complement to the continuation specs — it fades greed in the ONE regime where continuation fails. Short; exit when vol subsides or bb_z normalizes, or stop/TP/time. DISCONFIRMER: compare fade-greed here vs ride-greed on the SAME blowoff bars — if riding is not worse in the blowoff subset, the exhaustion regime is illusory and shorting greed is just the losing symmetric trade; kill. Also kill if net-of-fee short return does not beat sitting flat (borrow/funding costs eat it).",
+  "catalyst": "extreme greed at a volatility blowoff with price over-extended",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_ceiling" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "gt", "threshold": { "param": "vol_ceiling" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "gt", "threshold": { "param": "bb_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_down", "threshold": { "param": "greed_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "greed_ceiling":     { "kind": "float", "lo": 70.0, "hi": 90.0 },
+    "greed_relief_exit": { "kind": "float", "lo": 45.0, "hi": 65.0 },
+    "vol_lb":            { "kind": "int",   "lo": 7,    "hi": 20, "step": 1 },
+    "vol_ceiling":       { "kind": "float", "lo": 0.70, "hi": 1.30 },
+    "bb_lb":             { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "bb_ceiling":        { "kind": "float", "lo": 1.5,  "hi": 3.0 },
+    "stop":              { "kind": "float", "lo": 0.05, "hi": 0.14 },
+    "tp":                { "kind": "float", "lo": 0.06, "hi": 0.24 },
+    "time_stop":         { "kind": "int",   "lo": 2,    "hi": 8, "step": 1 }
+  },
+  "direction": -1
+}

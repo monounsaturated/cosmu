@@ -1,0 +1,41 @@
+{
+  "name": "OI-price divergence — fast short-covering pop fade (price up + OI down + range top, short, 1h)",
+  "rationale": "MECHANISM: the short-covering-rally fade read on a fast 1h clock and gated by range_position instead of ADX. A positive 1h return (price up) while open_interest contracts (OI down) is a pop fuelled by shorts closing, not new longs; requiring range_position near the top of the recent range isolates local exhaustion where the unconfirmed pop is most likely to fail. We short (direction -1) the unconfirmed move for a fast ~0.08-0.25d reversion. Distinct from variant 10: 1h clock, range_position gate (a distance-in-range read, not a trend-strength read), and a much shorter hold. DISCONFIRMER 1: kill if 1h OI is too noisy/reset-prone to make the divergence sign reliable — a PIT-honest single-venue OI series is required. DISCONFIRMER 2: kill if the fast fade does not beat same-bar continuation, or if net-of-fee edge dies once real 6bps taker fees hit the elevated 1h turnover.",
+  "catalyst": "1h price pop with falling open interest at the range top — an unconfirmed short-covering pop to fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "gt", "threshold": {"param": "ret_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "lt", "threshold": {"param": "oi_drop"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "range_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "range_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "param_space": {
+    "ret_lb": {"kind": "int", "lo": 1, "hi": 3, "step": 1},
+    "ret_ceiling": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "oi_drop": {"kind": "float", "lo": -1.5, "hi": -0.2},
+    "range_ceiling": {"kind": "float", "lo": 0.8, "hi": 0.97},
+    "range_exit": {"kind": "float", "lo": 0.4, "hi": 0.65},
+    "stop": {"kind": "float", "lo": 0.012, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.07},
+    "time_stop": {"kind": "float", "lo": 0.04, "hi": 0.25}
+  }
+}

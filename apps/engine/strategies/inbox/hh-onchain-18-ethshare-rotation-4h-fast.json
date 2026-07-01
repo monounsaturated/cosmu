@@ -1,0 +1,30 @@
+{
+  "name": "Stablecoin ETH-share rotation -> fast ETH deployment probe (4h, fractional hold)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the daily ETH-share variants: this trades the SAME rotation-nowcast thesis on a 4h clock with a sub-day-to-2-day hold, targeting the fast window between stablecoins landing on ETH rails and their deployment moving ETH spot before it is common knowledge): a rising stablecoin_eth_share is a directional bet that ETH deployment is imminent; on a 4h bar the earliest deployment can be captured. Entry: eth_share momentum up AND price momentum non-negative on the 4h clock. Fast exit on share fade or stop/TP/time. DISCONFIRMER 1: eth_share is a slow, revised on-chain series -> on a 4h clock it likely updates too coarsely to give distinct intraday signal, and fee drag is heavy; KILL unless the net-of-fee edge clears DSR>=0.95. DISCONFIRMER 2: if the daily variant (16) captures all of it, the fast clock adds nothing. DISCONFIRMER 3: issuer-mechanic jumps dominate; require the signal not be one discrete step. High death probability — a frequency probe. Net of fees.",
+  "catalyst": "ETH-share rotation deploying to ETH spot within hours",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.08, "max_hold_days": 2 },
+  "entry": [
+    { "feature": { "name": "stablecoin_eth_share" }, "op": "gt", "threshold": { "param": "share_mom" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gte", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_eth_share" }, "op": "cross_down", "threshold": { "param": "share_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "share_mom":  { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "share_exit": { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "mom_lb":     { "kind": "int",   "lo": 3, "hi": 18, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": -0.02, "hi": 0.02 },
+    "stop":       { "kind": "float", "lo": 0.03, "hi": 0.1 },
+    "tp":         { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop":  { "kind": "int",   "lo": 1, "hi": 2, "step": 1 }
+  },
+  "direction": 1
+}

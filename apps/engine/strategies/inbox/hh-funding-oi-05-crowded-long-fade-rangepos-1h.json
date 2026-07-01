@@ -1,0 +1,41 @@
+{
+  "name": "Crowded-long fragility fade — high funding + OI expansion at range top (short, 1h)",
+  "rationale": "MECHANISM: same crowded-long fragility thesis as the band-stretch fade, but read on a faster 1h clock and using range_position (price near the top of its recent range) as the over-extension gauge instead of a band z-score — a different crowding read that catches the fade at local range highs. High funding_rate (top decile) + EXPANDING open_interest means longs are crowded and bleeding carry; range_position near 1 says price is pinned at the top where the marginal leveraged buyer is exhausted. We short (direction -1) and receive the positive funding carry (funding_feature). Hold ~0.25-0.75d, faster than the 4h version. DISCONFIRMER 1: kill if the OI-expansion filter can be dropped without hurting the edge — then it is just shorting strength into a pinned-high-funding trend and gets run over. DISCONFIRMER 2: kill if it is indistinguishable from a plain range-top short with no funding/OI condition, or if maxDD > 25%.",
+  "catalyst": "high funding + rising open interest with price at the top of its range — crowded longs to fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 0.75
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "gt", "threshold": {"param": "funding_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_expand"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "range_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "range_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "funding_ceiling": {"kind": "float", "lo": 0.0003, "hi": 0.0015},
+    "oi_expand": {"kind": "float", "lo": 0.3, "hi": 2.0},
+    "range_ceiling": {"kind": "float", "lo": 0.8, "hi": 0.97},
+    "range_exit": {"kind": "float", "lo": 0.4, "hi": 0.65},
+    "stop": {"kind": "float", "lo": 0.015, "hi": 0.06},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.09},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 0.75}
+  }
+}

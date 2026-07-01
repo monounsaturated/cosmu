@@ -1,0 +1,31 @@
+{
+  "name": "Dual-calm regime momentum — ride crypto trend only when VIX is low AND credit spreads are tight",
+  "rationale": "MECHANISM (distinct from the VIX-spike reversion lane): calm macro CONDITIONS crypto momentum to run. In low-vol, tight-credit regimes leverage is cheap and risk budgets are open, so trends persist BECAUSE the deleveraging tail is switched off — no VaR shock forces unwinds. The counterparty is the mean-reversion/vol-selling crowd that fades every up-move and gets steamrolled while credit stays tight. Take crypto momentum longs (positive ret_Nd) ONLY when vix_level is in a calm low band AND credit_spread is tight. The macro filter STANDS ASIDE during stress rather than predicting. DISCONFIRMER — most curve-fit-prone: 'calm' is a fitted threshold on a slow daily macro series, and momentum + calm overlap mechanically (calm periods ARE trending periods), so the gate may add ZERO information over a pure crypto-momentum baseline. Kill unless an ablation shows the vix+credit gate lifts OOS net-of-fee Sharpe vs the identical momentum spec WITHOUT the filter. If it only trims trades without improving risk-adjusted return it is a multiple-testing artifact.",
+  "catalyst": "calm macro regime (low VIX, tight credit) with crypto momentum",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 25 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_ceiling" } },
+    { "feature": { "name": "credit_spread" }, "op": "lt", "threshold": { "param": "cs_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_up", "threshold": { "param": "vix_break_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_ceiling":    { "kind": "float", "lo": 14,   "hi": 22 },
+    "vix_break_exit": { "kind": "float", "lo": 20,   "hi": 30 },
+    "cs_ceiling":     { "kind": "float", "lo": 0.8,  "hi": 1.6 },
+    "mom_lb":         { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "mom_floor":      { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":           { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":             { "kind": "float", "lo": 0.1,  "hi": 0.4 },
+    "time_stop":      { "kind": "int",   "lo": 8,    "hi": 25,   "step": 1 }
+  }
+}

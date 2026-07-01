@@ -1,0 +1,32 @@
+{
+  "name": "Hashrate strength + mempool congestion -> demand-backed BTC long (fee-pressure confirm)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the hash-ribbon capitulation/recovery variants: those trade the SUPPLY side of miner economics; this trades the DEMAND side — a full mempool means users are competing to transact, real settlement demand that, when it coincides with a healthy (not contracting) hashrate, marks organic network usage backing price rather than the thin ETF-only rallies): btc_mempool_size rising is congestion = genuine on-chain demand for blockspace (users bidding up fees to get included). Paired with btc_hashrate above a health floor (network secure, miners not capitulating) and positive price momentum, it is a participation-confirmed long. Exit on momentum death or stop/TP/time. DISCONFIRMER 1: mempool spikes can be spam/inscription-driven, not economic demand -> KILL if the congestion signal is dominated by low-value spam floods (no forward power). DISCONFIRMER 2: if a plain momentum long matches the deflated Sharpe, the on-chain confirmers add nothing. DISCONFIRMER 3: mempool is noisy/mean-reverting intraday on a 1d bar -> require the signal lead price after BH-FDR. Net of fees, DSR>=0.95.",
+  "catalyst": "mempool congestion + healthy hashrate confirming on-chain demand",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 16 },
+  "entry": [
+    { "feature": { "name": "btc_mempool_size" }, "op": "gt", "threshold": { "param": "mempool_floor" } },
+    { "feature": { "name": "btc_hashrate" }, "op": "gt", "threshold": { "param": "hashrate_health" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "btc_mempool_size" }, "op": "cross_down", "threshold": { "param": "mempool_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mempool_floor":   { "kind": "float", "lo": 0.5, "hi": 0.85 },
+    "mempool_exit":    { "kind": "float", "lo": 0.2, "hi": 0.5 },
+    "hashrate_health": { "kind": "float", "lo": 0.4, "hi": 0.7 },
+    "mom_lb":          { "kind": "int",   "lo": 10, "hi": 40, "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": 0.0, "hi": 0.06 },
+    "stop":            { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "tp":              { "kind": "float", "lo": 0.08, "hi": 0.3 },
+    "time_stop":       { "kind": "int",   "lo": 6, "hi": 16, "step": 1 }
+  },
+  "direction": 1
+}

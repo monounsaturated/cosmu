@@ -1,0 +1,41 @@
+{
+  "name": "OI-flush reversal — leverage-washout bounce (OI drop + adverse move + vol spike, 1h)",
+  "rationale": "MECHANISM: a sharp open_interest contraction concurrent with a deeply negative 1h/4h return is the fingerprint of forced deleveraging — margin liquidations and ADL close positions non-economically, pushing price past fair value. vol_realized spiking confirms it is a violent cascade, not an orderly bleed. A mean-reversion taker who steps in AFTER the cascade (not during) is paid for supplying the liquidity the leveraged crowd was forced to demand; the snap-back is the mechanical rebound as liquidation flow exhausts. We buy SPOT (direction +1) and hold ~0.25-0.5d. DISCONFIRMER 1: kill if entries conditioned on the OI flush do NOT beat a same-vol-spike baseline that ignores open_interest — if so it is just buying any vol spike / falling knife, not the deleverage structure. DISCONFIRMER 2: kill if net-of-fee edge is carried by <5 mega-cascade days (Oct/Nov-2025) — a handful of tail events is unmodelable and fails effective-N/CSCV-PBO.",
+  "catalyst": "open_interest drops sharply while ret is deeply negative and realized vol spikes — a forced-deleverage washout to fade long.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "open_interest"}, "op": "lt", "threshold": {"param": "oi_drop_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "lt", "threshold": {"param": "ret_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "gt", "threshold": {"param": "vol_spike"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "open_interest"}, "op": "cross_up", "threshold": {"param": "oi_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "param_space": {
+    "oi_drop_floor": {"kind": "float", "lo": -2.5, "hi": -0.5},
+    "ret_lb": {"kind": "int", "lo": 1, "hi": 4, "step": 1},
+    "ret_floor": {"kind": "float", "lo": -0.15, "hi": -0.03},
+    "vol_spike": {"kind": "float", "lo": 1.2, "hi": 3.0},
+    "oi_relief_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "tp": {"kind": "float", "lo": 0.025, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 0.5}
+  }
+}

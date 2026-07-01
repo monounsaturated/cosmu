@@ -1,0 +1,29 @@
+{
+  "name": "Stablecoin ETH-share rotation confirmed by TVL -> ETH deployment long (dual on-chain)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the bare ETH-share momentum variant: this demands the rotation be CONFIRMED by defi_tvl rising — i.e. the stablecoins arriving on ETH are actually being DEPLOYED into protocols, not just parked — which filters the 'stables migrated to ETH but sat idle in wallets' false rotation): the edge is where end-demand forms, and deployment is the proof of demand. Requiring stablecoin_eth_share up AND defi_tvl up captures the rotation that has already begun converting into on-chain activity, a stronger nowcast of ETH demand than share alone. Long ETH; exit on TVL rolling over or stop/TP/time. DISCONFIRMER 1: if adding the TVL confirm does not improve DSR over the bare-share variant (16), the second leg is redundant. DISCONFIRMER 2: TVL is partly ETH-denominated so its rise can be beta -> if the pair is just tracking ETH price with a lag it dies. DISCONFIRMER 3: both features have short/revised history -> KILL if the edge leans on revised data. Net of fees, DSR>=0.95.",
+  "catalyst": "stablecoins rotating onto ETH AND being deployed into protocols",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "stablecoin_eth_share" }, "op": "gt", "threshold": { "param": "share_mom" } },
+    { "feature": { "name": "defi_tvl" }, "op": "gt", "threshold": { "param": "tvl_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "defi_tvl" }, "op": "cross_down", "threshold": { "param": "tvl_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "share_mom": { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "tvl_floor": { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "tvl_exit":  { "kind": "float", "lo": -0.5, "hi": 0.3 },
+    "stop":      { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "tp":        { "kind": "float", "lo": 0.08, "hi": 0.3 },
+    "time_stop": { "kind": "int",   "lo": 8, "hi": 18, "step": 1 }
+  },
+  "direction": 1
+}

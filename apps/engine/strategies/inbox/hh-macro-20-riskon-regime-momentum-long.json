@@ -1,0 +1,29 @@
+{
+  "name": "Risk-on regime momentum — ride crypto trend only while the composite risk regime is switched on",
+  "rationale": "MECHANISM: same conditioning thesis (trends persist when the deleveraging tail is off) expressed via the composite risk_on_off regime feature — a single derived read of whether the broad cross-asset risk appetite is switched ON. When risk_on_off is positive, allocators are adding risk and crypto momentum has a following wind; take crypto momentum longs (positive ret_Nd) only in that regime, and STAND ASIDE the moment the regime flips off. Distinct regime basis (composite risk_on_off) from the VIX/credit/NFCI variants. DISCONFIRMER: risk_on_off is a derived composite whose construction may already embed momentum-like inputs, so 'risk-on AND crypto trending' can be tautological — the gate may add ZERO information. Kill unless an ablation shows the regime gate lifts OOS net-of-fee Sharpe vs identical momentum with NO gate. Also kill if it is economically identical to another calm/loose-regime variant (hh-macro-17/19) — regime reads that collapse into one trade keep only the best. Expect a curve-fit death at the Gate if it merely trims trades.",
+  "catalyst": "risk-on composite regime with crypto momentum",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 22 },
+  "entry": [
+    { "feature": { "name": "risk_on_off" }, "op": "gt", "threshold": { "param": "regime_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "risk_on_off" }, "op": "cross_down", "threshold": { "param": "regime_off_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "regime_floor":    { "kind": "float", "lo": 0.0,  "hi": 0.4 },
+    "regime_off_exit": { "kind": "float", "lo": -0.3, "hi": 0.1 },
+    "mom_lb":          { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":            { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":              { "kind": "float", "lo": 0.1,  "hi": 0.4 },
+    "time_stop":       { "kind": "int",   "lo": 8,    "hi": 22,   "step": 1 }
+  }
+}

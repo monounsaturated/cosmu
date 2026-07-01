@@ -1,0 +1,31 @@
+{
+  "name": "Crowded-attention LEVEL fade — short the exhaustion blow-off (1d)",
+  "rationale": "MECHANISM: social_attention_z is the within-asset z of the LEVEL of social_volume. A SUSTAINED elevated level means the crowd is already all-in, so forward return is negative and worsens with horizon (internal prior: level leads DOWN). This is the exhaustion/blow-off side — late retail and influencer amplification mark the top; the other side is anyone selling into the euphoria. This is the LEVEL (not the CHANGE), and the SHORT side, making it economically distinct from the accel-long specs. Confirm exhaustion with an overbought RSI so we fade a stretched top, not a healthy trend. DISCONFIRMER: the internal note flags this replicated weakly — the negative forward return at high level-z must NOT be just RSI/overbought mean-reversion; if price-only overbought explains it, KILL. Shorting crypto incurs funding/borrow — must be net-positive after real short costs (funding leg wired). Exit when the crowd level normalizes.",
+  "catalyst": "sustained crowd-attention level extreme into overbought — blow-off top",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "social_attention_z" }, "op": "gt", "threshold": { "param": "level_ceiling" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_attention_z" }, "op": "lt", "threshold": { "param": "level_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "level_ceiling":     { "kind": "float", "lo": 1.2,  "hi": 3.0 },
+    "level_relief_exit": { "kind": "float", "lo": -0.5, "hi": 0.8 },
+    "rsi_lb":            { "kind": "int",   "lo": 7,    "hi": 21, "step": 1 },
+    "rsi_ceiling":       { "kind": "float", "lo": 65,   "hi": 82 },
+    "stop":              { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":         { "kind": "int",   "lo": 2,    "hi": 10, "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

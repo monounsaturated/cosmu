@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: post-shock vol-contraction re-entry (15m)",
+  "rationale": "MECHANISM: same two-stage 'wait for vol to roll over' fade as the 5m variant — buy the washout dislocation only once vol_realized crosses DOWN from its post-shock peak (forced flow exhausted, spreads re-tightening), never mid-cascade — but on the 15m bar, where the vol-contraction signal is smoother/less noisy and the ensuing reversion is larger relative to cost. This tests whether the vol-mean-reversion timing edge is timescale-robust. Entry: bb_z extreme AND vol_realized crossing DOWN through a fitted level AND rsi below a floor. Long-only spot; exit as bb_z reverts. DISCONFIRMER: if 15m vol-contraction timing does not beat entering at the 15m spike, the refinement is dead at this timescale too. LEAKAGE: the cross-down must be from closed bars only — a 1-bar-lag re-run that kills the edge means look-ahead. If 15m and 5m give the same net result, they are duplicates — keep one.",
+  "catalyst": "fade entered as 15m realized vol rolls over post-washout",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "cross_down", "threshold": {"param": "vol_rolloff"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -2.0},
+    "vol_rolloff": {"kind": "float", "lo": 0.8, "hi": 2.5},
+    "rsi_floor": {"kind": "float", "lo": 18, "hi": 32},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.045},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 0.5}
+  },
+  "direction": 1
+}

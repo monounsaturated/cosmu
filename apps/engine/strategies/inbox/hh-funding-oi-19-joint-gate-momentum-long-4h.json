@@ -1,0 +1,44 @@
+{
+  "name": "Funding-OI joint fragility gate — momentum continuation on confirmed positioning (long, 4h)",
+  "rationale": "MECHANISM: neither funding nor OI alone times reversals, but their JOINT state gates regime. When funding_rate is NEUTRAL (not top-decile, so no crowded-long carry drag) AND open_interest is RISING WITH price (healthy new-money trend), momentum continuation is favored — fresh OI is sustaining the move, not late trend-followers piling in without fuel. We take an ordinary momentum entry (positive ret_Nd + confirmed ADX trend) but ONLY when positioning confirms, riding continuation while the book is healthy and stepping aside when it is not. SPOT long (direction +1), hold ~0.5-1d. DISCONFIRMER 1: kill if the positioning gate does NOT improve a plain momentum baseline on the SAME bars (compare gated vs ungated Sharpe net of fees) — if the funding-neutral + OI-rising filter adds no lift, it is decorative curve-fit. DISCONFIRMER 2: kill if the multi-condition gate fires so rarely it fails effective-N, or if the benefit is entirely from avoiding 1-2 crash days (regime-luck, not repeatable structure).",
+  "catalyst": "positive momentum + confirmed ADX trend, gated by neutral funding and rising OI — a healthy new-money trend to ride long.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 1
+  },
+  "entry": [
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "funding_neutral_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_rising"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "mom_lb": {"kind": "int", "lo": 3, "hi": 20, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.06},
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "funding_neutral_ceiling": {"kind": "float", "lo": 0.0002, "hi": 0.0008},
+    "oi_rising": {"kind": "float", "lo": 0.1, "hi": 1.0},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.09},
+    "tp": {"kind": "float", "lo": 0.03, "hi": 0.15},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 1}
+  }
+}

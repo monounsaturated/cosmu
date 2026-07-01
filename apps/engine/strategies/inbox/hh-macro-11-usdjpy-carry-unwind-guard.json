@@ -1,0 +1,31 @@
+{
+  "name": "USDJPY carry-unwind risk-off guard — de-risk crypto when the yen-carry funding currency snaps stronger",
+  "rationale": "MECHANISM: the yen is the world's cheap funding currency; a sharp USDJPY DROP (yen strengthening) is the tell of a global carry-trade UNWIND, which forces levered risk positions across every asset to be cut — the Aug-2024 and 2025 crypto air-pockets both coincided with violent yen-carry unwinds. Because crypto is the highest-beta leveraged sleeve, a carry unwind hits it hard and fast. Guard: flatten/short crypto beta when usdjpy breaks down sharply (yen strength) AND crypto momentum has already rolled over (negative ret_Nd) — capturing the carry-unwind drawdown a long-only book eats in full. Counterparty = the levered-long crowd slow to recognize the funding shock. DISCONFIRMER: usdjpy is a fast FX series but the carry-unwind link is regime-specific (only bites when carry is crowded); in normal regimes a yen wobble is noise. Kill if the avoided-drawdown net of extra round-trip fees does not beat holding through, or if it fires so rarely (true carry unwinds are rare) that effective N is too low to trust.",
+  "catalyst": "sharp yen strengthening (carry unwind) with crypto momentum rolling over",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "usdjpy", "lookback": { "param": "jpy_roc_lb" } }, "op": "lt", "threshold": { "param": "jpy_drop_trigger" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "usdjpy", "lookback": { "param": "jpy_roc_lb" } }, "op": "gt", "threshold": { "param": "jpy_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "jpy_roc_lb":       { "kind": "int",   "lo": 5,    "hi": 25,   "step": 1 },
+    "jpy_drop_trigger": { "kind": "float", "lo": -0.03, "hi": -0.008 },
+    "jpy_relief_exit":  { "kind": "float", "lo": -0.005, "hi": 0.01 },
+    "mom_lb":           { "kind": "int",   "lo": 7,    "hi": 30,   "step": 1 },
+    "mom_ceiling":      { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":        { "kind": "int",   "lo": 3,    "hi": 12,   "step": 1 }
+  },
+  "direction": -1
+}

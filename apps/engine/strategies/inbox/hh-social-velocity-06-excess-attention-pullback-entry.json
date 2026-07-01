@@ -1,0 +1,30 @@
+{
+  "name": "Excess-attention continuation — buy the dip inside the loud-chatter regime (1d)",
+  "rationale": "MECHANISM: same excess-attention continuation edge, but timed for a better entry: fire when excess-attention-z is elevated (chatter running ahead of dollars → flow still coming) AND price is momentarily statistically stretched to the downside (bb_z below a fitted floor). The thesis is that the attention regime keeps the drift positive over the week, and buying a transient pullback within that regime improves the entry price versus chasing the top of the range. Counterparty is short-term dip sellers who miss the pending flow. DISCONFIRMER: if the generic bb_z dip-buy alone (no excess-attention gate) matches the deflated Sharpe, the attention regime adds nothing, KILL. Neutralize against realized vol/dollar-volume redundancy. Must beat buy-and-hold net of ~7d fees.",
+  "catalyst": "transient pullback inside a loud-chatter-vs-dollars regime",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "social_excess_attention_z" }, "op": "gt", "threshold": { "param": "excess_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_excess_attention_z" }, "op": "lt", "threshold": { "param": "excess_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "excess_floor": { "kind": "float", "lo": 0.8,  "hi": 2.2 },
+    "excess_exit":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "bb_lb":        { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "bb_floor":    { "kind": "float", "lo": -2.5, "hi": -0.8 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":    { "kind": "int",   "lo": 3,    "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

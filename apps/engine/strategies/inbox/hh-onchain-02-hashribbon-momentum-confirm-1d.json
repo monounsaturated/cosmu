@@ -1,0 +1,39 @@
+{
+  "name": "Hash-ribbon recovery + momentum confirmation long (BTC, 1d)",
+  "rationale": "ECONOMIC MECHANISM (variant of the capitulation rebound, but confirmation-gated rather than knife-catching): the miner forced-selling thesis says the edge appears AFTER hashrate stops falling AND price momentum turns up — the network is re-arming and the distressed seller is gone. Rather than buying the deepest washout (variant 01), this waits for a fitted floor on btc_hashrate to be RECLAIMED alongside positive medium-term return (ret_Nd), so the entry is a trend-confirmation of the miner recovery, not a reversion. It trades fewer knives and more continuation. Other side: momentum/CTA flow that has not yet priced the supply relief. DISCONFIRMER 1: if a plain ret_Nd momentum long alone matches the deflated Sharpe, btc_hashrate adds nothing and this dies (most likely failure). DISCONFIRMER 2: confirmation lag may eat the whole move — kill if entries systematically land after the rebound is exhausted. DISCONFIRMER 3: hashrate is smooth/laggy, so the floor-cross may whipsaw. Must clear DSR>=0.95, maxDD<=25%, net of fees.",
+  "catalyst": "hashrate reclaim confirmed by positive price momentum",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 45
+  },
+  "entry": [
+    { "feature": { "name": "btc_hashrate" }, "op": "gt", "threshold": { "param": "hashrate_reclaim" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "hashrate_reclaim": { "kind": "float", "lo": 300, "hi": 900 },
+    "mom_lb":           { "kind": "int",   "lo": 20,  "hi": 60, "step": 1 },
+    "mom_floor":        { "kind": "float", "lo": 0.0, "hi": 0.1 },
+    "mom_exit":         { "kind": "float", "lo": -0.1, "hi": 0.0 },
+    "stop":             { "kind": "float", "lo": 0.08, "hi": 0.2 },
+    "tp":               { "kind": "float", "lo": 0.12, "hi": 0.45 },
+    "time_stop":        { "kind": "int",   "lo": 15,  "hi": 45, "step": 1 }
+  },
+  "direction": 1
+}

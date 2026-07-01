@@ -1,0 +1,30 @@
+{
+  "name": "Attention-velocity ignition — accel spike + nascent price momentum (4h)",
+  "rationale": "MECHANISM: same attention-onset lead as the core accel spec, but requires the price to have ALREADY started ticking up (a small positive short-horizon ret_Nd) so we ride an accel spike that is converting to flow rather than a spike that fizzles. Onset attention on small floats leads price; the momentum confirm filters out chatter with no follow-through. Counterparty is dashboard-lagged retail. DISCONFIRMER: shuffle the attention series and keep price — if the edge is really just the price-momentum leg it survives the shuffle, KILL (the accel must add incremental return over momentum alone). Lead-lag must be asymmetric (+1 strong, -1 ~0). Must clear 4h round-trip fees.",
+  "catalyst": "attention acceleration confirmed by a nascent up-move",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 4 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_floor": { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "accel_exit":  { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "mom_lb":      { "kind": "int",   "lo": 1,    "hi": 6, "step": 1 },
+    "mom_floor":   { "kind": "float", "lo": 0.0,  "hi": 0.05 },
+    "stop":        { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":   { "kind": "int",   "lo": 1,    "hi": 4, "step": 1 }
+  },
+  "direction": 1
+}

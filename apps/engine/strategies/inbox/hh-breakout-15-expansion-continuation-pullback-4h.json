@@ -1,0 +1,43 @@
+{
+  "name": "HH breakout 15 — expansion-continuation pullback, slow trend (4h)",
+  "rationale": "MECHANISM: same two-stage logic — enter on a low-cost pullback INTO a confirmed post-expansion trend rather than chasing the break — but on a 4h clock so the confirmed regime is a multi-day trend and the pullback is a swing retracement, a distinct hold/frequency cell from the 1h version. Gate: bb_width expanded above a floor (the squeeze has resolved) AND adx in trend territory, then enter long when range_position pulls back below a mid-range ceiling AND a shallow recent return (ret_Nd over a short lookback) is negative-but-not-a-reversal (the retest pause). The ret_Nd pullback gauge is the distinct entry-timing filter here (vs the pure range_position pullback of variant 14). Counterparty: swing fakeout-faders shorting the pullback into a real multi-day trend. DISCONFIRMER: KILL if the pullback resumes the trend no more often than it reverts to the full range net of fees, OR if the ret_Nd retest filter is decorative (a plain range_position pullback gives the same result → not distinct from variant 14), OR if the two-stage entry does not beat the one-stage break, OR if adx/ret_Nd smoothing leaks (verify PIT).",
+  "catalyst": "swing pullback within a confirmed multi-day post-expansion trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.5,
+    "max_hold_days": 10
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "gt", "threshold": {"param": "bbw_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_pullback"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "pull_lb"}}, "op": "lt", "threshold": {"param": "pull_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbw_floor": {"kind": "float", "lo": 0.03, "hi": 0.09},
+    "adx_floor": {"kind": "float", "lo": 22, "hi": 34},
+    "rp_pullback": {"kind": "float", "lo": 0.45, "hi": 0.72},
+    "pull_lb": {"kind": "int", "lo": 2, "hi": 8, "step": 1},
+    "pull_ceiling": {"kind": "float", "lo": -0.015, "hi": 0.0},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "tp": {"kind": "float", "lo": 0.04, "hi": 0.2},
+    "time_stop": {"kind": "float", "lo": 1, "hi": 12}
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "HH regime-switch 07 — realized-vol CONTRACTION reversion, tight-band via bb_width (1h)",
+  "rationale": "MECHANISM (distinct from variant 06: it identifies the contraction regime by a SQUEEZED Bollinger band — bb_width below a fitted ceiling, the literal low-volatility geometry — instead of realized vol, reads over-extension with bb_z alone (no RSI), and runs on 1h to trade the faster oscillation a quiet tape produces): in a genuine volatility squeeze the band is narrow and price ping-pongs around the mean; buying the lower edge of a narrow band and selling back to the mean harvests the market-maker's inventory rebalancing. Using bb_width as the regime detector is the honest low-vol read — a narrow band IS contraction. Exit: bb_z reverts to the mean or bb_width expands (squeeze breaks — the regime flipped, stop fading), or stop/TP/time. DISCONFIRMER: the reversion edge inside the tight-band regime must clear the Gate net of fees at 1h; if bb_width and variant 06's vol_realized select the same bars (their trades overlap and net Sharpes match), they are one spec — collapse them. Kill if a squeeze-break (band expanding while short) causes a >20% adverse-excursion tail — that is fading into a real move, not a mean.",
+  "catalyst": "Bollinger squeeze with price at the lower band — a quiet-tape mean to fade",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3
+  },
+  "entry": [
+    { "feature": { "name": "bb_width", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bbw_squeeze_ceiling" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "bb_mean_exit" } },
+      { "feature": { "name": "bb_width", "lookback": { "param": "bb_lb" } }, "op": "gt", "threshold": { "param": "bbw_break_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bb_lb": { "kind": "int", "lo": 14, "hi": 40, "step": 1 },
+    "bbw_squeeze_ceiling": { "kind": "float", "lo": 0.015, "hi": 0.05 },
+    "bbw_break_exit": { "kind": "float", "lo": 0.05, "hi": 0.1 },
+    "bb_floor": { "kind": "float", "lo": -3.0, "hi": -1.2 },
+    "bb_mean_exit": { "kind": "float", "lo": -0.4, "hi": 0.4 },
+    "stop": { "kind": "float", "lo": 0.03, "hi": 0.1 },
+    "tp": { "kind": "float", "lo": 0.03, "hi": 0.13 },
+    "time_stop": { "kind": "int", "lo": 1, "hi": 3, "step": 1 }
+  }
+}

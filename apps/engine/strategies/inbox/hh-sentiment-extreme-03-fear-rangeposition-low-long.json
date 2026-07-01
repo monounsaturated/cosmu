@@ -1,0 +1,30 @@
+{
+  "name": "Fear-extreme contrarian gated on range_position at cycle low (capitulation confluence, long)",
+  "rationale": "MECHANISM: same forced-seller-vs-patient-capital thesis, but the washout gate is range_position (where price sits in its recent high-low channel) rather than a volatility z-score. When fear is extreme AND price sits near the BOTTOM of its range (range_position below a fitted floor), the panic is happening at a level where accumulators historically step in; mid-range fear is not a capitulation. This tests whether a POSITION-in-range gauge — orthogonal to volatility-normalized bb_z — carries the same confluence edge. Long spot; exit when fear relieves or range_position recovers, or stop/TP/time. DISCONFIRMER: if range_position-gated entries are indistinguishable from bb_z-gated ones, the specific gauge is noise; keep only if the range floor adds trades or lift the vol-z gauge misses. Kill if net-of-fee return does not beat buy-and-hold on the same low-range days.",
+  "catalyst": "extreme fear while price sits at the bottom of its range",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "lt", "threshold": { "param": "range_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_floor":       { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "fear_relief_exit": { "kind": "float", "lo": 40.0, "hi": 60.0 },
+    "range_lb":         { "kind": "int",   "lo": 14,   "hi": 60, "step": 1 },
+    "range_floor":      { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":        { "kind": "int",   "lo": 3,    "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}

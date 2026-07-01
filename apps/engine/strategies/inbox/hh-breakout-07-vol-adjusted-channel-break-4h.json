@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 07 — volatility-adjusted channel break (4h)",
+  "rationale": "MECHANISM: classic Donchian/Turtle convexity — ~33% win rate but ~5x avg-win/avg-loss because a few breaks catch persistent crypto trends lasting weeks. A break to a NEW multi-week range extreme means prior overhead supply is exhausted (nobody trapped above), so there is no natural seller. The other side is mean-reversion traders fading the new high who get run over. Upgrade vs naive Donchian: require adx ABOVE a trend floor so range-bound whipsaw regimes are filtered, and require atr ABOVE a floor so the break auto-widens in high-vol regimes (fewer whipsaws — the volatility normalization). Enter long on range_position at the up-extreme with both filters live. bar_size 4h to ride multi-day trends while paying fees only on real regime changes. DISCONFIRMER: KILL if it fails to beat buy-and-hold net of fees on the holdout (the Gate's own beat-BnH test; trend-following in a chronically-up tape usually loses to holding) — OR if maxDD exceeds 25% (the fat left tail of the 67% losing trades) — OR if removing the adx trend-floor does not degrade it (adx is decorative and the edge is pure lucky-tail momentum that will not replicate).",
+  "catalyst": "break to a new multi-week high with trend and vol confirmation",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.5,
+    "max_hold_days": 15
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_break"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "atr"}, "op": "gt", "threshold": {"param": "atr_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_break": {"kind": "float", "lo": 0.9, "hi": 0.99},
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "atr_floor": {"kind": "float", "lo": 0.005, "hi": 0.03},
+    "rp_exit": {"kind": "float", "lo": 0.35, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.09},
+    "tp": {"kind": "float", "lo": 0.05, "hi": 0.3},
+    "time_stop": {"kind": "float", "lo": 1, "hi": 18}
+  }
+}

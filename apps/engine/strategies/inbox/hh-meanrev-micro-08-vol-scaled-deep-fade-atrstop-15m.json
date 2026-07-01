@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: vol-scaled deep fade, ATR-multiple stop (15m)",
+  "rationale": "MECHANISM: same ATR-normalized deep-fade logic as the 5m variant — fade depth and stop both scale with ATR so the edge is a fixed number of ATRs from the mean and stays stationary as volatility mean-reverts — but on the slower 15m bar, where a larger absolute reversion accrues per trade relative to fixed round-trip cost, at the cost of fewer, chunkier events. The timeframe change tests whether the vol-scaled snapback is a genuinely multi-timescale structural effect or a 5m-only microstructure artifact. Entry: bb_z deep washout AND rsi oversold; STOP = atr_mult x ATR at entry (regime-scaled). Long-only spot; exit on bb_z reversion. DISCONFIRMER: if the 15m ATR-stop version's net Sharpe and monthly-return spread are indistinguishable from the 5m one, the timeframe axis adds nothing — keep one. If the edge concentrates in a single high-vol month, the ATR scaling is masking a tail bet, not adapting — kill.",
+  "catalyst": "deep washout with a volatility-scaled stop on the 15m clock",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "atr_mult": {"param": "atr_stop_mult"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -2.0},
+    "rsi_floor": {"kind": "float", "lo": 12, "hi": 24},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "atr_stop_mult": {"kind": "float", "lo": 1.0, "hi": 3.5},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.045},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 0.5}
+  },
+  "direction": 1
+}

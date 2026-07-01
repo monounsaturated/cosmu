@@ -1,0 +1,41 @@
+{
+  "name": "Intraday time-series momentum — 4h low-churn continuation (fee-hurdle stress test)",
+  "rationale": "MECHANISM: the intraday time-series momentum lead-lag (early-window sign predicts the later-window sign via late-informed traders and end-of-window rebalancing) expressed on a 4h bar. The 1h version is thin and fee-dominated; moving to 4h is the deliberate fee-hurdle experiment — fewer, larger continuation trades so the per-trade move can actually exceed ~3x round-trip taker cost. Entry: positive signed trailing ret_Nd gated by adx (directional regime) with a range_position confirm that price sits in the upper part of its recent range (the continuation is into strength, not a dead-cat within a range). DISCONFIRMER: kill if the 4h net edge is still < 3x round-trip taker cost (then the whole family is a fee mirage, not a timeframe issue), if the adx gate adds nothing, or if the signed lead-lag vanishes in a purged/embargoed OOS split (in-sample fit).",
+  "catalyst": "coarse-bar early momentum persisting into the later window",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 3
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mom_lb":    { "kind": "int",   "lo": 2,  "hi": 10, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.005, "hi": 0.04 },
+    "adx_floor": { "kind": "float", "lo": 18, "hi": 34 },
+    "adx_exit":  { "kind": "float", "lo": 10, "hi": 18 },
+    "rp_lb":     { "kind": "int",   "lo": 8,  "hi": 40, "step": 1 },
+    "rp_floor":  { "kind": "float", "lo": 0.55, "hi": 0.85 },
+    "stop":      { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":        { "kind": "float", "lo": 0.03, "hi": 0.16 },
+    "time_stop": { "kind": "float", "lo": 0.5, "hi": 3.0 }
+  }
+}

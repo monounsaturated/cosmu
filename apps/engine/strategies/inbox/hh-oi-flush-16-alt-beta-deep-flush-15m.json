@@ -1,0 +1,137 @@
+{
+  "name": "Alt OI-flush beta (15m long the idiosyncratic-leverage washout)",
+  "rationale": "MECHANISM: cascades hit high-leverage alts far harder than BTC (XRP perp OI crashed 96% off peak late-2025 while spot holders sat still). Alts carry disproportionate speculative leverage, so an OI flush there is a larger, more forced, more over-shot capitulation than the same flush in BTC \u2014 and the rebound is proportionally violent because the spot float that 'stays put' anchors the eventual snap-back. Counterparty: alt-specific liquidation flow with even thinner books, forced to sell into a vacuum. Edge persists because alt leverage repeatedly rebuilds and re-flushes (structural retail behavior). SPOT long on 15m. Entry: open_interest cross_down through a DEEP negative floor (bigger magnitude than the BTC-family H1 threshold) AND rsi below a low oversold floor AND ret_Nd below a negative floor (confirm falling) AND vol_realized above a floor (the violent regime). DISCONFIRMER: cross-asset ablation \u2014 if the SAME spec on BTC-only does just as well, 'alt idiosyncratic leverage' is not the driver and this is H1 on a wider universe; and PER-SYMBOL not pooled \u2014 if 1-2 symbols carry the net edge and the median alt is flat/negative after fees, it is an outlier artifact. Must survive BH-beat and maxDD <= 25% given alt volatility.",
+  "catalyst": "deep alt OI cross_down flush + oversold + falling in the violent regime",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_deep_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "ret_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_deep_flush_floor": {
+      "kind": "float",
+      "lo": -5.0,
+      "hi": -2.5
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 28
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    },
+    "ret_down_floor": {
+      "kind": "float",
+      "lo": -0.12,
+      "hi": -0.03
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.6,
+      "hi": 2.2
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 48,
+      "hi": 62
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.16
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 1.5
+    }
+  },
+  "direction": 1
+}

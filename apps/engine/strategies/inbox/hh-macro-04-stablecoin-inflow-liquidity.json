@@ -1,0 +1,30 @@
+{
+  "name": "Stablecoin net-inflow as a crypto-native liquidity impulse — long when fresh dollars mint into the ecosystem",
+  "rationale": "MECHANISM: a crypto-NATIVE liquidity read distinct from the TradFi WALCL/Fed leg — stablecoin_net_flow_usd captures fresh USD minting into the ecosystem (Tether/USDC issuance), which is the on-chain dry powder that gets deployed into risk BEFORE it shows in exchange price. Rising net inflow means new marginal buyers are funding up; this is the fastest, most PIT-honest liquidity signal available (on-chain, near-real-time — no FRED T+8 lag). The counterparty is slower on/off-ramp flow. Trade: long crypto beta when stablecoin_net_flow_usd is strongly positive AND price confirms with a range reclaim. DISCONFIRMER: mint flow can be inventory/treasury shuffling, not net new buying, and it can COINCIDE with rather than lead price (endogenous). Kill if the net-inflow entry fires only concurrent with the move (no lead) or if a plain range-reclaim momentum baseline captures the same OOS Sharpe without the stablecoin gate — the flow must add lift, not decorate momentum.",
+  "catalyst": "strong stablecoin net inflow funding fresh crypto demand",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "gt", "threshold": { "param": "flow_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "lt", "threshold": { "param": "flow_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_lb":    { "kind": "int",   "lo": 7,    "hi": 30,   "step": 1 },
+    "flow_floor": { "kind": "float", "lo": 0.0,  "hi": 0.5 },
+    "flow_exit":  { "kind": "float", "lo": -0.3, "hi": 0.0 },
+    "rp_lb":      { "kind": "int",   "lo": 20,   "hi": 60,   "step": 1 },
+    "rp_floor":   { "kind": "float", "lo": 0.45, "hi": 0.7 },
+    "stop":       { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":         { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop":  { "kind": "int",   "lo": 5,    "hi": 18,   "step": 1 }
+  }
+}

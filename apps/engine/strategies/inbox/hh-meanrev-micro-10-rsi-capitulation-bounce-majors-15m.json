@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: RSI capitulation bounce, liquid majors (15m)",
+  "rationale": "MECHANISM: an RSI deep-oversold print marks short-term SELLER EXHAUSTION — the marginal panic seller is done and the resting bid ladder (makers, dip-buyers) lifts price back toward VWAP. The other side is the late/emotional retail seller dumping at the bottom; the persistence is behavioral (fear-selling clusters) but only HARVESTABLE where costs are thin. This is the fee-realist cut of the family: the same capitulation trigger, deliberately restricted to the MOST liquid pairs (BTC/ETH-class) where the round-trip taker cost is low enough that a genuine bounce survives fees, gated by the venue min_liquidity so the universe selector excludes thin alts. Entry: rsi deeply oversold AND bb_z confirming the extreme. Long-only spot; short hold; exit as rsi recovers. DISCONFIRMER: this dies on illiquid alts — if net PnL is positive on majors but the SAME rule is negative on the alt basket, the edge is a fee-arb not a signal. Even on majors it is thin: require the majors net-Sharpe to clear a real bar AFTER fees, not just gross. If it fails to beat buy-and-hold on majors (bounces underperform simply holding through the dip), kill — the snapback was smaller than the trend it interrupted.",
+  "catalyst": "RSI capitulation bounce restricted to the most liquid pairs where fees are thin",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rsi_floor": {"kind": "float", "lo": 10, "hi": 18},
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "rsi_exit": {"kind": "float", "lo": 45, "hi": 60},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 0.5}
+  },
+  "direction": 1
+}

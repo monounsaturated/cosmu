@@ -1,0 +1,30 @@
+{
+  "name": "Stablecoin net-flow surge -> intraday deployment snipe (4h bars, fractional hold)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the daily net-flow variant: this trades the SAME dry-powder-deployment-lag thesis on a 4h clock with a sub-day-to-few-day hold, targeting the fast window in which a fresh mint is deployed to spot before the market fully reprices — a higher-frequency expression of the deployment lag): a positive stablecoin_net_flow_usd surge is fresh fiat that must chase a risk asset; on a 4h bar the deployment can be captured intraday-to-2-days before the flow is common knowledge. Entry: net-flow above a fitted surge AND price momentum non-negative on the 4h clock. Fast exit on flow fade or stop/TP/time. DISCONFIRMER 1: at 4h the flow/price correlation is even weaker and fee drag is heavier -> KILL unless the net-of-fee edge clears DSR>=0.95 (round-trip cost dominates at this frequency). DISCONFIRMER 2: if the daily variant (04) captures all of it, the intraday clock adds nothing. DISCONFIRMER 3: coincident-not-leading flow = null; require positive lead coefficient. High death probability by design — a frequency probe.",
+  "catalyst": "fresh stablecoin mint deploying to spot within hours",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.08, "max_hold_days": 2 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd" }, "op": "gt", "threshold": { "param": "flow_surge" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gte", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_net_flow_usd" }, "op": "cross_down", "threshold": { "param": "flow_fade" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_surge": { "kind": "float", "lo": 0.8, "hi": 3.0 },
+    "flow_fade":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "mom_lb":     { "kind": "int",   "lo": 3, "hi": 18, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": -0.02, "hi": 0.02 },
+    "stop":       { "kind": "float", "lo": 0.03, "hi": 0.1 },
+    "tp":         { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop":  { "kind": "int",   "lo": 1, "hi": 2, "step": 1 }
+  },
+  "direction": 1
+}

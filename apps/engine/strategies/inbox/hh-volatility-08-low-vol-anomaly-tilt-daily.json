@@ -1,0 +1,43 @@
+{
+  "name": "Low-vol anomaly tilt — hold the calm names (1d, spot)",
+  "rationale": "ECONOMIC MECHANISM: the low-volatility ANOMALY as a persistent HOLDING tilt, NOT a momentum gate. Fresh 2025-2026 evidence (review of the low-vol anomaly in crypto, 432 coins on Binance spot, Jan-2018 to Nov-2025) finds low-realized-vol coins deliver BETTER risk-adjusted returns because leverage-constrained / leverage-averse crypto retail crowds into high-vol lottery names (perp OI >$115B Q1-2025) and overpays for them, structurally underpricing the boring low-vol names. Entry: vol_realized below a fitted ceiling (a genuinely calm name) AND atr below a fitted ceiling (independent low-range confirmation) AND range_position not at the top of its band (not buying a local high). Hold the low-vol regime through calm; the position rides the persistent premium the leverage-hungry crowd leaves on the table. The other side is the degen buying the high-beta lottery ticket; the constraint (can't lever the safe name to target return) is why the mispricing persists and isn't arbed. Crucially the cited study is SPOT-only to strip funding/leverage confounds — so we test on SPOT (no funding leg). Exit: vol_realized crosses up out of the calm band (the name is no longer low-vol -> tilt no longer applies) or stop/TP/time. DISCONFIRMER 1: if the low-vol basket's excess return vanishes once fees + a buy-and-hold BTC benchmark are subtracted (the Gate's beat-B&H leg), the anomaly is disguised beta to calm large-caps and there is no orthogonal premium. DISCONFIRMER 2: if a HIGH-vol tilt does equally well over the same sample, the sign is unstable -> curve-fit. NOTE it's a slow tilt -> tension with the sniper mandate; include only if it clears B&H net.",
+  "catalyst": "a persistently calm low-vol name the leverage-averse crowd underprices",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 30
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "lt", "threshold": { "param": "atr_ceiling" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "lt", "threshold": { "param": "rp_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "cross_up", "threshold": { "param": "rv_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":       { "kind": "int",   "lo": 14,   "hi": 45,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.25, "hi": 0.55 },
+    "atr_lb":      { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "atr_ceiling": { "kind": "float", "lo": 0.015, "hi": 0.045 },
+    "rp_lb":       { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "rp_ceiling":  { "kind": "float", "lo": 0.55, "hi": 0.85 },
+    "rv_exit":     { "kind": "float", "lo": 0.55, "hi": 0.95 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":          { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":   { "kind": "int",   "lo": 8,    "hi": 30,  "step": 1 }
+  },
+  "direction": 1
+}

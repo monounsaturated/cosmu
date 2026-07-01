@@ -1,0 +1,29 @@
+{
+  "name": "Attention-onset long with crowded-LEVEL veto (accel long only when level not extreme) (1d)",
+  "rationale": "MECHANISM: uses the crowded-LEVEL finding as an EXPOSURE GUARD on the long side rather than as a short. Take the attention-onset long (social_volume_accel spike — the CHANGE leads price) ONLY when the crowd LEVEL is NOT already extreme (social_attention_z below a fitted ceiling). The economics: onset attention leads up, but if the crowd is already exhausted (high level) the follow-through is gone and you are buying the blow-off. Combining the CHANGE trigger with a LEVEL veto separates fresh ignition from late euphoria — distinct from both the pure accel long and the level short. Counterparty is late chasers. DISCONFIRMER: ablate the veto — spec-with-veto must beat spec-without out of sample; if the LEVEL ceiling does not improve net-of-fee OOS Sharpe it is just cutting trades, drop it. Shuffle the attention series; the accel edge must collapse under shuffle.",
+  "catalyst": "fresh attention acceleration while the crowd is not yet exhausted",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } },
+    { "feature": { "name": "social_attention_z" }, "op": "lt", "threshold": { "param": "level_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_floor":   { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "accel_exit":    { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "level_ceiling": { "kind": "float", "lo": 1.0,  "hi": 2.5 },
+    "stop":          { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":            { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":     { "kind": "int",   "lo": 2,    "hi": 8, "step": 1 }
+  },
+  "direction": 1
+}

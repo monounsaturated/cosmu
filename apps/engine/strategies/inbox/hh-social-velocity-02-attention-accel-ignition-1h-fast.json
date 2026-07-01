@@ -1,0 +1,30 @@
+{
+  "name": "Attention-velocity ignition — accel spike + momentum confirm (1h, fast)",
+  "rationale": "MECHANISM: same attention-onset lead as the 4h variant but run at a FASTER 1h cadence to catch the ignition earlier, gated by a small positive short-horizon return so we only take accel spikes that price is already beginning to confirm (avoids buying an attention blip with no flow). social_volume_accel = ln(v_t/v_{t-1}); the counterparty is slow dashboard-driven retail that repositions a day late. The CHANGE (not level) is the signal. Entry LONG when accel clears a fitted spike floor AND a short ret_Nd is positive. Exit on accel decay or stop/TP/time. DISCONFIRMER: this is the SAME onset thesis at higher frequency, so it must beat the 4h variant net of the ~more-frequent round-trip fees, not merely fire more; a 1h edge that dies once fees scale with turnover is not real. Shuffle the attention series — survival under shuffle = price autocorrelation, KILL. The momentum gate must not simply reduce this to a pure price-momentum spec: ablate accel out and the residual must collapse.",
+  "catalyst": "attention acceleration confirmed by nascent positive short-horizon momentum",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1h", "min_hold_days": 0.08, "max_hold_days": 2 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_spike" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_decay_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_spike":       { "kind": "float", "lo": 0.25, "hi": 1.2 },
+    "accel_decay_exit":  { "kind": "float", "lo": -0.2, "hi": 0.1 },
+    "mom_lb":            { "kind": "int",   "lo": 1,    "hi": 6, "step": 1 },
+    "mom_floor":         { "kind": "float", "lo": 0.0,  "hi": 0.03 },
+    "stop":              { "kind": "float", "lo": 0.02, "hi": 0.09 },
+    "tp":                { "kind": "float", "lo": 0.03, "hi": 0.14 },
+    "time_stop":         { "kind": "float", "lo": 0.25, "hi": 2 }
+  },
+  "direction": 1
+}

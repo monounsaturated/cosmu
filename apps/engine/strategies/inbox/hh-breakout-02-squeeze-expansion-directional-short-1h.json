@@ -1,0 +1,42 @@
+{
+  "name": "HH breakout 02 — squeeze-expansion directional short (1h)",
+  "rationale": "MECHANISM: same volatility-clustering forecast as the long variant (a compressed coil forecasts a vol expansion because GARCH persistence is real), but here we take the DOWN resolution: gate on bb_width in a multi-day LOW percentile AND vol_realized compressed, then enter SHORT (direction -1) only on a full-bar close pushing range_position to the DOWN extreme (<0.05, fitted) with adx confirming trend behind the break. The counterparty is the same short-gamma vol-seller / grid bot who must hedge into the downside expansion; a compressed coil breaking down forces them to sell, accelerating the move. Kept as a SEPARATE spec (not folded into the long) because crypto's chronic upward drift means the down-tail of a squeeze expansion is economically different from the up-tail — the short leg must earn against the drift, which is exactly what makes it a distinct, honestly-judged cell. DISCONFIRMER: KILL if the down-break's realized return is symmetric / within a fee-round-trip of zero net of fees, or if the short leg simply loses to the upward drift on a majority of symbols per-symbol (the squeeze fires but the down direction has no harvestable edge), or if PBO shows the bb_width cutoff is the only carrier.",
+  "catalyst": "compressed volatility coil breaks DOWN with trend confirmation",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2
+  },
+  "direction": -1,
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_ceiling"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vr_ceiling"}},
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_break"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbw_ceiling": {"kind": "float", "lo": 0.01, "hi": 0.04},
+    "vr_ceiling": {"kind": "float", "lo": 0.005, "hi": 0.03},
+    "rp_break": {"kind": "float", "lo": 0.01, "hi": 0.08},
+    "adx_floor": {"kind": "float", "lo": 18, "hi": 30},
+    "rp_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.1},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 3}
+  }
+}

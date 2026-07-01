@@ -1,0 +1,31 @@
+{
+  "name": "Excess-attention EXTREME fade — short the far-tail talk-with-no-money spike (1d)",
+  "rationale": "MECHANISM: the excess-attention continuation is positive across the bulk of the distribution, but at the FAR extreme (excess_attention_z well above the continuation zone) the loud-talk-no-money reading flips meaning: it is a manufactured/euphoric spike with no flow behind it, a set-up for a fade rather than continuation. This variant is the SHORT sign at the tail — distinct in both sign and regime from the excess-attention long. Confirm with an overbought RSI so we fade a stretched top, not mid-range noise. Counterparty is late chasers buying the hype. DISCONFIRMER: this is the risky opposite of the strongest long finding — the fade must show a robustly NEGATIVE forward return specifically in the far-tail bucket and NOT be explained by RSI-overbought alone (control for rsi). If the long-continuation zone bleeds into the short zone with no clean flip, the two-sided story is overfit, KILL. Short funding/borrow costs must be cleared (funding leg wired).",
+  "catalyst": "a far-extreme talk-with-no-money spike into overbought — euphoric fade",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "social_excess_attention_z" }, "op": "gt", "threshold": { "param": "extreme_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_excess_attention_z" }, "op": "lt", "threshold": { "param": "extreme_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "extreme_floor":        { "kind": "float", "lo": 2.5,  "hi": 4.5 },
+    "extreme_relief_exit":  { "kind": "float", "lo": 0.0,  "hi": 2.0 },
+    "rsi_lb":               { "kind": "int",   "lo": 7,    "hi": 21, "step": 1 },
+    "rsi_ceiling":          { "kind": "float", "lo": 68,   "hi": 84 },
+    "stop":                 { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                   { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":            { "kind": "int",   "lo": 2,    "hi": 8, "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

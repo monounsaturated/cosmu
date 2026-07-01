@@ -1,0 +1,31 @@
+{
+  "name": "Post-drawdown stablecoin-inflow contrarian long (4h, Tether-after-the-blood)",
+  "rationale": "MECHANISM: the one leading effect that survives the literature — stablecoin net inflows to exchanges arrive AFTER large price downturns and predict POSITIVE subsequent returns (NY Fed mint-burn work). Opportunistic capital moves stables onto venues to buy the dip; minting has real T+0..2 settlement latency and re-entry is staggered, so the inflow burst LEADS the recovery bounce by a few 4h bars. CONDITIONAL on a prior selloff (unconditional inflow corr <0.3). Entry: stablecoin_net_flow_usd positive spike AND prior ret_Nd deeply negative. Other side = the capitulating holder who already sold. DISCONFIRMER: if removing the prior-selloff precondition (ret_Nd) does NOT degrade the edge, the flow feature is inert and the selloff filter does all the work. HARD KILL: if a same-sized long fired on RSI oversold ALONE matches or beats it net of fees, stablecoin_net_flow_usd adds nothing.",
+  "catalyst": "stablecoin inflow spike arriving after a sharp 4h selloff",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 4 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "gt", "threshold": { "param": "flow_spike_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "sell_lb" } }, "op": "lt", "threshold": { "param": "sell_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "range_position" }, "op": "gt", "threshold": { "param": "range_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_lb":          { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 },
+    "flow_spike_floor": { "kind": "float", "lo": 0.5,   "hi": 2.5 },
+    "sell_lb":          { "kind": "int",   "lo": 1,    "hi": 3,   "step": 1 },
+    "sell_ceiling":     { "kind": "float", "lo": -0.12, "hi": -0.02 },
+    "range_exit":       { "kind": "float", "lo": 0.55,  "hi": 0.85 },
+    "stop":             { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":               { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop":        { "kind": "int",   "lo": 1,    "hi": 4,   "step": 1 }
+  },
+  "direction": 1
+}

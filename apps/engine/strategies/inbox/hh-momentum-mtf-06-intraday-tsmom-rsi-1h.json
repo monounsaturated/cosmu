@@ -1,0 +1,39 @@
+{
+  "name": "Intraday time-series momentum — signed continuation with RSI-strength confirm (1h)",
+  "rationale": "MECHANISM: same intraday time-series momentum lead-lag (early-window sign predicts close-window sign via late-informed flow + end-of-window hedging) but the trend-not-chop gate is an RSI strength band (rsi above a mid-line floor = sustained buying pressure without full exhaustion) rather than adx. This isolates whether the continuation needs a directional-STRENGTH confirmation vs a raw trend-STRUCTURE (adx) confirmation — economically distinct filters on the same lead-lag signal. Entry: positive signed trailing ret_Nd AND rsi above a fitted floor (momentum with fuel left). DISCONFIRMER: kill if it wins when rsi is instead used as an OVERBOUGHT ceiling (fade) — that would mean rsi is acting as reversion, not continuation. Kill if net edge < 3x round-trip taker cost, or if the lead-lag has no monotonic OOS relationship in a purged split.",
+  "catalyst": "early-session momentum with sustained buying pressure into the close",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mom_lb":    { "kind": "int",   "lo": 3,  "hi": 12, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.002, "hi": 0.02 },
+    "rsi_lb":    { "kind": "int",   "lo": 6,  "hi": 24, "step": 1 },
+    "rsi_floor": { "kind": "float", "lo": 50, "hi": 62 },
+    "rsi_exit":  { "kind": "float", "lo": 40, "hi": 50 },
+    "stop":      { "kind": "float", "lo": 0.012, "hi": 0.05 },
+    "tp":        { "kind": "float", "lo": 0.02, "hi": 0.1 },
+    "time_stop": { "kind": "float", "lo": 0.25, "hi": 1.0 }
+  }
+}

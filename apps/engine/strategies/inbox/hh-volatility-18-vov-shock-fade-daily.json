@@ -1,0 +1,43 @@
+{
+  "name": "Vol-of-vol shock fade — daily implied overshoot (1d)",
+  "rationale": "ECONOMIC MECHANISM (the vol-of-vol shock fade on the DAILY bar — slower, one decision per day, so it tests whether the implied-overshoot reversion persists over days rather than hours, and whether the daily 30d-implied vs realized comparison is cleaner on its natural horizon): a sharp up-repricing of dvol is the options market pricing convexity faster than spot warrants; VOV spikes are the most transient part of the surface (Du 2025, JFM) and revert because the repricing overshoots the real information. We proxy the shock by dvol above a fitted level WHILE realized has not yet expanded (vol_realized below a fitted ceiling -> implied racing ahead) AND a recent multi-day dip (ret_Nd negative -> the panic dumped price). We fade with a spot long into the reversion. The counterparty is gamma-scalping desks mechanically bidding vol-of-vol during the shock — forced buyers at the wrong price. Distinct from dvol-spike-capitulation (LEVEL extreme): a mid-level dvol fires if implied outruns a calm realized. Exit: vol_realized crosses up (realized caught up, overshoot resolved) or stop/TP/time. DISCONFIRMER 1: replace the implied-ahead-of-realized trigger with a dvol LEVEL threshold only — if the static level matches, the VOV thesis is unsupported and this is a dvol-spike re-skin. DISCONFIRMER 2: if the plain multi-day dip-buy (drop both vol legs) matches, this is generic oversold, not a vol-family edge. HARD CAVEAT: ~148 DVOL points on the daily grid is thin -> paper-only.",
+  "catalyst": "a daily implied-vol overshoot ahead of still-calm realized — a vol-of-vol panic to fade",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "ret_lb" } }, "op": "lt", "threshold": { "param": "ret_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "cross_up", "threshold": { "param": "rv_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dvol_floor":  { "kind": "float", "lo": 55.0, "hi": 100.0 },
+    "rv_lb":       { "kind": "int",   "lo": 5,    "hi": 21,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.40, "hi": 0.80 },
+    "ret_lb":      { "kind": "int",   "lo": 2,    "hi": 7,   "step": 1 },
+    "ret_ceiling": { "kind": "float", "lo": -0.10, "hi": -0.02 },
+    "rv_exit":     { "kind": "float", "lo": 0.70, "hi": 1.20 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 8,   "step": 1 }
+  },
+  "lane": "explore",
+  "direction": 1
+}

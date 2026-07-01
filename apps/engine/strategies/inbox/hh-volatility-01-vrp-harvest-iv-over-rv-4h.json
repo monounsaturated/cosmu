@@ -1,0 +1,43 @@
+{
+  "name": "VRP harvest — IV>RV spread calm-window long (4h)",
+  "rationale": "ECONOMIC MECHANISM: trade the IV-vs-RV SPREAD directly, not dvol as a standalone gate. When dvol (30d implied) sits materially ABOVE trailing vol_realized, the crypto options market is charging a fat variance risk premium — dealers/market-makers demand it because they are structurally SHORT gamma to a retail flow that persistently overpays for convexity/hedges (documented VRP, Deribit 2025). We cannot sell options, so we harvest the proxy: a wide IV>RV gap forecasts realized vol UNDERSHOOTS implied, i.e. the coming window is calmer-than-priced -> favors a mean-reversion/carry-style spot long held into the calm, NOT a breakout. Entry: dvol clears a fitted floor (options pricing a premium) AND vol_realized sits below a fitted ceiling (realized already calm relative to that implied level) AND rsi is not overbought (not chasing a top). The other side of our trade is the option BUYER (hedgers, event-punters) who rationally overpays for tail insurance; we are the patient seller of that fear. Persists because the insurance demand is behavioral/structural, not arbitraged away by spot traders who can't touch the options book. Exit: rsi crosses up into overbought (calm-drift exhausted) or stop/TP/time. DISCONFIRMER 1: substitute dvol ALONE (drop the vol_realized ceiling leg) — if the single-gauge read matches the deflated Sharpe, the SPREAD carries no information beyond 'IV is high' and this collapses into the already-tested dvol-spike specs. DISCONFIRMER 2: if an unconditional calm-window long over the same sample/costs matches it, the VRP adds nothing. HARD CAVEAT: only ~148 DVOL points exist -> paper-only, non-fundable until the series deepens; net of ~20bps round-trip the spot proxy is a weak shadow of the real short-vol trade.",
+  "catalyst": "implied vol priced above realized — a fat variance risk premium into a calmer-than-priced window",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 5
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dvol_floor":  { "kind": "float", "lo": 45.0, "hi": 85.0 },
+    "rv_lb":       { "kind": "int",   "lo": 20,   "hi": 60,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.30, "hi": 0.65 },
+    "rsi_lb":      { "kind": "int",   "lo": 10,   "hi": 24,  "step": 1 },
+    "rsi_ceiling": { "kind": "float", "lo": 45.0, "hi": 62.0 },
+    "rsi_exit":    { "kind": "float", "lo": 66.0, "hi": 80.0 },
+    "stop":        { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":          { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 6,   "step": 1 }
+  },
+  "lane": "explore",
+  "direction": 1
+}

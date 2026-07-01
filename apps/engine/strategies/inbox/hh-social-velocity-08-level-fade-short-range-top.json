@@ -1,0 +1,31 @@
+{
+  "name": "Crowded-attention LEVEL fade — short at the top of the range (1d)",
+  "rationale": "MECHANISM: same exhaustion thesis — a sustained elevated social_attention_z LEVEL means the crowd is all-in and forward return skews negative — but this variant confirms the blow-off with range_position (price near the top of its recent range) instead of RSI, a DIFFERENT over-extension gauge. Fading a loud crowd that has also pushed price to the range ceiling targets the euphoria peak. Counterparty is late buyers chasing the top. DISCONFIRMER: control against a pure range_position fade (price-only) — if being at the range top alone reproduces the negative forward return, the attention level adds nothing, KILL. Real short funding/borrow costs must be cleared (funding leg wired). Exit when the crowd level normalizes.",
+  "catalyst": "crowd-attention level extreme with price pinned at the range top",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "social_attention_z" }, "op": "gt", "threshold": { "param": "level_ceiling" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "gt", "threshold": { "param": "range_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_attention_z" }, "op": "lt", "threshold": { "param": "level_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "level_ceiling":     { "kind": "float", "lo": 1.2,  "hi": 3.0 },
+    "level_relief_exit": { "kind": "float", "lo": -0.5, "hi": 0.8 },
+    "range_lb":          { "kind": "int",   "lo": 10,   "hi": 40, "step": 1 },
+    "range_ceiling":     { "kind": "float", "lo": 0.80, "hi": 0.98 },
+    "stop":              { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":         { "kind": "int",   "lo": 2,    "hi": 8, "step": 1 }
+  },
+  "direction": -1,
+  "funding_feature": "funding_rate"
+}

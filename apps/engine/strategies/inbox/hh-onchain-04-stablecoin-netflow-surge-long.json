@@ -1,0 +1,30 @@
+{
+  "name": "Stablecoin net-flow surge -> forward buying pressure (BTC/ETH, fast hold)",
+  "rationale": "ECONOMIC MECHANISM: net minting of stablecoins into exchange-visible supply is genuine fresh fiat entering the crypto perimeter (GENIUS Act 2025 institutionalized this: +$100B / +49% stablecoin supply in 2025). A large positive stablecoin_net_flow_usd is dry powder that must eventually chase a risk asset -> a leading nowcast of spot demand BEFORE it hits the order book. The counterparty is market makers and OTC desks who see the mint but have not yet deployed; the edge is the deployment lag. Fed/BIS 2025 work confirms stablecoin flows move even T-bill yields, so the flow is economically real, not noise. Entry: stablecoin_net_flow_usd above a fitted surge threshold; go long, hold 3-10d, exit on flow normalizing back down or stop/TP/time. DISCONFIRMER 1 (biggest death risk): Kaiko/Glassnode 2024-25 flag flow/price correlation < 0.3 at 1-3d horizons -> KILL unless the top flow-quintile forward return dominates the bottom quintile monotonically with DSR>=0.95. DISCONFIRMER 2: if the signal is COINCIDENT (flow spikes AT the top, not before) it is useless -> require a positive forward predictive coefficient at lead k>=1 surviving BH-FDR. DISCONFIRMER 3: flow that funds shorts/arb collateral rather than spot longs is the null; if it dominates, kill. Net of ~20bps round-trip.",
+  "catalyst": "large stablecoin net-mint (dry powder) not yet deployed to spot",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd" }, "op": "gt", "threshold": { "param": "flow_surge" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_net_flow_usd" }, "op": "cross_down", "threshold": { "param": "flow_fade" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_surge": { "kind": "float", "lo": 0.5, "hi": 2.5 },
+    "flow_fade":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "mom_lb":     { "kind": "int",   "lo": 3, "hi": 20, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": -0.04, "hi": 0.03 },
+    "stop":       { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":         { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":  { "kind": "int",   "lo": 3, "hi": 10, "step": 1 }
+  },
+  "direction": 1
+}

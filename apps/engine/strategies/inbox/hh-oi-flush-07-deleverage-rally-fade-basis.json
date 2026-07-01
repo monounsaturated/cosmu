@@ -1,0 +1,137 @@
+{
+  "name": "Deleverage-rally fade (1h short, perp-spot basis confirms cover-driven)",
+  "rationale": "MECHANISM (H2 with a basis confirmation, replacing the ADX arm): when a pop is short-covering rather than fresh leverage, the perp-spot basis does NOT expand the way a leveraged-longs breakout would \u2014 a rising price on falling OI with a flat/soft basis is the cleanest fingerprint of a participation-less rally. The counterparty is the short-coverer whose bid extinguishes itself. Run as a perp SHORT. Entry: open_interest cross_down (contracting) AND ret_Nd above a positive floor (rising) AND rsi above an overbought floor AND perp_spot_basis below a ceiling (no leveraged-long premium building \u2014 cover-driven, not conviction). DISCONFIRMER: replace OI-down with OI-UP \u2014 no flip to losing means the divergence is irrelevant; and drop the basis arm \u2014 if it does not degrade, basis added no separation and this is generic overbought-short. Net of fees the fade must clear, and it must not overlap H1's profitable windows.",
+  "catalyst": "OI contracting + overbought pop + soft basis \u2014 a cover-driven, non-leveraged rally to fade",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_contract_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ret_up_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "rsi_overbought"
+      }
+    },
+    {
+      "feature": {
+        "name": "perp_spot_basis"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "basis_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "lt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_contract_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -0.5
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    },
+    "ret_up_floor": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.07
+    },
+    "rsi_overbought": {
+      "kind": "float",
+      "lo": 66,
+      "hi": 82
+    },
+    "basis_ceiling": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.5
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 42,
+      "hi": 55
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.1
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 2.5
+    }
+  },
+  "direction": -1
+}

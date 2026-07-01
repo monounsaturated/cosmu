@@ -1,0 +1,30 @@
+{
+  "name": "EURUSD strength as a dollar-weakness proxy — long crypto beta on a broad euro-led dollar breakdown",
+  "rationale": "MECHANISM: a distinct expression of the dollar-weakness thesis using the deepest, most liquid FX pair (EURUSD) rather than the trade-weighted DXY basket — EURUSD is ~57% of the DXY weight but trades with tighter spreads and cleaner flow, so a decisive euro up-thrust is an early, high-signal read of broad dollar weakness that loosens global conditions and re-rates risk. Long crypto beta when eurusd breaks higher (positive RoC) AND crypto confirms (positive medium-term ret_Nd). Counterparty = slow-clock FX/rates allocators. DISCONFIRMER: same sign-flip risk as the DXY variants — if the BTC-dollar inverse tie has flipped positive in the 2024-2026 ETF cycle (JPMorgan Mar 2026), a dollar-weakness long is backwards. Kill unless strictly OOS 2024-2026 keeps the inverse alive net of fees. Also kill if EURUSD and DXY variants (hh-macro-09/10) are economically identical (EURUSD dominates DXY) — keep only the cleaner of the FX reads.",
+  "catalyst": "euro-led dollar breakdown with a confirming crypto uptrend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "eurusd", "lookback": { "param": "eur_roc_lb" } }, "op": "gt", "threshold": { "param": "eur_roc_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "eurusd", "lookback": { "param": "eur_roc_lb" } }, "op": "lt", "threshold": { "param": "eur_reversal_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "eur_roc_lb":        { "kind": "int",   "lo": 10,   "hi": 40,   "step": 1 },
+    "eur_roc_floor":     { "kind": "float", "lo": 0.005, "hi": 0.03 },
+    "eur_reversal_exit": { "kind": "float", "lo": -0.02, "hi": 0.0 },
+    "mom_lb":            { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "mom_floor":         { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":              { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":                { "kind": "float", "lo": 0.1,  "hi": 0.35 },
+    "time_stop":         { "kind": "int",   "lo": 5,    "hi": 20,   "step": 1 }
+  }
+}

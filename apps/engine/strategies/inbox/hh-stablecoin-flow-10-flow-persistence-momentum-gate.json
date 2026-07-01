@@ -1,0 +1,33 @@
+{
+  "name": "Flow-persistence regime gate on price momentum (daily, sustained inflow keeps you long)",
+  "rationale": "MECHANISM: single-bar flow is noise (1-3d corr <0.3) but a PERSISTENT 7-14d net-inflow trend tightens correlation with forward returns (Neutralis; desks weight flows 15-25% only as a persistent trend). A sustained multi-day net inflow reflects a genuine slow liquidity regime shift (institutional/treasury demand building). Used as a LONG-ONLY regime GATE: take price-momentum longs (positive ret_Nd) ONLY while smoothed stablecoin_net_flow_usd is net-positive AND adx confirms a real trend; stand aside otherwise. Other side = anyone fighting a building liquidity tide. DISCONFIRMER: compare this gated momentum book to the SAME momentum entries UNGATED; if the gate does not improve DSR / reduce maxDD (never keeps you out of losing regimes), the flow persistence carries no regime information. Kill if the optimal smoothing window must be tuned per-asset — that is curve-fit, not a real 7-14d effect.",
+  "catalyst": "price momentum confirmed by a persistent multi-day stablecoin inflow regime",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 25 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_smooth_lb" } }, "op": "gt", "threshold": { "param": "flow_regime_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_smooth_lb" } }, "op": "lt", "threshold": { "param": "flow_regime_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_smooth_lb":    { "kind": "int",   "lo": 7,    "hi": 14,  "step": 1 },
+    "flow_regime_floor": { "kind": "float", "lo": 0.0,   "hi": 1.0 },
+    "flow_regime_exit":  { "kind": "float", "lo": -0.5,  "hi": 0.2 },
+    "mom_lb":            { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "mom_floor":         { "kind": "float", "lo": 0.0,   "hi": 0.08 },
+    "adx_floor":         { "kind": "float", "lo": 18.0,  "hi": 32.0 },
+    "stop":              { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":                { "kind": "float", "lo": 0.10, "hi": 0.40 },
+    "time_stop":         { "kind": "int",   "lo": 6,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1
+}

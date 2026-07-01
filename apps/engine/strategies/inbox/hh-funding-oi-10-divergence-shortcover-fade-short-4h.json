@@ -1,0 +1,41 @@
+{
+  "name": "OI-price divergence — short-covering rally fade (price up + OI down, short, 4h)",
+  "rationale": "MECHANISM: a rally NOT confirmed by new open_interest is fuelled by short-COVERING, not fresh long conviction — positions closing, not new money — so it fades. Signal: positive 4h return (price up) while open_interest is contracting (OI down) in a non-trending regime (low ADX so it is a range pop, not a real breakout). We short (direction -1) the unconfirmed rally; the other side is traders closing shorts (mechanical, price-insensitive) vs those who mistake the pop for a trend. Edge persists because OI/price confirmation is a positioning read most discretionary traders ignore. Hold ~0.25-0.5d. DISCONFIRMER 1: kill if OI is too noisy/aggregated at 4h (gaps, resets, cross-venue double-counting) so the divergence sign is unreliable — a PIT-honest single-venue OI series is required. DISCONFIRMER 2: kill if the fade underperforms same-bar momentum continuation (divergence adds nothing over just trading the move) or if edge vanishes once real taker fees hit the turnover.",
+  "catalyst": "price rises while open interest falls in a calm regime — an unconfirmed short-covering rally to fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "gt", "threshold": {"param": "ret_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "lt", "threshold": {"param": "oi_drop"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "lt", "threshold": {"param": "ret_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "param_space": {
+    "ret_lb": {"kind": "int", "lo": 1, "hi": 3, "step": 1},
+    "ret_ceiling": {"kind": "float", "lo": 0.02, "hi": 0.1},
+    "oi_drop": {"kind": "float", "lo": -1.5, "hi": -0.2},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "ret_exit": {"kind": "float", "lo": -0.02, "hi": 0.005},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "tp": {"kind": "float", "lo": 0.025, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 0.5}
+  }
+}

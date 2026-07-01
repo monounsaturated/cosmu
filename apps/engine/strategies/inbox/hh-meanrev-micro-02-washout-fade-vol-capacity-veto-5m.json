@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: washout fade with realized-vol capacity veto (5m)",
+  "rationale": "MECHANISM: same forced-liquidation snapback as the core washout fade — the margin engine dumps price-insensitively and the fader collects the reversion premium — but this variant adds a CAPACITY veto: skip the fade when realized volatility is so high that the maker spread blows out and the round-trip cost swamps the bounce. Economically, adverse selection against a fader spikes with realized vol (you are more likely to be the last one filled before the next leg down), so the tradeable snapback is the washout that occurs while vol_realized is below a fitted ceiling. Entry: bb_z multi-sigma washout AND rsi oversold AND vol_realized below a fitted cap (capacity gate). Long-only spot. DISCONFIRMER: if adding the vol ceiling does NOT raise net-of-fee Sharpe versus the un-vetoed washout fade on the same symbols, the veto is dead weight — prefer the simpler spec or kill. If the surviving trades still cluster in the single highest-vol month, the veto failed to remove the tail bet and this is regime luck, not edge.",
+  "catalyst": "multi-sigma washout fade taken only when spreads are tight enough to clear cost",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.0,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_cap"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -2.0},
+    "rsi_floor": {"kind": "float", "lo": 12, "hi": 22},
+    "vol_cap": {"kind": "float", "lo": 0.4, "hi": 1.5},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.005, "hi": 0.025},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.25}
+  },
+  "direction": 1
+}

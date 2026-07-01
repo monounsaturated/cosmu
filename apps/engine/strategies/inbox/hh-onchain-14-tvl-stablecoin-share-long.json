@@ -1,0 +1,29 @@
+{
+  "name": "DeFi TVL rise + stablecoin ETH-share rise -> stable-deposit demand long (ETH)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the TVL-vs-price residual variant: this cross-confirms TVL growth with stablecoin_eth_share rising — the CLEANEST non-beta component of TVL, because stablecoin deposits are dollar-denominated and do NOT mechanically inflate with ETH price; a TVL rise that coincides with more stablecoins concentrating on ETH is deposit-driven, not price-driven): the leakage trap in raw TVL is the ETH-denominated portion. Requiring stablecoin_eth_share to rise alongside defi_tvl isolates the dollar-deposit inflow that genuinely leads ETH demand (RWA + stablecoin inflows hitting $17B in 2025). Long ETH when both confirm; exit on share rolling over or stop/TP/time. DISCONFIRMER 1: if removing stablecoin_eth_share leaves the result unchanged, the de-beta'd cross-confirm adds nothing and it is disguised beta again. DISCONFIRMER 2: eth_share history may be short/revised -> verify PIT coverage; KILL if the edge depends on revised data. DISCONFIRMER 3: if a plain TVL-growth long matches the deflated Sharpe, the share leg is redundant. Net of fees, DSR>=0.95.",
+  "catalyst": "stablecoin-denominated TVL deposits concentrating on ETH",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "defi_tvl" }, "op": "gt", "threshold": { "param": "tvl_growth" } },
+    { "feature": { "name": "stablecoin_eth_share" }, "op": "gt", "threshold": { "param": "share_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_eth_share" }, "op": "cross_down", "threshold": { "param": "share_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tvl_growth":  { "kind": "float", "lo": 0.4, "hi": 1.8 },
+    "share_floor": { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "share_exit":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "stop":        { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "tp":          { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop":   { "kind": "int",   "lo": 8, "hi": 18, "step": 1 }
+  },
+  "direction": 1
+}

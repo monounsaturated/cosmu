@@ -1,0 +1,40 @@
+{
+  "name": "HH regime-switch 02 — VIX-extreme contrarian long confirmed by macro_regime (4h)",
+  "rationale": "MECHANISM (distinct from variant 01: it reads the dislocation via realized volatility and requires the macro_regime tag to already flag a risk-off state, and it operates on a faster 4h clock to catch the intraday panic bottom rather than the daily close): a VIX extreme is the equity-vol trigger for forced crypto-beta deleveraging, but a single VIX print can be noise; requiring macro_regime to independently register a stress state filters out lone spikes that don't propagate into a genuine liquidity event. Realized-vol elevation (vol_realized above a fitted floor) confirms crypto is itself in a panic tape, so the entry buys a truly washed-out, forced-seller-dominated bar rather than a calm one where VIX rose for an idiosyncratic equity reason. The 4h clock lets the position turn over inside the ~7-day VIX-reversion window instead of holding a full daily candle. DISCONFIRMER: on vix extreme + macro_regime risk-off entries (min 25 events), forward net-of-fee return must be >0; if requiring macro_regime confirmation does not add net return or cut drawdown versus the bare VIX signal (ablation <= 0), the regime tag is cosmetic and the spec is just variant 01 with a slower entry — kill it. Also kill if the edge is confined to the 2020 crash.",
+  "catalyst": "VIX extreme co-confirmed by a macro risk-off regime tag into elevated crypto realized vol",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 6
+  },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_extreme_floor" } },
+    { "feature": { "name": "macro_regime" }, "op": "lt", "threshold": { "param": "risk_off_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "gt", "threshold": { "param": "rv_panic_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_down", "threshold": { "param": "vix_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_extreme_floor": { "kind": "float", "lo": 34, "hi": 48 },
+    "vix_relief_exit": { "kind": "float", "lo": 22, "hi": 33 },
+    "risk_off_floor": { "kind": "float", "lo": -1.0, "hi": 0.0 },
+    "rv_lb": { "kind": "int", "lo": 10, "hi": 40, "step": 1 },
+    "rv_panic_floor": { "kind": "float", "lo": 0.3, "hi": 0.9 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "tp": { "kind": "float", "lo": 0.06, "hi": 0.24 },
+    "time_stop": { "kind": "int", "lo": 2, "hi": 6, "step": 1 }
+  }
+}

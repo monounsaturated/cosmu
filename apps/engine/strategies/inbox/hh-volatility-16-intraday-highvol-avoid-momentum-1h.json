@@ -1,0 +1,43 @@
+{
+  "name": "High-vol-window trend ride — the seasonality mirror (1h)",
+  "rationale": "ECONOMIC MECHANISM (the MIRROR of the calm-window drift: instead of drifting long in calm windows, ride MOMENTUM only in the high-vol session windows and stay flat in the calm — testing the other tail of the intraday seasonality so the family spans both regimes and the sign is falsifiable): crypto realized vol is partly deterministic by clock (session overlaps + funding-settlement). The calm-window thesis says reversion is cleanest when calm; the mirror says the high-vol windows are where genuine trends actually travel, and calm-window trend signals are noise. Entry (long): vol_realized above a fitted floor (a high-vol session window is active) AND ret_Nd positive (a real up-move underway) AND adx above a fitted floor (trend confirmed, not chop). We ride the move while the window is energetic and exit as it calms. Realized features only (no DVOL) -> dodges the data wall. Exit: vol_realized crosses down through a fitted level (the high-vol window is ending -> trend fuel gone) or stop/TP/time. DISCONFIRMER 1: if an unconditional 1h momentum long (drop the vol_realized floor) matches the deflated Sharpe, the high-vol-window conditioning adds nothing and this is plain trend-following. DISCONFIRMER 2: if this AND the calm-window drift (hh-volatility-14) BOTH clear on the same symbols, the intraday-vol conditioning is not selecting a regime — one of them is spurious. DISCONFIRMER 3: high-vol windows cluster around scheduled macro events; if excluding CPI/FOMC dates kills it, it's event-momentum not seasonality.",
+  "catalyst": "the energetic high-vol session window where genuine intraday trends travel",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "gt", "threshold": { "param": "rv_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "ret_lb" } }, "op": "gt", "threshold": { "param": "ret_floor" } },
+    { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "cross_down", "threshold": { "param": "rv_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":      { "kind": "int",   "lo": 12,   "hi": 48,  "step": 1 },
+    "rv_floor":   { "kind": "float", "lo": 0.55, "hi": 1.05 },
+    "ret_lb":     { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 },
+    "ret_floor":  { "kind": "float", "lo": 0.003, "hi": 0.025 },
+    "adx_lb":     { "kind": "int",   "lo": 10,   "hi": 28,  "step": 1 },
+    "adx_floor":  { "kind": "float", "lo": 20.0, "hi": 34.0 },
+    "rv_exit":    { "kind": "float", "lo": 0.40, "hi": 0.75 },
+    "stop":       { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":         { "kind": "float", "lo": 0.03, "hi": 0.13 },
+    "time_stop":  { "kind": "int",   "lo": 1,    "hi": 1,   "step": 1 }
+  },
+  "direction": 1
+}

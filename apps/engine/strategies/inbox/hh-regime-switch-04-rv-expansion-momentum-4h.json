@@ -1,0 +1,43 @@
+{
+  "name": "HH regime-switch 04 — realized-vol EXPANSION regime → trade momentum (4h)",
+  "rationale": "MECHANISM (the expansion LEG of the vol-regime switch): in a high realized-vol expansion regime order flow is directional — breakouts and trend persistence dominate as momentum-chasing leverage piles in and slow institutions reprice. The counterparty you front-run is a slow institution still filling. This spec ONLY trades momentum, and ONLY when vol_realized is in its upper regime (above a fitted expansion floor) AND ADX confirms an actual trend (not just noisy high vol). Entry: vol_realized high AND adx high AND ret_Nd positive. Exit: ADX collapses (trend dies) or vol_realized falls back into the neutral/contraction band (regime flip), or stop/TP/time. This is the pair to variant 06 (the contraction reversion leg); together they are the switch. DISCONFIRMER: momentum's edge in the top realized-vol tercile must independently clear the Gate net of fees; if it only survives when pooled with the contraction leg (one leg carrying a dead leg), the 'switch' is a curve-fit label. Also kill if the expansion breakpoint must be re-fit per-asset to work — a real regime uses one global threshold.",
+  "catalyst": "high realized-vol expansion with a confirmed trend — directional flow to ride",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 8
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "gt", "threshold": { "param": "rv_expansion_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } },
+      { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_regime_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb": { "kind": "int", "lo": 10, "hi": 40, "step": 1 },
+    "rv_expansion_floor": { "kind": "float", "lo": 0.4, "hi": 1.0 },
+    "rv_regime_exit": { "kind": "float", "lo": 0.25, "hi": 0.5 },
+    "adx_floor": { "kind": "float", "lo": 20, "hi": 35 },
+    "adx_exit": { "kind": "float", "lo": 12, "hi": 20 },
+    "mom_lb": { "kind": "int", "lo": 6, "hi": 30, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0, "hi": 0.06 },
+    "stop": { "kind": "float", "lo": 0.05, "hi": 0.14 },
+    "tp": { "kind": "float", "lo": 0.06, "hi": 0.24 },
+    "time_stop": { "kind": "int", "lo": 2, "hi": 8, "step": 1 }
+  }
+}

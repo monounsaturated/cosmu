@@ -1,0 +1,39 @@
+{
+  "name": "Cross-sectional funding dispersion — daily-rebalance most-negative-funding tilt (long, 1d)",
+  "rationale": "MECHANISM: the same sticky-funding dispersion long tilt as variant 16, but rebalanced on a DAILY clock with a slower multi-day hold — targeting the persistent (not intraday) funding-dispersion premium in mid-cap/long-tail perps. Each day, names whose funding_rate is deeply negative in the cross-section (crowded shorts, squeeze fuel) are bought SPOT (direction +1); the long collects the negative-funding carry (funding_feature) across the multi-day hold while the short crowd bleeds and covers. A vol_realized ceiling keeps us out of names in violent freefall (where deep-negative funding is a knife, not a tilt). Distinct from 16 (4h rebalance / faster hold) and 17 (short leg): daily cadence isolates the slower sticky-funding component and adds a freefall filter. DISCONFIRMER 1: kill if real fees + slippage on thin daily-rebalanced alt books eat the funding spread. DISCONFIRMER 2: kill if the daily tilt is disguised beta/size (beaten-down alts bounce) and dies after neutralizing to trailing return. DISCONFIRMER 3: kill if breadth of reliable daily funding history is too low for effective-N.",
+  "catalyst": "the deepest-negative-funding names each day, out of freefall — a persistent sticky-funding long tilt.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 5
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "xsec_funding_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "cross_up", "threshold": {"param": "funding_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "xsec_funding_floor": {"kind": "float", "lo": -0.0012, "hi": -0.0002},
+    "vol_ceiling": {"kind": "float", "lo": 1.0, "hi": 3.0},
+    "funding_relief_exit": {"kind": "float", "lo": -0.0002, "hi": 0.0003},
+    "stop": {"kind": "float", "lo": 0.04, "hi": 0.16},
+    "tp": {"kind": "float", "lo": 0.05, "hi": 0.26},
+    "time_stop": {"kind": "int", "lo": 1, "hi": 5, "step": 1}
+  }
+}

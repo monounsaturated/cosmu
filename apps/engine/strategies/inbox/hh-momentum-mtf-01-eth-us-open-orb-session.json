@@ -1,0 +1,43 @@
+{
+  "name": "Session-handoff ORB — US-open break of the overnight range (15m, session-anchored)",
+  "rationale": "MECHANISM: crypto is 24/7 but directional flow is regional. Overnight (Asia/EU) inventory gets re-priced when the deep US liquidity window opens; desks that must mark/hedge at the US session start chase the break of the overnight range while overnight range-traders and market-makers fade until the flow overwhelms them. Zarattini/Barbon and Concretum (2018-2025) find ETH Europe->US cross-session momentum nets Sharpe ~0.8 after fees precisely because the per-trade edge clears >3x the taker hurdle. This is a structural flow handoff (not a crowded stat-arb signal), so it persists. Entry: a session-anchored opening-range breakout (setup.orb anchor='session') gated by adx (only trade the break when a directional regime is present) and a positive trailing return (ret_Nd) confirming the handoff pushes with, not against, established flow. DISCONFIRMER: kill if the SAME orb with anchor='rolling' (no session anchor) nets identically — that proves the timing is curve-fit and the session carries nothing. Also kill if it does not clear DSR 0.95 net of our fee schedule and beat buy-and-hold.",
+  "catalyst": "US session open breaking the Asia/EU overnight range",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "setup": {
+    "orb": { "range_bars": { "param": "orb_bars" }, "buffer": { "param": "orb_buffer" }, "anchor": "session" }
+  },
+  "param_space": {
+    "adx_floor":  { "kind": "float", "lo": 18, "hi": 32 },
+    "adx_exit":   { "kind": "float", "lo": 10, "hi": 18 },
+    "mom_lb":     { "kind": "int",   "lo": 8,  "hi": 32, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0, "hi": 0.02 },
+    "orb_bars":   { "kind": "int",   "lo": 4,  "hi": 24, "step": 1 },
+    "orb_buffer": { "kind": "float", "lo": 0.0005, "hi": 0.004 },
+    "stop":       { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "tp":         { "kind": "float", "lo": 0.015, "hi": 0.09 },
+    "time_stop":  { "kind": "float", "lo": 0.25, "hi": 1.0 }
+  }
+}

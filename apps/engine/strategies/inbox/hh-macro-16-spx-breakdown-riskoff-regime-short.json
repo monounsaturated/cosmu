@@ -1,0 +1,30 @@
+{
+  "name": "SPX breakdown + risk-off regime flip — short crypto beta when broad equities roll and the risk regime turns off",
+  "rationale": "MECHANISM: same asymmetric downside-correlation circuit-breaker, but gated on the composite risk_on_off regime feature rather than a second index — spx_index rolling over identifies the equity-led leg while risk_on_off flipping to risk-off confirms the move is a BROAD cross-asset regime change (not an idiosyncratic equity wobble). Requiring both the SPX trend break AND the regime flip filters the decoupled windows where equities dip but the broad risk regime stays constructive. Short crypto beta into the confirmed risk-off. Counterparty = the levered-long crowd slow to recognize the regime turn. DISCONFIRMER: risk_on_off is a derived composite that may itself be built from equity/VIX inputs — if it merely restates the SPX breakdown, the two conditions are one and the gate adds nothing. Kill if it is economically identical to the NDX+SPX variant (hh-macro-13), or if the captured downside net of extra round-trips and short funding does not beat holding through the whipsaws. Short pays funding — net-of-carry edge must clear it.",
+  "catalyst": "SPX trend break confirmed by a broad risk-off regime flip",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "spx_index", "lookback": { "param": "spx_roc_lb" } }, "op": "lt", "threshold": { "param": "spx_roc_ceiling" } },
+    { "feature": { "name": "risk_on_off" }, "op": "lt", "threshold": { "param": "regime_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "risk_on_off" }, "op": "cross_up", "threshold": { "param": "regime_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "spx_roc_lb":         { "kind": "int",   "lo": 5,    "hi": 25,   "step": 1 },
+    "spx_roc_ceiling":    { "kind": "float", "lo": -0.03, "hi": -0.005 },
+    "regime_ceiling":     { "kind": "float", "lo": -0.2, "hi": 0.2 },
+    "regime_relief_exit": { "kind": "float", "lo": 0.0,  "hi": 0.4 },
+    "stop":               { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                 { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":          { "kind": "int",   "lo": 2,    "hi": 10,   "step": 1 }
+  },
+  "direction": -1
+}

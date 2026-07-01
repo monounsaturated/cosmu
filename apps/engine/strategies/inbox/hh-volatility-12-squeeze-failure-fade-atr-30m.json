@@ -1,0 +1,46 @@
+{
+  "name": "Squeeze-failure fade — ATR-stop failed break (30m)",
+  "rationale": "ECONOMIC MECHANISM (the squeeze-failure fade at 30m with an ATR-scaled stop so the fade risks a multiple of prevailing range rather than a fixed fraction — a wider bar that reduces the fee-per-trade drag of the 15m version while keeping the same trapped-crowd thesis): a bb_width multi-window floor is a coiled spring; a downside poke that fails and re-enters the band is a false breakdown that trapped the breakdown crowd. 2025 BB backtests confirm naive band-breaks are a coin-flip because false breaks dominate, so we fade them: the trapped shorts' buy-to-cover fuels the snap-back. Entry (long): bb_width below a fitted floor (spring) AND range_position below a fitted floor (poked to the lower band) AND atr above a fitted floor (the poke was a real volatility burst, not a dead tape — this is the distinct third gauge vs the 15m rsi version). The exit uses an ATR-multiple stop so a fresh entry is not knocked out by ordinary noise. The counterparty is the mechanical band-break sellers whose stop cascade is our fuel. Distinct from squeeze-then-trend (buys the confirmed break). Exit: range_position crosses up back into mid-band (snap-back done) or ATR-stop/TP/time. DISCONFIRMER 1: drop the squeeze pre-condition (fade any lower-band poke) — if it works as well, the squeeze is inert and this is generic false-breakout fading, not a vol-family edge. DISCONFIRMER 2: net of ~20bps at 30m the small fades must clear; if per-trade edge < fees the trade count kills it. DISCONFIRMER 3: if the atr-floor leg fires on nearly every squeeze-poke bar it adds no information -> the burst filter is inert.",
+  "catalyst": "a squeeze whose failed downside break traps shorts on a real volatility burst",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1
+  },
+  "entry": [
+    { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "lt", "threshold": { "param": "bbw_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "lt", "threshold": { "param": "rp_floor" } },
+    { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "gt", "threshold": { "param": "atr_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "atr_mult": { "param": "atr_mult" },
+    "signal_exits": [
+      { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "cross_up", "threshold": { "param": "rp_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bbw_lb":     { "kind": "int",   "lo": 20,   "hi": 60,  "step": 1 },
+    "bbw_floor":  { "kind": "float", "lo": 0.02, "hi": 0.06 },
+    "rp_lb":      { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "rp_floor":   { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "atr_lb":     { "kind": "int",   "lo": 8,    "hi": 24,  "step": 1 },
+    "atr_floor":  { "kind": "float", "lo": 0.004, "hi": 0.015 },
+    "atr_mult":   { "kind": "float", "lo": 1.2,  "hi": 2.8 },
+    "rp_exit":    { "kind": "float", "lo": 0.45, "hi": 0.70 },
+    "stop":       { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "tp":         { "kind": "float", "lo": 0.025, "hi": 0.10 },
+    "time_stop":  { "kind": "int",   "lo": 1,    "hi": 1,   "step": 1 }
+  },
+  "lane": "explore",
+  "direction": 1
+}

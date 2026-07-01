@@ -1,0 +1,29 @@
+{
+  "name": "Excess-attention continuation — vol-neutralized entry (1d)",
+  "rationale": "MECHANISM: same excess-attention continuation edge (chatter loud vs dollars → flow not yet arrived → price continues up ~a week), but this variant BUILDS the disconfirmer INTO the entry: it only fires when excess-attention is high AND realized vol is below a fitted ceiling, i.e. the loud-vs-quiet-money signal cannot be a disguised high-vol regime. This directly tests the AUC-0.564-vs-0.78 redundancy warning — if the edge only exists in the low-vol slice it is attention-specific, not a vol proxy. Counterparty is confirmation-waiting momentum-chasers. DISCONFIRMER: if the vol-ceiling gate removes the whole spread, the edge WAS vol, KILL. If holding vol constant leaves the excess-z spread intact, the attention increment is real. Must beat buy-and-hold net of ~7d fees on the native daily universe.",
+  "catalyst": "high excess-attention in a contained-vol regime",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "social_excess_attention_z" }, "op": "gt", "threshold": { "param": "excess_floor" } },
+    { "feature": { "name": "vol_realized" }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_excess_attention_z" }, "op": "lt", "threshold": { "param": "excess_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "excess_floor": { "kind": "float", "lo": 1.0,  "hi": 2.5 },
+    "excess_exit":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "vol_ceiling":  { "kind": "float", "lo": 0.02, "hi": 0.10 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":    { "kind": "int",   "lo": 4,    "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}

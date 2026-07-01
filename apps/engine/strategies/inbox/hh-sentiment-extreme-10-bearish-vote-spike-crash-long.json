@@ -1,0 +1,30 @@
+{
+  "name": "Cryptopanic bearish-vote spike as panic-velocity trigger (long)",
+  "rationale": "MECHANISM: velocity variant that reads panic-in-progress from a DIRECT crowd tally — a surge in cryptopanic_bearish_votes crossing UP through a fitted spike level marks fresh, active retail pessimism (forced sellers voting with their fear), distinct from the slow-moving composite fear_greed. When that vote spike coincides with a same-day price drop (ret_Nd), it is a flush, and patient capital absorbs it. Long the snapback; exit when the vote pressure subsides (bearish votes cross back down) or stop/TP/time. Distinct from the fear_greed-velocity spec because the raw vote count is granular and NOT constructed from price, so it is a cleaner orthogonality test. DISCONFIRMER: check per-symbol coverage of cryptopanic votes FIRST — thin data collapses effective-N and the Gate rightly kills it. If bearish-vote spikes predict returns EQUALLY whether or not price also dropped, the price-confirmation adds nothing and it is a bare bearish-vote contrarian — test that simpler form instead.",
+  "catalyst": "a fresh spike in bearish crowd votes into a price drop",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "cryptopanic_bearish_votes" }, "op": "cross_up", "threshold": { "param": "vote_spike" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "drop_lb" } }, "op": "lt", "threshold": { "param": "drop_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "cryptopanic_bearish_votes" }, "op": "cross_down", "threshold": { "param": "vote_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vote_spike":       { "kind": "float", "lo": 20.0,  "hi": 80.0 },
+    "vote_relief_exit": { "kind": "float", "lo": 5.0,   "hi": 25.0 },
+    "drop_lb":          { "kind": "int",   "lo": 1,     "hi": 3, "step": 1 },
+    "drop_floor":       { "kind": "float", "lo": -0.12, "hi": -0.02 },
+    "stop":             { "kind": "float", "lo": 0.05,  "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06,  "hi": 0.26 },
+    "time_stop":        { "kind": "int",   "lo": 2,     "hi": 10, "step": 1 }
+  },
+  "direction": 1
+}

@@ -1,0 +1,32 @@
+{
+  "name": "Greed-extreme continuation in a confirmed uptrend (ride, do not fade)",
+  "rationale": "MECHANISM: the technical-predictability literature finds crypto momentum works BETTER under optimism because investors herd and reinforce trends; naive symmetric contrarians who SHORT greed get run over during the herding phase. The persistent counterparty is the FOMO retail crowd that keeps bidding — you ride them, not fade them. Entry: fear_greed above a fitted greed ceiling AND adx above a fitted floor (established trend) AND ret_Nd positive (up-trend confirmed). Long continuation; exit when adx collapses (trend dies) or stop/TP/time. This monetizes the regime-asymmetry the family names and explains why symmetric fear/greed strategies barely beat buy-and-hold: half their trades (shorting greed in a bull) are wrong. DISCONFIRMER: directly compare fade-greed vs ride-greed on the same high-fear_greed days within confirmed uptrends; if fading is NOT strictly worse, the asymmetry is illusory. Kill if the continuation leg underperforms plain adx-trend without the sentiment gate.",
+  "catalyst": "extreme greed inside a confirmed, momentum-positive uptrend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_ceiling" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "greed_ceiling": { "kind": "float", "lo": 65.0, "hi": 85.0 },
+    "adx_floor":     { "kind": "float", "lo": 20.0, "hi": 35.0 },
+    "adx_exit":      { "kind": "float", "lo": 12.0, "hi": 20.0 },
+    "mom_lb":        { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "mom_floor":     { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":          { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":            { "kind": "float", "lo": 0.10, "hi": 0.40 },
+    "time_stop":     { "kind": "int",   "lo": 6,    "hi": 25, "step": 1 }
+  },
+  "direction": 1
+}

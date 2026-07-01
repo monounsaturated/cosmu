@@ -1,0 +1,39 @@
+{
+  "name": "Cross-sectional funding dispersion — long the most-negative-funding names (long, 4h)",
+  "rationale": "MECHANISM: funding compression hit BTC/ETH hardest (quant-saturated), but mid-cap/long-tail perps keep 2-5x the APR because liquidity is thin and funding is STICKY — fewer arbitrageurs bother. Across the universe each 4h bar, the most-NEGATIVE-funding names (crowded shorts = squeeze fuel) tend to out-perform: they pay a spot long carry (funding_feature) AND recover as shorts cover. We take the long leg only (direction +1, spot-only live constraint), entering names whose funding_rate is deeply negative (bottom of the cross-section) and filtering by a minimum open_interest so the name is tradable. The other side is retail chasing leverage in illiquid alts; a systematic solo farms the dispersion the giants avoid (too small for their size). DISCONFIRMER 1: kill if the edge is an illusion once REAL fees + slippage on thin books are charged (0.06% taker on wide-spread alts eats the funding spread) — the classic long-tail trap. DISCONFIRMER 2: kill if the return is disguised beta/size (most-negative-funding = most-beaten-down alts = high-beta bounce) and dies after neutralizing to trailing return. DISCONFIRMER 3: kill if too few tradable perps have reliable funding+OI history (breadth too low for effective-N).",
+  "catalyst": "the deepest-negative-funding names in the cross-section, filtered for tradable OI — a sticky-funding long tilt.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 2
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "xsec_funding_floor"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_tradable"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "cross_up", "threshold": {"param": "funding_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "xsec_funding_floor": {"kind": "float", "lo": -0.0012, "hi": -0.0002},
+    "oi_tradable": {"kind": "float", "lo": -0.5, "hi": 1.0},
+    "funding_relief_exit": {"kind": "float", "lo": -0.0002, "hi": 0.0003},
+    "stop": {"kind": "float", "lo": 0.03, "hi": 0.12},
+    "tp": {"kind": "float", "lo": 0.04, "hi": 0.2},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 2}
+  }
+}

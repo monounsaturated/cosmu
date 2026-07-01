@@ -1,0 +1,30 @@
+{
+  "name": "News-sentiment overreaction fade on 1h bars (faster headline snapback, long)",
+  "rationale": "MECHANISM: same headline-overreaction reversal as the 4h fade, but on 1h bars to capture a FASTER snapback — the sharpest emotional overshoots reprice within the first hour or two, and a shorter hold reduces exposure to a follow-through leg while the reversion premium is fattest right after the shock. Entry: news_sentiment in an extreme LOW tail AND a 1h price drop (ret_Nd). Long the bounce, exit within a few bars. This is a timeframe-distinct bet on WHERE in the reversion curve the edge lives, and it is the harshest fee test in the family. DISCONFIRMER: 1h round-trips pay fees more often — if per-trade net edge < 2x fee+slippage the faster clock is strictly worse; kill and prefer 4h. If the 1h fade matches random-bar mean-reversion, news adds nothing — kill.",
+  "catalyst": "extreme-negative news sentiment confirmed by a 1h price drop",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1h", "min_hold_days": 0.04, "max_hold_days": 0.5 },
+  "entry": [
+    { "feature": { "name": "news_sentiment" }, "op": "lt", "threshold": { "param": "news_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "shock_lb" } }, "op": "lt", "threshold": { "param": "shock_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "news_sentiment" }, "op": "cross_up", "threshold": { "param": "news_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "news_floor":       { "kind": "float", "lo": -1.0,  "hi": -0.3 },
+    "news_relief_exit": { "kind": "float", "lo": -0.2,  "hi": 0.2 },
+    "shock_lb":         { "kind": "int",   "lo": 1,     "hi": 4, "step": 1 },
+    "shock_floor":      { "kind": "float", "lo": -0.06, "hi": -0.01 },
+    "stop":             { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "tp":               { "kind": "float", "lo": 0.015, "hi": 0.07 },
+    "time_stop":        { "kind": "float", "lo": 0.08,  "hi": 0.5 }
+  },
+  "direction": 1
+}

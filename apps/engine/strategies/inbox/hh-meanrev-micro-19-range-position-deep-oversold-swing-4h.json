@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: range-position deep-oversold reversion, swing hold (4h)",
+  "rationale": "MECHANISM: reads overextension through RANGE LOCATION rather than dispersion — range_position pinned near the bottom of the recent high-low range means price has been pushed to a structural extreme of the range the market has been respecting, and the mechanical reaction is a snap back toward the range interior as forced/emotional sellers exhaust. On the 4h swing bar this is a slower, higher-conviction reversion than the intraday fades: the dislocation is a multi-hour overshoot, the hold spans hours-to-days, and the larger reversion comfortably clears round-trip cost. rsi confirms the location extreme is also a momentum extreme (not a slow drift to a new lower range). Entry: range_position below a fitted floor AND rsi below a fitted floor. Long-only spot; exit as range_position recovers into the range interior. DISCONFIRMER: if the range_position signal produces the same trades and net Sharpe as a plain bb_z fade at the same timeframe, the two are collinear and this adds nothing distinct — keep one. If the 4h reversion fails to beat buy-and-hold over the same windows, the range low was the start of a new lower range (a real breakdown), not an overshoot — kill.",
+  "catalyst": "price pinned at the range low on the 4h swing bar snaps back into the range",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 4.0
+  },
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rangepos_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rangepos_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rangepos_floor": {"kind": "float", "lo": 0.05, "hi": 0.2},
+    "rsi_floor": {"kind": "float", "lo": 20, "hi": 32},
+    "rangepos_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.015, "hi": 0.07},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.1},
+    "time_stop": {"kind": "float", "lo": 0.5, "hi": 4.0}
+  },
+  "direction": 1
+}

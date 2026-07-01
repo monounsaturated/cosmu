@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: double-confirm extreme reversal (1h)",
+  "rationale": "MECHANISM: same two-signal conjunction (statistical bb_z extreme AND momentum rsi extreme must agree) that isolates genuinely-spent moves from ordinary trend, but on the 1h bar, where each confirmed dislocation is larger and clears cost more easily, at the cost of far fewer events. The hourly frame tests whether the double-confirm quality filter survives when the signal is slower and the crowd that piled into the last leg is a multi-hour move rather than a five-minute spike. Entry: bb_z below a fitted floor AND rsi below a fitted floor simultaneously; vol_realized as a capacity veto. Long-only spot; exit on bb_z reversion. DISCONFIRMER: ablate against the better single signal — if the conjunction adds nothing, kill. At 1h the trade count is lowest of the family, so effective-N is the binding risk: if the rare signal clusters on a few cascade days, the gate will reject it and that is the correct answer, not a reason to loosen the floors. Head-to-head with the 15m double-confirm: if 1h does not have a better net-of-fee Sharpe, the slower bar bought nothing.",
+  "catalyst": "band and momentum extremes agree on the hourly bar",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2.0
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_veto"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "rsi_floor": {"kind": "float", "lo": 16, "hi": 26},
+    "vol_veto": {"kind": "float", "lo": 0.5, "hi": 2.0},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.07},
+    "time_stop": {"kind": "float", "lo": 0.3, "hi": 2.0}
+  },
+  "direction": 1
+}

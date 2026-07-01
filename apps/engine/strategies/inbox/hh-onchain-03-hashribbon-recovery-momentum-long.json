@@ -1,0 +1,30 @@
+{
+  "name": "Hash-ribbon recovery momentum long (BTC, buy the hashrate re-cross UP)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the two capitulation-fade variants: those BUY the contraction low; this waits for the hashrate to CONFIRM recovery before entering, trading the post-capitulation trend rather than the knife): once high-cost miners have powered off and the survivors' margins repair, btc_hashrate recovering (cross_up above a fitted level) is the physical confirmation that the forced-selling flow has exhausted and network health is rebuilding. Entered WITH a positive medium-term return (ret_Nd above a floor) this rides the halving-cycle recovery leg that the 77% stat describes, but demands the recovery be real before committing capital. DISCONFIRMER 1: if a plain 90d price-momentum long matches the deflated Sharpe, the hashrate re-cross adds nothing and this dies (hashrate must add over price). DISCONFIRMER 2: hashrate is smooth/laggy -> the re-cross may fire well after the bottom, giving away the best entry; KILL if entries systematically arrive after the move. DISCONFIRMER 3: regime-conditional on halving recoveries -> KILL if the post-2023 slice collapses. Must clear DSR>=0.95, maxDD<=25%, net of fees.",
+  "catalyst": "hashrate recovering after capitulation, confirming the recovery trend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 30 },
+  "entry": [
+    { "feature": { "name": "btc_hashrate" }, "op": "cross_up", "threshold": { "param": "hashrate_recover" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "hashrate_recover": { "kind": "float", "lo": 0.5, "hi": 0.9 },
+    "mom_lb":           { "kind": "int",   "lo": 20, "hi": 60, "step": 1 },
+    "mom_floor":        { "kind": "float", "lo": 0.0, "hi": 0.08 },
+    "adx_exit":         { "kind": "float", "lo": 12, "hi": 22 },
+    "stop":             { "kind": "float", "lo": 0.07, "hi": 0.2 },
+    "tp":               { "kind": "float", "lo": 0.12, "hi": 0.45 },
+    "time_stop":        { "kind": "int",   "lo": 14, "hi": 30, "step": 1 }
+  },
+  "direction": 1
+}

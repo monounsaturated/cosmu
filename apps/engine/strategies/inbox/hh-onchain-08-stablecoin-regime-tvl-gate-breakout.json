@@ -1,0 +1,32 @@
+{
+  "name": "Risk-on liquidity gate (stablecoin supply + DeFi TVL) on a range breakout (BTC/ETH)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the trend-sleeve gate: this pairs the stablecoin regime with a SECOND liquidity confirmer — defi_tvl rising — and gates a range-BREAKOUT entry rather than a momentum-trend entry, so the regime conditions a different base signal): risk-on in crypto shows up as BOTH stablecoin supply expanding (fresh fiat in the perimeter) AND DeFi TVL rising (that capital being put to work on-chain). Requiring both filters out the 'stables minted but sitting idle' false risk-on. When both confirm, a price pushing to the top of its recent range (range_position high) is a genuine risk-on breakout rather than a chop-driven poke. The edge is only taking breakouts inside a confirmed liquidity-expansion regime, cutting the false-breakout drawdowns. DISCONFIRMER 1: the dual gate must improve DSR and cut maxDD vs an ungated breakout — else it is curve-fit. DISCONFIRMER 2: TVL is partly ETH-denominated so its rise can be disguised beta; if removing defi_tvl leaves the result unchanged the TVL leg adds nothing. DISCONFIRMER 3: if a plain realized-vol regime filter matches it, the on-chain features are redundant. Net of fees, DSR>=0.95.",
+  "catalyst": "dual on-chain liquidity expansion gating a range breakout",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "stablecoin_mcap" }, "op": "gt", "threshold": { "param": "regime_floor" } },
+    { "feature": { "name": "defi_tvl" }, "op": "gt", "threshold": { "param": "tvl_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "gt", "threshold": { "param": "range_break" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_mcap" }, "op": "cross_down", "threshold": { "param": "regime_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "regime_floor": { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "regime_exit":  { "kind": "float", "lo": -0.5, "hi": 0.3 },
+    "tvl_floor":    { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "range_lb":     { "kind": "int",   "lo": 20, "hi": 55, "step": 1 },
+    "range_break":  { "kind": "float", "lo": 0.7, "hi": 0.95 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":           { "kind": "float", "lo": 0.08, "hi": 0.35 },
+    "time_stop":    { "kind": "int",   "lo": 8, "hi": 18, "step": 1 }
+  },
+  "direction": 1
+}

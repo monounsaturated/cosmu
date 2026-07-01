@@ -1,0 +1,39 @@
+{
+  "name": "Basis-regime spike reversion — premium blowout in a calm regime (short, 4h)",
+  "rationale": "MECHANISM: the perp-premium-blowout fade read on a 4h clock and gated by a calm regime (low realized vol) so the extreme basis spike is a genuine positioning dislocation rather than a trend-driven premium that keeps widening. perp_spot_basis at an extreme positive spike + low vol_realized = perp buyers overpaying vs spot in an otherwise quiet tape, exactly where the funding restoring-force convergence is cleanest. We fade SHORT (direction -1) and receive the positive funding carry (funding_feature). Distinct from variant 13: slower 4h clock, a vol_realized calm gate (the funding-confirm arm is replaced by a regime filter), and a longer ~0.3-0.75d hold to let the slower 4h convergence play out. DISCONFIRMER 1: kill if the mean basis is compressed near zero so 4h 'extremes' are noise inside bid-ask + fees. DISCONFIRMER 2: kill if the calm-gate version is inseparable from the 1h funding-confirm fade — keep the stronger. DISCONFIRMER 3: kill if in a trending 4h leg the basis premium stays elevated and the short is run over despite the calm filter.",
+  "catalyst": "perp basis at an extreme premium in a low-vol calm regime — a clean mechanical over-shoot to fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 0.75
+  },
+  "entry": [
+    {"feature": {"name": "perp_spot_basis"}, "op": "gt", "threshold": {"param": "basis_ceiling"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_calm"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "perp_spot_basis"}, "op": "lt", "threshold": {"param": "basis_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "basis_ceiling": {"kind": "float", "lo": 0.001, "hi": 0.006},
+    "vol_calm": {"kind": "float", "lo": 0.3, "hi": 1.0},
+    "basis_exit": {"kind": "float", "lo": 0.0, "hi": 0.0015},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.07},
+    "tp": {"kind": "float", "lo": 0.025, "hi": 0.09},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 0.75}
+  }
+}

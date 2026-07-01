@@ -1,0 +1,38 @@
+{
+  "name": "ADX-gated breakout continuation — faster 1h cadence (fee-hurdle test)",
+  "rationale": "MECHANISM: same conditional-breakout economics as the 4h ADX-gated variant (breakouts only pay in an established directional regime; ADX filters trend from the fee-churning chop where breaks fail) but on a 1h bar for a higher-frequency expression of the hypothesis. The 1h cadence catches more intraday continuation moves at the cost of a lower per-trade edge, so this variant directly stresses whether the ADX-gated breakout survives the taker-fee hurdle at speed. Entry: range_position near the ceiling AND adx above a fitted floor. DISCONFIRMER: kill if the adx gate adds no net lift vs the ungated 1h breakout (curve-fit), OR if the faster cadence pushes net-of-fee below the ~3x round-trip cost survival threshold — that would show the edge only exists at slow bars where fees are diluted, not as a genuine 1h effect.",
+  "catalyst": "range-ceiling breakout inside a confirmed trend, faster cadence",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "adx_floor": { "kind": "float", "lo": 20, "hi": 36 },
+    "adx_exit":  { "kind": "float", "lo": 12, "hi": 20 },
+    "rp_lb":     { "kind": "int",   "lo": 12, "hi": 60, "step": 1 },
+    "rp_floor":  { "kind": "float", "lo": 0.7, "hi": 0.95 },
+    "stop":      { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "tp":        { "kind": "float", "lo": 0.025, "hi": 0.14 },
+    "time_stop": { "kind": "float", "lo": 0.5, "hi": 2.0 }
+  }
+}

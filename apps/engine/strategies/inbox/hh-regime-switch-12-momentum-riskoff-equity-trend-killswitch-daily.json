@@ -1,0 +1,44 @@
+{
+  "name": "HH regime-switch 12 — crypto momentum with an equity-trend (SPX/NDX) risk-off kill-switch (daily)",
+  "rationale": "MECHANISM (defensive, distinct from variant 11: the kill-switch is the EQUITY-INDEX TREND, not VIX — it gates crypto momentum on both spx_index and ndx_index being in uptrends, a slower structural risk-on read than VIX's fast fear gauge): the argument is that crypto's beta to risk assets means momentum whipsaws when the broad equity tape is rolling over; requiring SPX and NDX to be above their own trend (index level above a fitted floor relative to recent range is proxied by requiring both indices themselves to be rising via ret-style comparison) keeps momentum on only in a confirmed risk-on structural regime. Here we require spx_index and ndx_index both above fitted regime floors AND adx trend AND ret_Nd positive. Abstention-based, so a LOW bar. Exit: ADX collapse or NDX breaking down (risk-off), or stop/TP/time. DISCONFIRMER: gated vs ungated momentum on the same asset/period — the equity-trend veto must raise net-of-fee return AND cut maxDD together; if it just reduces trade count for equal Sharpe, it is cosmetic. Also, if spx_index and ndx_index veto identically (perfectly collinear), one of them is redundant — drop it. Expect death by the same abstention argument as 11.",
+  "catalyst": "crypto trend taken only while the equity risk complex is structurally risk-on",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 2,
+    "max_hold_days": 20
+  },
+  "entry": [
+    { "feature": { "name": "spx_index" }, "op": "gt", "threshold": { "param": "spx_regime_floor" } },
+    { "feature": { "name": "ndx_index" }, "op": "gt", "threshold": { "param": "ndx_regime_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } },
+      { "feature": { "name": "ndx_index" }, "op": "cross_down", "threshold": { "param": "ndx_killswitch_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "spx_regime_floor": { "kind": "float", "lo": 3000, "hi": 6500 },
+    "ndx_regime_floor": { "kind": "float", "lo": 10000, "hi": 24000 },
+    "ndx_killswitch_exit": { "kind": "float", "lo": 9000, "hi": 22000 },
+    "adx_floor": { "kind": "float", "lo": 20, "hi": 35 },
+    "adx_exit": { "kind": "float", "lo": 12, "hi": 20 },
+    "mom_lb": { "kind": "int", "lo": 14, "hi": 40, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.0, "hi": 0.08 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp": { "kind": "float", "lo": 0.1, "hi": 0.4 },
+    "time_stop": { "kind": "int", "lo": 8, "hi": 25, "step": 1 }
+  }
+}

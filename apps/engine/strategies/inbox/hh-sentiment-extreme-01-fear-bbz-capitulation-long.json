@@ -1,0 +1,30 @@
+{
+  "name": "Fear-extreme contrarian gated on bb_z washout (capitulation confluence, long)",
+  "rationale": "MECHANISM: at extreme fear the marginal seller is a forced/panicked retail holder while patient capital (whales holding 10-10k BTC) accumulates and demands a discount for absorbing forced flow; the concession mean-reverts because the seller is liquidity-driven, not information-driven. The bb_z washout gate filters 'fear that is an overreaction' (snaps back) from 'fear that is correct — a real regime break' (does not). Entry: fear_greed below a fitted extreme-fear floor AND bb_z below a fitted deeply-negative floor (genuinely washed-out tape). Long spot into the discount. Exit: fear_greed crosses UP toward neutral (crowd un-panics) or stop/TP/time. DISCONFIRMER: split entries by whether price was ALSO washed-out (bb_z<-1.5) vs not; if the confluence subset does not earn materially more than fear-alone, the TA gate adds nothing and this is just buy-the-dip beta — kill. Also kill if net-of-fee return does not beat buy-and-hold on the SAME oversold days (redundant with mean-reversion).",
+  "catalyst": "extreme fear into a statistically washed-out tape",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_floor":       { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "fear_relief_exit": { "kind": "float", "lo": 40.0, "hi": 60.0 },
+    "bb_lb":            { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "bb_floor":         { "kind": "float", "lo": -3.0, "hi": -1.5 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":        { "kind": "int",   "lo": 3,    "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}

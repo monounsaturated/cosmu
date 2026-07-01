@@ -1,0 +1,40 @@
+{
+  "name": "HH regime-switch 03 — VIX-extreme contrarian long, ATR-sized stop into the panic (daily)",
+  "rationale": "MECHANISM (distinct from 01/02: it gauges the crypto dislocation via range_position — where price sits inside its recent high/low band — instead of trailing return or realized vol, and it sizes the protective stop off ATR so the stop widens with the panic's own volatility rather than a fixed fraction that gets whipsawed out at the exact forced-seller bottom): the VIX extreme is the forced-deleveraging trigger; requiring range_position near the low of its band confirms price is pinned at the bottom of its range (the washed-out state a squeeze rebounds from), not mid-range. An ATR-multiple stop is the honest way to hold through the wide bars a panic produces — a fixed 8% stop is inside a single panic candle and guarantees a stop-out at the bottom. DISCONFIRMER: on vix_level>40 AND low-range entries (min 25 events), forward net-of-fee return must be >0; if the ATR stop does not reduce the rate of being stopped out at the local low versus a fixed stop (i.e. the fixed-stop version has a strictly better net-of-fee Sharpe), the ATR machinery adds nothing here. Kill if pre-2023 events carry the whole edge.",
+  "catalyst": "VIX extreme with price pinned at the bottom of its range — a washed-out squeeze setup",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_extreme_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "lt", "threshold": { "param": "range_low_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "atr_mult": { "param": "atr_mult" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_down", "threshold": { "param": "vix_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_extreme_floor": { "kind": "float", "lo": 34, "hi": 48 },
+    "vix_relief_exit": { "kind": "float", "lo": 22, "hi": 33 },
+    "range_lb": { "kind": "int", "lo": 10, "hi": 40, "step": 1 },
+    "range_low_floor": { "kind": "float", "lo": 0.05, "hi": 0.3 },
+    "atr_mult": { "kind": "float", "lo": 1.5, "hi": 4.0 },
+    "stop": { "kind": "float", "lo": 0.08, "hi": 0.2 },
+    "tp": { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop": { "kind": "int", "lo": 5, "hi": 14, "step": 1 }
+  }
+}

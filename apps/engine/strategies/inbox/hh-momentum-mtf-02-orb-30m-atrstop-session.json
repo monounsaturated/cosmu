@@ -1,0 +1,45 @@
+{
+  "name": "Session-handoff ORB — 30m break with ATR-scaled stop (session-anchored)",
+  "rationale": "MECHANISM: same session-handoff flow as the 15m variant (overnight range re-priced at the US open; hedging desks chase the break, overnight faders are the counterparty) but expressed on a 30m bar with an ATR-multiple stop instead of a fixed-fraction stop. The coarser bar halves trade count (less fee drag) and the ATR stop sizes risk to realized volatility so a wide-range US-open bar is not stopped on noise. Entry: session-anchored opening-range breakout (setup.orb anchor='session') gated by adx and a positive range_position (price already pressing the top of its recent range, confirming the break is into strength). DISCONFIRMER: kill if a fixed-stop version lives while this ATR version dies (edge would be in the risk overlay, not the handoff), or if anchor='rolling' nets the same (session timing curve-fit). Also kill if it fails DSR 0.95 net of fees.",
+  "catalyst": "US session open breaking the overnight range with volatility-scaled risk",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "atr_mult": { "param": "atr_mult" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "setup": {
+    "orb": { "range_bars": { "param": "orb_bars" }, "buffer": { "param": "orb_buffer" }, "anchor": "session" }
+  },
+  "param_space": {
+    "adx_floor":  { "kind": "float", "lo": 18, "hi": 32 },
+    "adx_exit":   { "kind": "float", "lo": 10, "hi": 18 },
+    "rp_lb":      { "kind": "int",   "lo": 8,  "hi": 40, "step": 1 },
+    "rp_floor":   { "kind": "float", "lo": 0.6, "hi": 0.9 },
+    "orb_bars":   { "kind": "int",   "lo": 3,  "hi": 16, "step": 1 },
+    "orb_buffer": { "kind": "float", "lo": 0.0005, "hi": 0.004 },
+    "atr_mult":   { "kind": "float", "lo": 1.0, "hi": 3.5 },
+    "stop":       { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "tp":         { "kind": "float", "lo": 0.02, "hi": 0.12 },
+    "time_stop":  { "kind": "float", "lo": 0.5, "hi": 2.0 }
+  }
+}

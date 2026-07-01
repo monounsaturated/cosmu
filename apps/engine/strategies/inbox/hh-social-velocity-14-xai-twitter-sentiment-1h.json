@@ -1,0 +1,29 @@
+{
+  "name": "Read-time-honest sentiment velocity — xAI twitter sentiment cross with breadth guard (1h)",
+  "rationale": "MECHANISM: twitter_sentiment is captured at xAI FETCH time, so observation == availability — a read-time-honest social feature usable at 1h without look-ahead (unlike daily T+1 sources). A rapid bullish swing in the X narrative precedes the short-horizon move as fresh takes hit before order flow; the counterparty is discretionary traders still scrolling. Trade a twitter_sentiment cross above a fitted bull floor, gated by author breadth (contributors_active) to screen bot/wash spikes. DISCONFIRMER: confirm the store's xAI fetch cadence actually supports 1h bars — if fetched only a few times a day the 1h signal is stale-repeated, KILL. A sentiment spike with no author breadth is likely manufactured (bot/wash) — the breadth gate is the tripwire. Must clear net fees at 1h turnover.",
+  "catalyst": "a fresh bullish xAI/X sentiment swing backed by real author breadth",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1h", "min_hold_days": 0.04, "max_hold_days": 1 },
+  "entry": [
+    { "feature": { "name": "twitter_sentiment" }, "op": "cross_up", "threshold": { "param": "bull_floor" } },
+    { "feature": { "name": "contributors_active" }, "op": "gt", "threshold": { "param": "breadth_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "twitter_sentiment" }, "op": "lt", "threshold": { "param": "sent_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bull_floor":    { "kind": "float", "lo": 0.05, "hi": 0.5 },
+    "sent_exit":     { "kind": "float", "lo": -0.2, "hi": 0.1 },
+    "breadth_floor": { "kind": "float", "lo": 5,    "hi": 50 },
+    "stop":          { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "tp":            { "kind": "float", "lo": 0.02, "hi": 0.11 },
+    "time_stop":     { "kind": "float", "lo": 0.25, "hi": 1.0 }
+  },
+  "direction": 1
+}

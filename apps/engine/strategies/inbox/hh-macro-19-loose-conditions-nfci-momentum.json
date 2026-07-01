@@ -1,0 +1,29 @@
+{
+  "name": "Loose financial-conditions momentum — ride crypto trend only when NFCI signals an accommodative regime",
+  "rationale": "MECHANISM: same 'accommodative macro lets trends run' thesis, but the regime gate is the broad nfci composite (negative = looser-than-average conditions) instead of VIX+credit — a single, more comprehensive read of system-wide leverage/risk/credit accommodation. When financial conditions are LOOSE the deleveraging tail is off and risk budgets expand, so crypto momentum persists. Take crypto momentum longs (positive ret_Nd) only when nfci is below a fitted loose threshold. Distinct feature basis (NFCI composite) from the VIX-based calm variants. DISCONFIRMER: NFCI is weekly and revision-prone, and 'loose' overlaps mechanically with 'trending' (loose regimes ARE bull regimes), so the gate may add ZERO information over pure crypto momentum. Kill unless an ablation shows the NFCI gate lifts OOS net-of-fee Sharpe vs the identical momentum spec WITHOUT it. Also kill if it is economically identical to the VIX+credit calm variant (hh-macro-17) — if all the loose-conditions reads collapse into one trade, keep only the strongest.",
+  "catalyst": "accommodative NFCI regime with crypto momentum",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 25 },
+  "entry": [
+    { "feature": { "name": "nfci" }, "op": "lt", "threshold": { "param": "nfci_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "nfci" }, "op": "cross_up", "threshold": { "param": "nfci_break_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "nfci_ceiling":    { "kind": "float", "lo": -0.6, "hi": -0.1 },
+    "nfci_break_exit": { "kind": "float", "lo": -0.1, "hi": 0.3 },
+    "mom_lb":          { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "mom_floor":       { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":            { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":              { "kind": "float", "lo": 0.1,  "hi": 0.4 },
+    "time_stop":       { "kind": "int",   "lo": 8,    "hi": 25,   "step": 1 }
+  }
+}

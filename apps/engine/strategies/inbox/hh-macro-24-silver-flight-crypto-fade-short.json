@@ -1,0 +1,31 @@
+{
+  "name": "Silver-led precious-metals flight divergence — short crypto beta when silver surges into a risk-off while crypto stalls",
+  "rationale": "MECHANISM: a distinct precious-metals expression of the Great-Decoupling fade — silver_xag, being higher-beta than gold, often leads or amplifies a genuine precious-metals flight-to-safety rotation. When silver surges hard WHILE crypto momentum stalls (negative ret_Nd), capital is rotating into the metals safe-haven complex and away from speculative crypto beta, so crypto underperforms. Using silver rather than gold tests whether the metals-flight signal is cleaner in the higher-beta metal (a real rotation shows up first and biggest in silver). Short crypto beta into the divergence. DISCONFIRMER: silver is ALSO an industrial metal, so a silver surge can be a growth/inflation-reflation signal (risk-ON), which would make a crypto short backwards — even more ambiguous than gold. Kill unless OOS shows the silver surge fires during genuine risk-off (cross-check: crypto momentum negative filters the reflation case), and unless the short's net-of-funding/borrow edge clears carry. If silver adds nothing over the gold variant (hh-macro-21), keep only gold.",
+  "catalyst": "silver-led precious-metals flight with crypto momentum stalling",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "silver_xag", "lookback": { "param": "silver_roc_lb" } }, "op": "gt", "threshold": { "param": "silver_roc_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "silver_xag", "lookback": { "param": "silver_roc_lb" } }, "op": "lt", "threshold": { "param": "silver_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "silver_roc_lb":      { "kind": "int",   "lo": 5,    "hi": 30,   "step": 1 },
+    "silver_roc_floor":   { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "silver_relief_exit": { "kind": "float", "lo": -0.015, "hi": 0.01 },
+    "mom_lb":             { "kind": "int",   "lo": 7,    "hi": 30,   "step": 1 },
+    "mom_ceiling":        { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":               { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":                 { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":          { "kind": "int",   "lo": 2,    "hi": 12,   "step": 1 }
+  },
+  "direction": -1
+}

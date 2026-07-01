@@ -1,0 +1,42 @@
+{
+  "name": "HH breakout 20 — failed-breakout reversal with ATR stop (30m)",
+  "rationale": "MECHANISM: the same failed-break trap (a reclaim after a failed downside break = trapped shorts covering) but on a 30m clock and — the distinct upgrade — with an ATR-MULTIPLE stop (exit.atr_mult) placed by current volatility rather than a fixed fraction, which matters for a reversal trade whose invalidation is 'price makes a NEW low beyond the failed break': the ATR stop sits just past the wick in vol terms, so it is tight in calm regimes and gives room in noisy ones, keeping per-trade risk constant. Detect range_position cross_up through a reclaim level with adx low (no trend). The 30m clock trades fewer, cleaner traps than 5m/15m so fees bite less. DISCONFIRMER: KILL if the ATR-multiple stop does not beat the fixed-fraction stop on this reversal (the vol-scaling adds nothing), OR if the reclaim sequence has no edge over being at the low (the trap is decorative), OR if the reversion has moved intra-bar in the 2025 holdout so the 30m close entry misses it, OR if it survives only on illiquid alts with fictional fills.",
+  "catalyst": "range reclaim after a failed downside break, ATR-sized risk",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.75
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "cross_up", "threshold": {"param": "rp_reclaim"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}},
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "atr_mult": {"param": "atr_mult"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_reclaim": {"kind": "float", "lo": 0.1, "hi": 0.3},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "bbw_ceiling": {"kind": "float", "lo": 0.04, "hi": 0.12},
+    "atr_mult": {"kind": "float", "lo": 1.2, "hi": 3.5},
+    "rp_exit": {"kind": "float", "lo": 0.55, "hi": 0.8},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.012, "hi": 0.07},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1.5}
+  }
+}
