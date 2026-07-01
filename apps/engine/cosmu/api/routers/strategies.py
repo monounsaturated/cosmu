@@ -11,7 +11,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from cosmu.api._shared import _json, _metric, annualized_return, oos_window_days, settings, store
+from cosmu.api._shared import _json, _metric, annualized_return, honest_track_equity_series, oos_window_days, settings, store
 from cosmu.api.models import (
     Backtest,
     CellCurvePoint,
@@ -108,14 +108,18 @@ def strategy_detail(version_id: str) -> StrategyDetailResponse:
             pos_rows = store.rows("SELECT qty, avg_price, realized_pnl FROM positions WHERE strategy_version_id = ?", (version_id,))
             marked = bool(snap_rows) and has_paper_fills
             start_usd = _money_or_none(tr["starting_capital"]) if tr else None
-            value_usd = _money_or_none(snap_rows[-1]["equity"]) if marked else None
+            # Carry-forward the marked series over the funder's mark-less "collapse-to-seed" snapshots (see
+            # honest_track_equity_series) so BOTH the equity chart and the headline value read the real marked book
+            # value, never the $1,000 seed a mark-less funder tick wrote. Display-only; the stored rows are untouched.
+            honest_series = honest_track_equity_series(snap_rows, tr["starting_capital"] if tr else None)
+            value_usd = _money_or_none(honest_series[-1][1]) if (marked and honest_series) else None
             # realized = Σ positions.realized_pnl over ALL rows (incl. closed qty=0 legs, mirroring portfolio.py);
             # invested = deployed cost basis = Σ avg_price*qty over OPEN rows. Both 0 for a freshly-opened buy-and-hold.
             realized_pnl = float(sum(float(r["realized_pnl"]) for r in pos_rows)) if marked else None
             invested_usd = float(sum(float(r["avg_price"]) * float(r["qty"]) for r in pos_rows)) if marked else None
             pnl_usd = (value_usd - start_usd) if (value_usd is not None and start_usd is not None) else None
             unrealized_pnl = (pnl_usd - realized_pnl) if (pnl_usd is not None and realized_pnl is not None) else None
-            forward_equity = [Point(ts=s["ts"], value=float(s["equity"])) for s in snap_rows] if marked else []
+            forward_equity = [Point(ts=ts, value=eq) for ts, eq in honest_series] if marked else []
     if row is None:
         raise HTTPException(status_code=404, detail="strategy version not found")
     # HONEST holdout: the headline backtest's REAL recorded one-shot-holdout verdict (holdout_passed) + its

@@ -11,7 +11,20 @@ const emptyLabSymbols: LabSymbolsResponse = { rows: [], symbols: [], venues: [],
 export async function getLabSymbols(): Promise<{ data: LabSymbolsResponse; connected: boolean }> {
   const { data, connected } = await getJson<LabSymbolsResponse>("/lab/symbols?limit=1000", emptyLabSymbols);
   return {
-    data: { rows: data.rows ?? [], symbols: data.symbols ?? [], venues: data.venues ?? [], timeframes: data.timeframes ?? [], min_trades: data.min_trades ?? 0 },
+    // Preserve the engine's TRUE whole-set denominators (total_combos / total_strategies) — the prior coalesce
+    // rebuilt `data` with only the arrays + min_trades and SILENTLY DROPPED both totals, so the page fell back to
+    // the loaded-slice counts: the ribbon read "1,000 of 1,000" and the Strategies count showed the loaded
+    // distinct algos, not the real 1,475. That drop is why the page and the sidebar (which reads total_strategies
+    // straight off /leaderboard) disagreed. 0 = unknown (older engine) — the page then falls back honestly.
+    data: {
+      rows: data.rows ?? [],
+      symbols: data.symbols ?? [],
+      venues: data.venues ?? [],
+      timeframes: data.timeframes ?? [],
+      min_trades: data.min_trades ?? 0,
+      total_combos: data.total_combos ?? 0,
+      total_strategies: data.total_strategies ?? 0,
+    },
     connected,
   };
 }

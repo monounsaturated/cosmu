@@ -118,6 +118,52 @@ def count_total_strategies(store_: Store) -> int:
         return 0
 
 
+def honest_track_equity_series(
+    snap_rows: list, starting_capital: object
+) -> list[tuple[str, float]]:
+    """Carry-forward the per-track marked equity series over MARK-LESS "collapse-to-seed" snapshots.
+
+    Root cause of the raw sawtooth: the master loop writes a scope='track' snapshot on EVERY tick from TWO
+    writers — the paper clock (orchestrator.mark_tracks) fetches a fresh REAL price for each held leg, while the
+    FUNDER (orchestrator.fund_tracks) re-marks with a marks-dict that only carries the freshly-funded cells, so an
+    already-held track's legs fall back to their cost basis (portfolio.mark_to_market: `marks.get(id, avg_price)`).
+    A cost-basis mark makes unrealized P&L exactly 0, so the funder writes equity = starting_capital + 0 = the SEED
+    to the cent — interleaved with the paper clock's real marks it draws a sawtooth that snaps back to $1,000, and a
+    RUN of funder-only ticks (no paper-clock price that window) draws a flat gap pinned at the seed.
+
+    The honest forward value on a mark-less tick is "hold the last REAL mark", not "revert to seed" (exactly what
+    mark_tracks' own docstring intends by "a missing mark leaves that position at its last basis"). So we render the
+    series by carrying the previous real value forward over every row whose equity equals starting_capital to the
+    cent — the unambiguous funder-collapse fingerprint (a genuine mark landing on the seed to the penny is
+    vanishingly unlikely, and the entry-day cost-basis snapshot is $1,000.02 here, not the $1,000.00 seed). A leading
+    run of seed rows (before any real mark exists) is kept as-is — day-0 truth, nothing to carry yet. Read-only,
+    display-only: the STORED snapshots are untouched, no money moves, the Gate is not consulted. Returns
+    [(ts, equity_float), …] in the input order.
+    """
+    try:
+        seed = float(starting_capital) if starting_capital is not None else None
+    except (TypeError, ValueError):
+        seed = None
+    out: list[tuple[str, float]] = []
+    last_real: float | None = None
+    for r in snap_rows:
+        try:
+            eq = float(r["equity"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        ts = r["ts"]
+        is_collapse = (
+            seed is not None and abs(eq - seed) < 0.005 and last_real is not None
+        )  # seed-to-the-cent AND we already have a real mark to hold → funder collapse
+        if is_collapse:
+            out.append((ts, last_real))  # hold the last real mark
+        else:
+            out.append((ts, eq))
+            if not (seed is not None and abs(eq - seed) < 0.005):
+                last_real = eq  # a genuine (non-seed) mark becomes the carry value
+    return out
+
+
 settings = get_settings()
 try:
     store = Store(settings)
