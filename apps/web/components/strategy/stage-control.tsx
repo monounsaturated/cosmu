@@ -18,7 +18,8 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { GoLiveModal } from "./go-live-modal";
-import { type Stage, STAGE_LABEL, STAGE_BADGE_CLASS } from "@/lib/lifecycle";
+import { type Stage, STAGE_LABEL } from "@/lib/lifecycle";
+import { cn } from "@/lib/utils";
 
 // Re-export so existing `import type { Stage } from "./stage-control"` consumers (strategy-sheet, ai-summary,
 // equity-panel) keep working — the canonical definition + maps live in the shared lib/lifecycle module.
@@ -30,7 +31,8 @@ export function StageControl({
   strategyName,
   versionId,
   defaultSymbol,
-  goLiveEligible
+  goLiveEligible,
+  gated
 }: {
   stage: Stage;
   ageDays: number | null;
@@ -42,32 +44,48 @@ export function StageControl({
   // engine's /live/launch enforces the REAL eligibility gate (paper maturity + regime) and refuses honestly —
   // this just surfaces the entry point so the operator can see + drive the flow.
   goLiveEligible?: boolean;
+  // Whether this Version cleared the deterministic Gate (the strongest backtest passed). Derived upstream from
+  // the real backtest verdict; drives the small "Gated" checkmark chip. Omitted → no chip (never a fake pass).
+  gated?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [goLive, setGoLive] = useState(false);
   const canStop = stage === "paper" || stage === "live";
   const live = stage === "live";
-  // Red "Go Live" sits next to the stage badge for a live candidate we can attempt to arm (not already live).
+  // "Go live" (primary) is shown for a live candidate we can attempt to arm (not already live). The engine's
+  // /live/launch enforces the REAL eligibility gate and refuses honestly — this just surfaces the entry point.
   const canGoLive = Boolean(goLiveEligible) && stage !== "live" && stage !== "killed" && Boolean(versionId);
+  // Status text — "Paper · N days" / "Live · N days" (no repeated stage word). Falls back to just the stage
+  // label when the track age is unknown.
+  const statusTxt = ageDays !== null && ageDays > 0 ? `${STAGE_LABEL[stage]} · ${ageDays} days` : STAGE_LABEL[stage];
 
   return (
-    <div className="psec panel-top" style={{ margin: 0 }}>
-      <div style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-        <span className={STAGE_BADGE_CLASS[stage]} style={{ display: "inline-flex" }}>
-          {STAGE_LABEL[stage]}
-          {ageDays !== null && ageDays > 0 ? <span className="tab" style={{ opacity: 0.8 }}>· {ageDays}d</span> : null}
-        </span>
+    <div className="sheet-head">
+      {/* Actions pinned top-right: Go live (primary) + Stop. */}
+      <div className="sheet-actions">
         {canGoLive ? (
-          <button type="button" className="btn btn-danger btn-xs" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading (Binance spot). Real orders stay behind the toggle, caps + kill-switch.">
-            Go Live
+          <button type="button" className="btn btn-iris btn-sm" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading. Real orders stay behind the toggle, caps + kill-switch.">
+            Go live
+          </button>
+        ) : null}
+        {canStop ? (
+          <button type="button" className={cn("btn btn-sm", live && "btn-danger")} onClick={() => setConfirming(true)}>
+            Stop
           </button>
         ) : null}
       </div>
-      <div className="panel-actions">
-        {canStop ? (
-          <button type="button" className={live ? "btn btn-danger btn-xs" : "btn btn-xs"} onClick={() => setConfirming(true)}>
-            Stop
-          </button>
+
+      {/* Status row: a stage dot + "Paper · N days" + the small Gated chip. */}
+      <div className="sheet-status">
+        <span className={cn("sheet-status-dot", live && "live")} aria-hidden="true" />
+        <span className="sheet-status-txt tab">{statusTxt}</span>
+        {gated ? (
+          <span className="chip-gated" data-tip="Passed our quality test — the numbers aren't a statistical fluke.">
+            <svg className="chip-check" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3.5 8.5l3 3 6-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Gated
+          </span>
         ) : null}
       </div>
 

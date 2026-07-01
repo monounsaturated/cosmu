@@ -1243,3 +1243,68 @@ select.search-input{cursor:pointer}
   font-family:inherit;transition:all var(--tr)}
 .pager-btn:hover:not(:disabled){border-color:var(--border-s);color:var(--fg);background:var(--surf2)}
 .pager-btn:disabled{opacity:.35;cursor:default}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════
+   Bot-sheet redesign (mockups/strat-sheet/final-c-v3.html) — the shared StrategySheet layout: three
+   merged cards (top: status + Gated + meta + number boxes · chart + "what this does" · technical-details
+   with a Trades/Stats/Gate/Spec tab bar). Reuses the existing .money-band/.mb-cell/.phase-tbl/.mini-tbl
+   chrome; only the sheet-level scaffolding + the universe tickers + the tab bar + the Gate/Spec kv-table
+   are new here. Responsive reflow at ≤700px lives in the media query below (never crops).
+   ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+.sheet-stack{display:flex;flex-direction:column;gap:14px}
+.sheet-card{background:var(--surf2);border-radius:var(--r);padding:16px 16px 14px;box-shadow:var(--cell-shadow)}
+
+/* card 1 — status row + Go-live/Stop pinned top-right + Gated chip */
+.sheet-head{display:flex;flex-direction:column;gap:12px}
+.sheet-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.sheet-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sheet-status-dot{width:7px;height:7px;border-radius:50%;background:var(--iris);flex-shrink:0}
+.sheet-status-dot.live{background:var(--down);box-shadow:0 0 0 2px var(--down-dim)}
+.sheet-status-txt{font-size:12.5px;color:var(--fg);font-variant-numeric:tabular-nums}
+.chip-gated{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:2px 8px;
+  border-radius:20px;white-space:nowrap;background:var(--iris-dim);color:var(--iris-s);border:1px solid var(--iris-mid);cursor:default}
+.chip-gated .chip-check{width:12px;height:12px;flex-shrink:0}
+
+/* meta line — Quant/LLM badge + venue */
+.sheet-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+.sheet-venue{font-size:12px;color:var(--muted)}
+
+/* universe — held tickers tinted purple; the (dashed/muted) style is kept for a future universe-but-not-held set */
+.uni-block{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px}
+.uni-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet);font-weight:700;margin-right:2px}
+.tick{font-size:11.5px;font-weight:600;padding:2px 7px;border-radius:5px;font-variant-numeric:tabular-nums}
+.tick-held{background:var(--iris-dim);color:var(--iris-s);border:1px solid var(--iris-mid)}
+.tick-uni{background:transparent;color:var(--muted);border:1px dashed var(--border)}
+
+/* four compact number boxes — the inline P&L % rides on the SAME line as the dollar figure (no line below) */
+.sheet-nums{margin-top:16px}
+.mb-pnl-pct{font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* card 3 — technical details + tab bar */
+.sheet-tech-title{font-size:14px;font-weight:600;color:var(--fg);margin-bottom:12px}
+.sheet-tabbar{display:flex;gap:2px;border-bottom:1px solid var(--hairline);margin-bottom:14px;flex-wrap:wrap}
+.sheet-tab{font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--muted);background:transparent;
+  border:none;padding:7px 12px 9px;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color 120ms,border-color 120ms}
+.sheet-tab:hover{color:var(--fg)}
+.sheet-tab.on{color:var(--fg);border-bottom-color:var(--iris)}
+
+/* Gate/Spec key-value table (Notion-style single-line rows) */
+.kv-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.kv-tbl td{padding:8px 2px;border-bottom:1px solid var(--hairline);vertical-align:top}
+.kv-tbl tr:last-child td{border-bottom:none}
+.kv-tbl td.k{color:var(--muted);width:44%;padding-right:12px}
+.kv-tbl td.v{font-variant-numeric:tabular-nums;color:var(--fg)}
+.kv-tbl td.v .hint{color:var(--quiet);font-size:11px;margin-left:4px}
+.kv-tbl td.v.up{color:var(--up)}.kv-tbl td.v.dn{color:var(--down)}
+.prov{display:inline-flex;align-items:center;gap:5px;border-bottom:1px dotted var(--border);cursor:default}
+
+/* Stats phase table — the pending Live row reads muted until it fills after arming */
+.phase-live-pending td{color:var(--quiet)}
+.pending-pill{font-size:10.5px;color:var(--quiet);background:var(--surf3);border:1px solid var(--border);border-radius:12px;padding:1.5px 8px;white-space:nowrap}
+
+/* responsive: reflow cleanly at ≤700px — number boxes → 2 columns, kv key column widens; no cropping */
+@media (max-width:700px){
+  .sheet-card{padding:14px 12px 12px}
+  .sheet-nums{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .kv-tbl td.k{width:50%}
+}
