@@ -10,9 +10,10 @@ The operator wants the honest state of the **paper wallet** — what COSMU is fo
 This skill reads the prod DB read-only and reports, for the **paper cohort** (`strategy_versions.status IN ('paper','forward_test')` = `FORWARD_STATUSES`):
 
 1. **Aggregate hero** — `allocated` (Σ `tracks.starting_capital`) + `pnl_net` (latest `scope='aggregate'` snapshot) → book equity. *Exactly the `/overview` math.*
-2. **Per-cell table** — seed → marked value → P&L $ / % / trades / fees / age, **gated on a real paper fill** (a marked snapshot with no backing `executions.is_paper=1` fill is NOT a forward result → shown `—`, never a fabricated $0). *Exactly the `/leaderboard` math.*
+2. **Per-cell table** — activity flag → seed → marked value → P&L $ / % / trades / **last-trade recency** / age / fees, **gated on a real paper fill** (a marked snapshot with no backing `executions.is_paper=1` fill is NOT a forward result → shown `—`, never a fabricated $0). *Exactly the `/leaderboard` math, plus the "is it actually trading?" columns.*
 3. **Ranked by OUTLIER** — top winners + bottom losers by forward return %, **never a pooled mean across cells** (operator rule: rank by outlier, surface every cell).
 4. **Open positions** (paper), **total fees paid**, and the **funnel** (paper / live / screened / killed counts).
+5. **CLOCK + PULSE** — a liveness line (freshest mark vs freshest trade → is the engine stepping or frozen?) and one **custom one-sentence verdict** that reads the whole book in a breath (equity, green count, last-trade age, plain-language call).
 
 **Read-only.** SELECTs only on an `autocommit` connection. It never funds, defunds, sizes, routes, kills, or migrates — out of the gate path and the money path. It reads the local `.env.local` → prod DB (the engine's `_pg_dsn` strips the `pgbouncer`/`connection_limit` params that break libpq). Do NOT instantiate the engine `Store` (its `__post_init__` runs `migrate()`, a write) — raw `psycopg2` only. Sister skill: `wallet-live` (the real-money cohort).
 
@@ -60,6 +61,7 @@ cur.execute(f"""
          CAST(t.starting_capital AS REAL) AS seed, CAST(ps.equity AS REAL) AS marked,
          (SELECT COUNT(*) FROM executions e WHERE e.strategy_version_id=sv.id AND CAST(e.is_paper AS INTEGER)=1) AS trades,
          (SELECT COALESCE(SUM(CAST(e.fee AS REAL)),0) FROM executions e WHERE e.strategy_version_id=sv.id AND CAST(e.is_paper AS INTEGER)=1) AS fees,
+         (SELECT MAX(e.ts) FROM executions e WHERE e.strategy_version_id=sv.id AND CAST(e.is_paper AS INTEGER)=1) AS last_fill,
          (SELECT MIN(ts) FROM events WHERE kind='track_opened' AND ref_id=sv.id) AS funded_at,
          EXISTS(SELECT 1 FROM executions e WHERE e.strategy_version_id=sv.id AND CAST(e.is_paper AS INTEGER)=1) AS has_fills
   FROM strategy_versions sv
@@ -74,7 +76,7 @@ ver = {}
 for r in cur.fetchall():
     v = ver.setdefault(r["vid"], {"name": r["name"], "status": r["status"], "marked": f(r["marked"]),
                                   "trades": int(r["trades"] or 0), "fees": f(r["fees"]) or 0.0,
-                                  "funded_at": r["funded_at"], "has_fills": bool(r["has_fills"]),
+                                  "funded_at": r["funded_at"], "last_fill": r["last_fill"], "has_fills": bool(r["has_fills"]),
                                   "seed": 0.0, "seeds": set(), "cells": []})
     if r["track_id"] not in v["seeds"]:           # sum DISTINCT track seeds (a version fans out per cell)
         v["seeds"].add(r["track_id"]); v["seed"] += f(r["seed"]) or 0.0
@@ -84,16 +86,24 @@ for vid, v in ver.items():
     value = v["marked"] if (v["has_fills"] and v["marked"] is not None) else None   # never a fabricated $0
     pnl = (value - v["seed"]) if value is not None else None
     ret = (pnl / v["seed"] * 100) if (pnl is not None and v["seed"]) else None
-    out.append({**v, "value": value, "pnl": pnl, "ret": ret, "age": age_days(v["funded_at"])})
+    out.append({**v, "value": value, "pnl": pnl, "ret": ret,
+                "age": age_days(v["funded_at"]), "last_days": age_days(v["last_fill"])})
 
-print(f"\n--- {len(out)} paper cells (seed → marked → P&L, '—' = no real fill yet) ---")
+def actflag(d):                        # recency of the LAST real paper fill (raw, cadence-agnostic)
+    if d is None: return "▫"           # never traded → not a forward result
+    if d < 2:     return "🟢"           # traded in last 48h
+    if d < 8:     return "🟡"           # traded this week
+    return "🔴"                         # >1wk silent (EXPECTED for a MONTHLY rebalancer between month-turns)
+print(f"\n--- {len(out)} paper cells · seed→marked→P&L · 'last'=days since last trade · '—'=no real fill yet ---")
+print(f"   {'RET':>7}  {'seed':>6} {'marked':>8} {'P&L':>7}  {'tr':>3} {'last':>6} {'age':>5}  {'fee':>6}  strategy [cell]")
 for v in sorted(out, key=lambda x: (x["ret"] is None, -(x["ret"] or 0))):
     vs = f"${v['value']:,.0f}" if v["value"] is not None else "—"
     pn = f"{v['pnl']:+,.0f}" if v["pnl"] is not None else "—"
     rt = f"{v['ret']:+.2f}%" if v["ret"] is not None else "  —  "
     ag = f"{v['age']:.0f}d" if v["age"] is not None else "—"
-    cells = ",".join(sorted(set(v["cells"])))[:32]
-    print(f"  {rt:>8}  seed ${v['seed']:,.0f} → {vs:>9} ({pn:>8})  {v['trades']:>3}tr  fee ${v['fees']:.2f}  {ag:>4}  {v['name'][:30]:<30} [{cells}]")
+    ld = f"{v['last_days']:.0f}d" if v["last_days"] is not None else "—"
+    cells = ",".join(sorted(set(v["cells"])))[:26]
+    print(f"  {actflag(v['last_days'])}{rt:>7}  ${v['seed']:>5,.0f} {vs:>8} {pn:>7}  {v['trades']:>3} {ld:>6} {ag:>5}  ${v['fees']:>5.2f}  {v['name'][:26]:<26} [{cells}]")
 
 # 3) OUTLIER ranking — top winners / bottom losers among TRADED cells (never a pooled mean).
 traded = [v for v in out if v["ret"] is not None]
@@ -133,19 +143,45 @@ cur.execute(f"""SELECT COUNT(*) AS paper_status,
 rec = cur.fetchone(); awaiting = int(rec["paper_status"]) - int(rec["trading"] or 0)
 print(f"       {rec['paper_status']} status=paper · {rec['trading'] or 0} actually trading"
       + (f"  ⚠ {awaiting} stamped-paper w/ no fills yet → demote to 'screened' next reclassify tick" if awaiting else "  ✓ reconciled"))
+
+# 5) CLOCK — is the engine stepping? Compare the freshest MARK (snapshot) vs the freshest TRADE (fill). A fresh mark
+#    with a stale last-trade = engine alive & marking, just no recent rebalance (NORMAL for a MONTHLY cohort between
+#    month-turns). A STALE mark = frozen clock → a real problem (run health-check). This is the true liveness signal —
+#    a wall of 🔴 in the table alone does NOT mean dead; the mark age does.
+cur.execute("SELECT MAX(ts) mx FROM portfolio_snapshots WHERE scope='track'")
+snap_age = age_days(cur.fetchone()["mx"])
+cur.execute("SELECT MAX(ts) mx FROM executions WHERE CAST(is_paper AS INTEGER)=1")
+fill_age = age_days(cur.fetchone()["mx"])
+clock_live = snap_age is not None and snap_age < 1.5
+print(f"\nCLOCK  last mark {('%.2fd'%snap_age) if snap_age is not None else '—'} ago "
+      f"({'🟢 alive' if clock_live else '🔴 STALE — frozen?'}) · "
+      f"last trade {('%.1fd'%fill_age) if fill_age is not None else '—'} ago")
+
+# 6) PULSE — one custom human sentence: the whole book in a breath (equity, green count, freshest trade, verdict).
+grn = sum(1 for v in traded if v["ret"] > 0); tot = len(traded)
+if not clock_live:                       verdict = "⚠ horloge GELÉE — le moteur ne marque plus → health-check"
+elif fill_age is not None and fill_age > 7: verdict = f"moteur vivant & marque, 0 trade depuis {fill_age:.0f}j → cadence mensuelle ? (rebalance dû au tournant de mois)"
+elif not tot:                            verdict = "aucune cellule n'a encore tradé — forward non prouvé"
+else:                                    verdict = "cohorte active, forward en cours"
+sign = "🟢" if pnl_net > 0 else ("🔴" if pnl_net < 0 else "⚪")
+print(f"\nPULSE  {sign} Book ${equity:,.0f} ({(pnl_net/allocated*100) if allocated else 0:+.2f}%) · "
+      f"{grn}/{tot} vertes · dernier trade {('il y a %.0fj'%fill_age) if fill_age is not None else '—'} · {verdict}")
 con.close()
 PY
 ```
 
 ## Read the result
 - **BOOK** — the honest paper equity = `allocated + P&L` (never the sim bankroll). If `P&L ≈ $0` with cells funded, the marks are mostly seed-only — confirm fills are landing (`health-check`).
+- **Activity flag / `last`** — the leftmost 🟢/🟡/🔴/▫ and the `last` column are the **days since that cell's last real trade** (🟢 <2d · 🟡 <8d · 🔴 ≥8d · ▫ never). This is the answer to "are they active?". **A wall of 🔴 is NOT death** — a monthly TAA cohort is *supposed* to sit still between month-turns. Read it together with **CLOCK**: fresh mark + old last-trade = alive but not rebalancing; only a stale mark = actually frozen.
 - **Per-cell `—`** — a funded cell with **no real paper fill yet** (entry never fired, or only a seeded snapshot). It is NOT a forward result and is ranked last. Hand a stuck-flat cell to `debug-strategy`.
+- **CLOCK** — `last mark` = freshest `scope='track'` snapshot age (the engine's heartbeat); `last trade` = freshest paper fill age. **🟢 alive** = a mark within ~1.5d. **🔴 STALE** = the engine stopped marking → real problem, run `health-check`. A fresh mark with a week-old last-trade is the normal monthly-cadence resting state, not a fault.
+- **PULSE** — the custom one-liner: equity + %, green-cell count, last-trade age, and a plain-language verdict (frozen clock / alive-but-monthly-quiet / no-trades-yet / active). This is the single sentence to read if reading nothing else.
 - **WINNERS / LOSERS** — the outliers carry the verdict. Do **not** average them — a few real edges + a long tail of duds is the expected shape; the question is whether the *top* cells are genuinely net-positive over a meaningful age.
 - **FEES** — paid from the real fill ledger (today's venue schedule). Rising fees with flat P&L = churn.
 - **FUNNEL** — `killed ≫ paper` is healthy (the Gate is strict by design). `paper` is the forward cohort; `screened` = backtest-only, not funded; `live` should be the `wallet-live` count. The reconcile line catches a **transient**: `status='paper'` is a badge that only becomes "trading" on the first real fill — `orchestrator/loop.py::reclassify_unforwarded_paper` demotes any fill-less `paper` back to `screened` (`no_fills_yet`) on the next tick, while `_promote_screened_on_first_fill` does the inverse. A `⚠ N stamped-paper w/ no fills` gap is this window, **not** drift — the money figures above already ignore those rows (`has_paper_fills` gate), so the BOOK is correct regardless.
 
 ## Present (operator's standard summary format)
-Render the read-out as the operator's **clean-emoji FRENCH résumé** (per `[[feedback_summary_format]]`): emoji section headers + a compact table for the cells + a short **Décisions / À surveiller** line. Lead with the BOOK figure and the WINNERS/LOSERS outliers; never a pooled mean across cells (per `[[feedback_surface_all_compute]]`). Keep it terse.
+Render the read-out as the operator's **clean-emoji FRENCH résumé** (per `[[feedback_summary_format]]`): emoji section headers + a compact table for the cells + a short **Décisions / À surveiller** line. **Open with the PULSE sentence** (the custom one-liner) so the whole book lands in the first line, then the BOOK figure and the WINNERS/LOSERS outliers; never a pooled mean across cells (per `[[feedback_surface_all_compute]]`). The per-cell table **must** carry the activity flag + `last`-trade column and the `age` column alongside seed→marked→P&L — the operator reads "are they active / latest trade day" straight from the table, no follow-up query. Keep it terse.
 
 ## Invariants
 - **Read-only** — `autocommit`, SELECTs only; never instantiate the engine `Store` (it migrates = write). No engine import beyond `_pg_dsn`.
