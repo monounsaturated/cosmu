@@ -230,6 +230,7 @@ export function SymbolsTable({
   ribbon,
   highlight,
   navigateOnClick,
+  totalCombos,
 }: {
   rows: LabSymbolRow[];
   symbols: string[];
@@ -241,6 +242,11 @@ export function SymbolsTable({
   ribbon?: React.ReactNode;
   highlight?: TripletKey;
   navigateOnClick?: boolean; // comparison grid: a row navigates to the sibling triplet fiche; omitted → side panel
+  // The engine's TRUE distinct-combo total over the WHOLE set (LeaderboardResponse.total_combos). When the loaded
+  // `rows` are fewer than this (the engine capped the response at its LIMIT), the table draws an EXPLICIT
+  // "showing the first N of M" note so the cap is never a SILENT truncation. Omitted (comparison grid / older
+  // engine) → no note (the loaded set IS the whole set for that view).
+  totalCombos?: number;
 }) {
   const router = useRouter();
   // Deep-link: ?v=<version_id> opens that strategy's sheet on load; optional ?symbol=&venue= PIN the exact
@@ -311,6 +317,10 @@ export function SymbolsTable({
     ordered.forEach(([k], i) => map.set(k, i + 1));
     return map;
   }, [rows]);
+
+  // Distinct (algo × asset × venue) combos in the LOADED rows — the numerator for the "showing N of {totalCombos}"
+  // truncation note. It IS comboNumber.size (one entry per distinct combo key), the same unit as the engine total.
+  const loadedComboCount = comboNumber.size;
 
   // ── Stable algorithm number (SECONDARY, subtle): #1, #2, … per DISTINCT strategy_name, computed once over ALL
   // rows so the number is identical regardless of paging, sort or the active filters. Numbered by AUTHORING ORDER
@@ -591,6 +601,18 @@ export function SymbolsTable({
           standalone return. The badge shows the lifecycle stage (Backtest · Paper · Live · Killed). Filter with the
           Strategies / Symbols / Venues / Status dropdowns; click a row to open its sheet. The deterministic Gate
           alone decides funding.
+        </p>
+      ) : null}
+
+      {/* EXPLICIT truncation note — never a silent cap. When the engine's TRUE combo total exceeds the loaded rows
+          (the response was LIMIT-capped), say so loudly with the exact numbers, so "1,000 rows" is never mistaken for
+          the whole universe. loadedCombos counts DISTINCT (algo × asset × venue) triplets in the loaded rows (the same
+          unit as totalCombos), mirroring the page ribbon. Hidden when everything fits. */}
+      {typeof totalCombos === "number" && totalCombos > loadedComboCount ? (
+        <p className="quiet" style={{ fontSize: 11, margin: "0 4px 10px", color: "var(--gold)" }}>
+          Showing the first {loadedComboCount.toLocaleString("en-US")} of {totalCombos.toLocaleString("en-US")} combos
+          (the newest cells). Narrow with the Strategies / Symbols / Venues / Status filters to reach the rest — no row
+          is dropped silently.
         </p>
       ) : null}
 

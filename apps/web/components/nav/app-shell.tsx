@@ -107,14 +107,22 @@ export function AppShell({ children }: { children: ReactNode }) {
       try {
         const res = await engineFetch("/leaderboard");
         if (!res.ok) return;
-        const data = (await res.json()) as { rows?: { status?: string; has_paper_fills?: boolean }[]; total_strategies?: number };
+        const data = (await res.json()) as { rows?: { status?: string; has_paper_fills?: boolean }[]; total_strategies?: number; total_combos?: number };
         const rows = data.rows ?? [];
         if (!alive || rows.length === 0) return;
         setCounts({
-          // The HONEST strategy count is the engine's distinct-over-the-whole-set total — NOT rows.length, which
-          // counts the Versions that fit on the leaderboard (capped at 200) and so mislabeled "59 versions" as
-          // "59 strategies". Fall back to rows.length only when the engine didn't supply the total.
-          strategies: typeof data.total_strategies === "number" && data.total_strategies > 0 ? data.total_strategies : rows.length,
+          // The "Bots" nav badge counts BOTS = combos (algo × asset × venue), the SAME unit the /strategies page
+          // headlines ("N of {total_combos}") and the label means everywhere else — NOT total_strategies (distinct
+          // algorithms). Showing the strategy count (1,475) under a "Bots" label next to a combo table (1,000 of
+          // 47,585) was the mismatch: three numbers, one label. Now the badge = the true combo universe, so the
+          // sidebar and the page tell ONE story. Falls back to total_strategies, then rows.length, when the engine
+          // omits total_combos (older engine) — never a fabricated number.
+          strategies:
+            typeof data.total_combos === "number" && data.total_combos > 0
+              ? data.total_combos
+              : typeof data.total_strategies === "number" && data.total_strategies > 0
+                ? data.total_strategies
+                : rows.length,
           paper: rows.filter((r) => isPaperRow(r)).length,
           live: rows.filter((r) => (r.status ?? "").toLowerCase() === "live").length
         });

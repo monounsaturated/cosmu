@@ -103,6 +103,7 @@ async function StrategiesData() {
       timeframes={lab.timeframes}
       minTrades={lab.min_trades}
       title="Bots"
+      totalCombos={totalCombos}
       ribbon={<SummaryRibbon summary={summary} rows={rows} strategyCount={strategyCount} loadedCombos={loadedCombos} totalCombos={totalCombos} />}
     />
   );
