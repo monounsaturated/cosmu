@@ -5,9 +5,12 @@ import { getJson } from "./client";
 // gate trade floor the engine stamps so the table can flag `thin` cells; 0 here = "unknown" until the engine answers.
 const emptyLabSymbols: LabSymbolsResponse = { rows: [], symbols: [], venues: [], timeframes: [], min_trades: 0 };
 
-// Per-symbol backtest cells (strategy × symbol × venue), outlier-ranked + verdict-labelled by the engine. We
-// fetch the whole set (capped) once on the server and let the table filter/sort in-memory — snappy, no
-// per-filter roundtrip. Coalesce the arrays so a partial engine response can never white-screen the table.
+// Per-symbol backtest cells (strategy × symbol × venue), outlier-ranked by the engine (return desc). The SSR
+// fetches the FIRST page (top-1,000 by return) for an instant, lightweight paint; the client table then
+// background-pages through the rest via the engine proxy (?limit=&offset=) until `total_combos` is covered — so
+// the operator can reach EVERY combo while the loaded set still filters/sorts/pages in-memory (snappy, no
+// per-filter roundtrip). 1,000 keeps the SSR HTML small while already carrying the best combos + every funded
+// Paper bot on top. Coalesce the arrays so a partial engine response can never white-screen the table.
 export async function getLabSymbols(): Promise<{ data: LabSymbolsResponse; connected: boolean }> {
   const { data, connected } = await getJson<LabSymbolsResponse>("/lab/symbols?limit=1000", emptyLabSymbols);
   return {

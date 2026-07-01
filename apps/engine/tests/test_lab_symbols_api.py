@@ -364,6 +364,46 @@ def test_total_counts_are_the_full_set_not_the_page(tmp_path, monkeypatch):
     assert body["total_strategies"] == 3
 
 
+def test_offset_pagination_reaches_every_combo_in_return_order(tmp_path, monkeypatch):
+    """Server-side pagination: with a small `limit`, walking `offset` in steps covers EVERY combo exactly once, in
+    the global return-desc order — so the /strategies page can page to the LAST combo, no row dropped or doubled."""
+    store = _store(tmp_path)
+    # 25 distinct combos with strictly-decreasing returns so the global order is unambiguous.
+    n = 25
+    for i in range(n):
+        _seed_cell(store, name=f"S{i:02d}", symbol="BTCUSDT", venue="binance", return_pct=round(0.90 - i * 0.01, 4), verdict="robust")
+    client = _client(monkeypatch, store)
+    # Page through in windows of 10 (10 + 10 + 5) and stitch the combo ids together.
+    seen: list[str] = []
+    for off in (0, 10, 20):
+        rows = client.get(f"/lab/symbols?limit=10&offset={off}").json()["rows"]
+        seen.extend(f'{r["strategy_version_id"]}|{r["symbol"]}|{r["venue_id"]}' for r in rows)
+    assert len(seen) == n            # every combo reached across the pages…
+    assert len(set(seen)) == n       # …exactly once (no overlap between windows, no gap)
+    # And the stitched order is strictly return-desc (0.90, 0.89, … 0.66) — the ranking survives pagination.
+    returns: list[float] = []
+    for off in (0, 10, 20):
+        returns.extend(r["return_pct"] for r in client.get(f"/lab/symbols?limit=10&offset={off}").json()["rows"])
+    assert returns == sorted(returns, reverse=True)
+    # A deep offset past the end is an honest empty page, never an error or a wrap-around.
+    assert client.get(f"/lab/symbols?limit=10&offset={n}").json()["rows"] == []
+
+
+def test_offset_does_not_duplicate_the_first_page_track_only_rows(tmp_path, monkeypatch):
+    """Track-only (cell-less) rows ride on page 0 ONLY — a later offset window must not re-emit them (they are not
+    part of the ranked cell stream the offset indexes), so paging can't double a funded Paper bot."""
+    store = _store(tmp_path)
+    # Two cells + one track-only armed version. Page 0 (limit 2) fills with the two cells; the track-only row would
+    # otherwise appear — but with a limit of 2 the reserve logic keeps it on page 0. Assert offset=2 (page 2) is empty
+    # of that armed version (no cells left, and track-only never re-emitted off page 0).
+    _seed_cell(store, name="CellA", symbol="BTCUSDT", venue="binance", return_pct=0.30, verdict="robust")
+    _seed_cell(store, name="CellB", symbol="ETHUSDT", venue="binance", return_pct=0.20, verdict="robust")
+    armed_vid = _seed_track_only_version(store, name="Diversified Time-Series Momentum", status="paper")
+    client = _client(monkeypatch, store)
+    page2 = client.get("/lab/symbols?limit=2&offset=2").json()["rows"]
+    assert all(r["strategy_version_id"] != armed_vid for r in page2)  # not re-emitted on a later page
+
+
 def test_thin_flag_tracks_the_real_gate_floor(tmp_path, monkeypatch):
     """A cell with FEWER trades than the gate's real min_trades is flagged `thin`; one at/above the floor is not.
     The threshold is the LIVE constant (settings.gates.min_trades), surfaced on the response — never hardcoded 30."""

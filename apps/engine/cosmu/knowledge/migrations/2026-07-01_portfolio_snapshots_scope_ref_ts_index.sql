@@ -1,0 +1,20 @@
+-- Migration: index portfolio_snapshots(scope, ref_id, ts) — fixes the SLOW /leaderboard read (2026-07-01).
+--
+-- SYMPTOM: the Paper page rendered "ENGINE NOT CONNECTED — the engine is configured but did not respond." The Bots
+-- page (a different endpoint) loaded fine, so it was the /leaderboard read the Paper page fetches. Root cause: the
+-- leaderboard's per-track "latest REAL mark" pick was a per-row CORRELATED subquery over portfolio_snapshots — an
+-- O(rows²) Seq-Scan (EXPLAIN ANALYZE on prod: ~6.0s, shared hit≈706k buffers). The web's server-side render aborts
+-- an engine fetch after 5s (SSR_TIMEOUT_MS in apps/web/app/data/client.ts) and falls back to the honest
+-- "not connected" state — so a 6s query reads as a dead engine, ONLY on the Paper surface.
+--
+-- FIX (two parts, both additive, no data change):
+--   1. leaderboard.py rewrote the correlated subquery as a leading CTE with a window function (ROW_NUMBER over
+--      PARTITION BY ref_id) so portfolio_snapshots is scanned ONCE, not once-per-row. Result verified byte-identical
+--      to the old query (0/64 ref_id mismatches on prod) and ~90ms end-to-end.
+--   2. this index, so the scope='track' filter + per-ref_id/ts ordering the read relies on is index-backed rather
+--      than a full Seq-Scan (the /overview equity read benefits too).
+--
+-- Idempotent, forward-only, zero rows touched. portfolio_snapshots is small (~6k rows), so the CREATE is instant and
+-- CONCURRENTLY is unnecessary. PROD (Postgres) is applied OUT-OF-BAND in the Supabase SQL editor (see
+-- knowledge/store.py::migrate); mirrored in schema_postgres.sql + schema.sql for fresh installs.
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_scope_ref_ts ON portfolio_snapshots (scope, ref_id, ts);

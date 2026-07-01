@@ -58,8 +58,12 @@ export const engineConfigured = Boolean(baseUrl);
 // "not connected" out loud. We never invent numbers.
 // Server-render must never HANG on a cold/slow engine (Railway cold-start can take many seconds).
 // Guard: AbortSignal.timeout(SSR_TIMEOUT_MS) — a hung engine fails FAST → we render the honest
-// empty/not-connected state in ≤5s instead of blocking the whole SSR until the platform timeout.
-const SSR_TIMEOUT_MS = 5000;
+// empty/not-connected state instead of blocking the whole SSR until the platform timeout.
+// 8s (was 5s): the engine reads are now fast (~90ms after the leaderboard portfolio_snapshots rewrite +
+// index, 2026-07-01), so the only thing that eats seconds is a Railway COLD START. 5s occasionally
+// clipped a legitimate cold engine and rendered a false "not connected"; 8s clears the cold start with
+// margin while still failing well inside the platform timeout. Tunable via WEB_SSR_TIMEOUT_MS.
+const SSR_TIMEOUT_MS = Number(process.env.WEB_SSR_TIMEOUT_MS ?? 8000);
 
 // SPEED: layout.tsx keeps every route `force-dynamic` (rendered per-request — no build-time prerender
 // hang, no baked "not connected"). But the SLOW part — the ~2s engine call — is wrapped in the Next

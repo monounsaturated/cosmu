@@ -9086,7 +9086,7 @@
     },
     "/lab/symbols": {
       "get": {
-        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue) TRIPLET, the granular truth the pooled\nleaderboard averages away. ONE row per combo (algo \u00d7 asset \u00d7 venue): a strategy's many versions on the SAME\ntriplet collapse to the LATEST (see `_dedup_cells`), never the best-return one. Outlier-sorted (highest\nstandalone return first) so the operator can SNIPE, with the honest verdict carried. Optional filters narrow by\nsymbol / venue / verdict / version_id. Pure read; never a funding signal.\n\nTRACK-ONLY strategies (a paper/live track but NO backtest_symbols cell \u2014 armed via the documented-cohort /\narm_fleet path, e.g. DAA / ADM / TSMOM / funding-carry) are ALSO surfaced \u2014 one synthetic row each, carrying the\nversion's REAL status (so the badge reads Paper/Live, not \"New\") with metrics NULL/\"\u2014\" (nothing was computed per\nsymbol). They are appended AFTER the computed cells (no return to rank by), only when no symbol/venue/verdict\nfilter is active (a cell-less row has no symbol/venue/verdict to match), and only for strategies NOT already\nrepresented by a cell-backed row (no double-counting a strategy that has both cells and a track).",
+        "description": "Per-symbol backtest cells \u2014 one row per (strategy \u00d7 symbol \u00d7 venue) TRIPLET, the granular truth the pooled\nleaderboard averages away. ONE row per combo (algo \u00d7 asset \u00d7 venue): a strategy's many versions on the SAME\ntriplet collapse to the LATEST, never the best-return one (the dedup runs in the DB). Outlier-sorted (highest\nstandalone return first) so the operator can SNIPE. Optional filters narrow by symbol / venue / verdict /\nversion_id. Pure read; never a funding signal.\n\nSERVER-SIDE PAGINATION (`limit` + `offset`): the combo universe is ~48k, so the whole set must be REACHABLE, not\njust a cap's worth. The screener page pulls successive `offset` windows until `total_combos` is covered, so the\noperator can page to the LAST combo. The dedup + return-desc rank happen ONCE in the DB over a LEAN projection\n(only the columns the window + ranking need), and only the requested page's cells are hydrated with the full\n(name / paper-fill / pooled) joins \u2014 so a deep page (offset 46,000) is as cheap as the first (~0.4s), never the\n5\u20139s a whole-universe hydrate costs on the throttled Free DB. `total_combos` is the honest denominator.\n\nTRACK-ONLY strategies (a paper/live track but NO backtest_symbols cell \u2014 armed via the documented-cohort /\narm_fleet path, e.g. DAA / ADM / TSMOM / funding-carry) are ALSO surfaced \u2014 one synthetic row each, carrying the\nversion's REAL status (so the badge reads Paper/Live, not \"New\") with metrics NULL/\"\u2014\" (nothing was computed per\nsymbol). They ride on the FIRST page only (offset == 0) \u2014 they have no return to rank into the ranked cell\nstream, and must appear exactly once \u2014 and only when no symbol/venue/verdict filter is active, and only for\nstrategies NOT already represented by a cell-backed row (no double-counting a strategy with both cells + a track).",
         "operationId": "lab_symbols_lab_symbols_get",
         "parameters": [
           {
@@ -9176,6 +9176,16 @@
             "schema": {
               "default": 500,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }
