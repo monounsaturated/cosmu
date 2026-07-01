@@ -18,7 +18,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { cn, formatCount } from "@/lib/utils";
 
 export type NavCounts = Partial<Record<string, number>>;
 
@@ -122,7 +122,9 @@ export function SideNav({ counts }: { counts?: NavCounts }) {
               {item.icon}
               {item.label}
             </span>
-            {typeof count === "number" ? <span className="nav-count">{count}</span> : null}
+            {/* Compact "k" format past 999 (48545 → "48.5k") so a fat count never overflows the pill; small
+                counts stay exact. See formatCount. */}
+            {typeof count === "number" ? <span className="nav-count" title={count.toLocaleString("en-US")}>{formatCount(count)}</span> : null}
           </Link>
         );
       })}
