@@ -29,6 +29,7 @@ export function StageControl({
   stage,
   ageDays,
   strategyName,
+  subtitle,
   versionId,
   defaultSymbol,
   goLiveEligible,
@@ -37,6 +38,9 @@ export function StageControl({
   stage: Stage;
   ageDays: number | null;
   strategyName: string;
+  // Short one-line descriptor under the title (C-v3 mockup: "Keller DAA top-6 · monthly rebalance"). Derived
+  // upstream from the real spec (family · rebalance); omitted → no subtitle line (never fabricated).
+  subtitle?: string | null;
   // Needed to arm this exact Version live via the Go Live modal (POST /live/launch).
   versionId?: string;
   defaultSymbol?: string | null;
@@ -61,18 +65,25 @@ export function StageControl({
 
   return (
     <div className="sheet-head">
-      {/* Actions pinned top-right: Go live (primary) + Stop. */}
-      <div className="sheet-actions">
-        {canGoLive ? (
-          <button type="button" className="btn btn-iris btn-sm" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading. Real orders stay behind the toggle, caps + kill-switch.">
-            Go live
-          </button>
-        ) : null}
-        {canStop ? (
-          <button type="button" className={cn("btn btn-sm", live && "btn-danger")} onClick={() => setConfirming(true)}>
-            Stop
-          </button>
-        ) : null}
+      {/* head-top (C-v3): the title + subtitle on the LEFT, the Go-live/Stop actions pinned top-RIGHT — one row,
+          so the actions sit BESIDE the title (the mockup's `.head-top`), not floating on their own line. */}
+      <div className="sheet-head-top">
+        <div className="sheet-title-wrap">
+          <h1 className="sheet-title">{strategyName}</h1>
+          {subtitle ? <p className="sheet-subtitle">{subtitle}</p> : null}
+        </div>
+        <div className="sheet-actions">
+          {canGoLive ? (
+            <button type="button" className="btn btn-iris btn-sm" onClick={() => setGoLive(true)} data-tip="Arm this strategy for live trading. Real orders stay behind the toggle, caps + kill-switch.">
+              Go live
+            </button>
+          ) : null}
+          {canStop ? (
+            <button type="button" className={cn("btn btn-sm", live && "btn-danger")} onClick={() => setConfirming(true)}>
+              Stop
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* Status row: a stage dot + "Paper · N days" + the small Gated chip. */}

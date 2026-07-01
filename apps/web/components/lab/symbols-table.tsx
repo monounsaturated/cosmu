@@ -22,7 +22,7 @@ import { StrategySheet } from "@/components/strategy/strategy-sheet";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { LIFE_BADGE_CLASS, LIFE_LABEL, type LifeStatus } from "@/lib/lifecycle";
 import { engineGetJson, enginePeek } from "@/lib/engine";
-import { cn, formatPct, formatVenue, isKilled, isPaper, isPaperRow } from "@/lib/utils";
+import { cn, formatCount, formatPct, formatVenue, isKilled, isPaper, isPaperRow } from "@/lib/utils";
 
 // Rows shown per page — never render more than this many <tr> at once (keeps the DOM lean on a fat universe).
 const PAGE_SIZE = 100;
@@ -123,6 +123,18 @@ function rowLifeStatus(r: LabSymbolRow): LifeStatus {
 function LifeBadge({ row }: { row: LabSymbolRow }) {
   const life = rowLifeStatus(row);
   return <span className={LIFE_BADGE_CLASS[life]}>{LIFE_LABEL[life]}</span>;
+}
+
+// ── Symbol PAIR-FORMAT normalization for the Symbols filter (DISPLAY-only): "AAVEUSDT" and "AAVE/USDT" are the
+// SAME pair in two exchange notations, so they collapse into ONE filter option keyed on the slash-stripped upper
+// form. DIFFERENT quotes stay distinct ("AAVEUSDC" ≠ "AAVEUSDT" — the quote is part of the key). Venue is a
+// SEPARATE filter, so the same pair on two venues is never merged here. A raw DEX contract address ("0x…") is
+// left UNTOUCHED (a separate design resolves those into token names while keeping the address for verification) —
+// never stripped, so the address entry stays selectable and verifiable. Pure string display; no data change. ──
+function symbolCanon(symbol: string): string {
+  if (!symbol) return "";
+  if (symbol.toLowerCase().startsWith("0x")) return symbol; // leave contract addresses exactly as-is
+  return symbol.replace(/\//g, "").toUpperCase();
 }
 
 // Compact OOS-window formatter for the narrow screener column ("2.4yr" / "8mo" / "45d"); the sheet shows the
@@ -429,11 +441,51 @@ export function SymbolsTable({
     return order.filter((s) => present.has(s));
   }, [rows]);
 
+  // ── CANONICAL symbol options — one entry per pair (slash-stripped, quote kept, 0x untouched), so "AAVEUSDT"
+  // and "AAVE/USDT" don't both clutter the list. We display the FIRST-seen raw form (sorted) as the label but
+  // key the option + the filter on the canonical form so selecting it matches BOTH raw notations. Built once so
+  // the dropdown, the counts and the filter predicate all agree. ──
+  const { symbolOptions, symbolLabelOf } = useMemo(() => {
+    const label = new Map<string, string>(); // canon → the raw form we show (first alphabetically)
+    for (const r of rows) {
+      if (!r.symbol) continue;
+      const c = symbolCanon(r.symbol);
+      const prev = label.get(c);
+      if (prev === undefined || r.symbol.localeCompare(prev) < 0) label.set(c, r.symbol);
+    }
+    return {
+      symbolOptions: Array.from(label.keys()).sort((a, b) => (label.get(a) ?? a).localeCompare(label.get(b) ?? b)),
+      symbolLabelOf: label,
+    };
+  }, [rows]);
+
+  // ── PER-OPTION bot COUNTS for every filter dropdown — the number of ROWS (each row = one combo/bot) that
+  // carry each option value, shown right-aligned next to the option (like the sidebar count). Counting rows is
+  // the honest "bots per option" since the screener is already one row per distinct combo. Symbols count on the
+  // CANONICAL key so the folded "AAVE/USDT + AAVEUSDT" option shows the combined total. ──
+  const { strategyCounts, symbolCounts, venueCounts, statusCounts, timeframeCounts } = useMemo(() => {
+    const sc = new Map<string, number>();
+    const sy = new Map<string, number>();
+    const ve = new Map<string, number>();
+    const st = new Map<string, number>();
+    const tf = new Map<string, number>();
+    const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+    for (const r of rows) {
+      bump(sc, r.strategy_name);
+      if (r.symbol) bump(sy, symbolCanon(r.symbol));
+      bump(ve, r.venue_id ?? "");
+      bump(st, rowLifeStatus(r));
+      bump(tf, r.timeframe ?? "");
+    }
+    return { strategyCounts: sc, symbolCounts: sy, venueCounts: ve, statusCounts: st, timeframeCounts: tf };
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const out = rows.filter((r) => {
       if (strategySel.size && !strategySel.has(r.strategy_name)) return false;
-      if (symbolSel.size && !symbolSel.has(r.symbol)) return false;
+      // symbolSel holds CANONICAL keys (see symbolOptions), so "AAVE/USDT" and "AAVEUSDT" match one selection.
+      if (symbolSel.size && !symbolSel.has(symbolCanon(r.symbol))) return false;
       if (venueSel.size && !venueSel.has(r.venue_id ?? "")) return false;
       if (timeframeSel.size && !timeframeSel.has(r.timeframe ?? "")) return false;
       if (statusSel.size && !statusSel.has(rowLifeStatus(r))) return false;
@@ -622,23 +674,34 @@ export function SymbolsTable({
           options={strategyOptions}
           selected={strategySel}
           onChange={setStrategySel}
+          counts={strategyCounts}
           renderOption={(o) => `#${strategyNumber.get(o) ?? "?"} ${o}`}
           // Unselected strategies ordered by NUMBER DESCENDING (highest = latest authored first) so new
           // strategies surface at the top, not buried under the alphabetical run.
           orderUnselected={(a, b) => (strategyNumber.get(b) ?? 0) - (strategyNumber.get(a) ?? 0)}
         />
-        <MultiSelect label="symbols" options={symbols} selected={symbolSel} onChange={setSymbolSel} />
-        <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} renderOption={(v) => formatVenue(v)} formatValue={(v) => formatVenue(v)} />
+        <MultiSelect
+          label="symbols"
+          options={symbolOptions}
+          selected={symbolSel}
+          onChange={setSymbolSel}
+          counts={symbolCounts}
+          // Options are canonical keys; show the human raw form ("AAVE/USDT") as the label/value.
+          renderOption={(c) => symbolLabelOf.get(c) ?? c}
+          formatValue={(c) => symbolLabelOf.get(c) ?? c}
+        />
+        <MultiSelect label="venues" options={venues} selected={venueSel} onChange={setVenueSel} counts={venueCounts} renderOption={(v) => formatVenue(v)} formatValue={(v) => formatVenue(v)} />
         {/* Timeframe filter (LOT-C 4th axis) — shown ONLY when more than one timeframe is present, so today's
             single-timeframe world keeps the toolbar unchanged (no chip with a lone option). */}
         {timeframes.length > 1 ? (
-          <MultiSelect label="timeframes" options={timeframes} selected={timeframeSel} onChange={setTimeframeSel} />
+          <MultiSelect label="timeframes" options={timeframes} selected={timeframeSel} onChange={setTimeframeSel} counts={timeframeCounts} />
         ) : null}
         <MultiSelect
           label="status"
           options={statusOptions}
           selected={statusSel}
           onChange={(next) => setStatusSel(next)}
+          counts={statusCounts}
           renderOption={(o) => LIFE_LABEL[o as LifeStatus] ?? o}
           formatValue={(o) => LIFE_LABEL[o as LifeStatus] ?? o}
         />
@@ -874,6 +937,7 @@ function MultiSelect({
   renderOption,
   formatValue,
   orderUnselected,
+  counts,
 }: {
   label: string;
   options: string[];
@@ -882,6 +946,8 @@ function MultiSelect({
   renderOption?: (o: string) => string;
   formatValue?: (o: string) => string;
   orderUnselected?: (a: string, b: string) => number;
+  // Per-option BOT count, shown right-aligned next to each option (like the sidebar count). Omitted → no count.
+  counts?: Map<string, number>;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -947,12 +1013,17 @@ function MultiSelect({
           </button>
         ) : null}
         <div style={{ maxHeight: 260, overflowY: "auto" }}>
-          {shown.map((o) => (
-            <div key={o} className={cn("col-picker-item", selected.has(o) && "on")} onClick={() => toggle(o)}>
-              <span className="cp-ind" />
-              <span className="cp-label">{optLabel(o)}</span>
-            </div>
-          ))}
+          {shown.map((o) => {
+            const c = counts?.get(o);
+            return (
+              <div key={o} className={cn("col-picker-item", selected.has(o) && "on")} onClick={() => toggle(o)}>
+                <span className="cp-ind" />
+                <span className="cp-label">{optLabel(o)}</span>
+                {/* Per-option bot count, right-aligned (mirrors the sidebar count). Compact "k" past 999. */}
+                {typeof c === "number" ? <span className="cp-count" title={`${c.toLocaleString("en-US")} bots`}>{formatCount(c)}</span> : null}
+              </div>
+            );
+          })}
           {shown.length === 0 ? <p className="quiet" style={{ fontSize: 11, padding: 6 }}>No match.</p> : null}
         </div>
       </div>

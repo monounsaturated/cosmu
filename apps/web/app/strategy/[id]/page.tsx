@@ -13,9 +13,7 @@ import { engineConfigured, getStrategy } from "../../data";
 import { getComparison, getTriplet } from "../../data/lab";
 import { Page, Toolbar } from "@/components/ui/toolbar";
 import { NotConnected, EmptyState } from "@/components/ui/honest-state";
-import { StrategyHeader } from "@/components/strategies/strategy-header";
 import { StrategySheet } from "@/components/strategy/strategy-sheet";
-import { bestOosPct } from "@/components/strategy/strategy-sheet-utils";
 import { SpecView } from "@/components/strategy/spec-view";
 import { GateChips } from "@/components/strategy/gate-chips";
 import { TripletCard } from "@/components/strategy/triplet-card";
@@ -68,20 +66,12 @@ async function StrategyDetail({ id, symbol, venue }: { id: string; symbol?: stri
   // `.some`/`.map`/Object.entries below can throw on a partial response and white-screen the page.
   const backtests = strategy.backtests ?? [];
   const holdout = strategy.holdout ?? {};
-  const passed = backtests.some((bt: Backtest) => bt.passed_gates);
-  const summaryLane = strategyLane(strategy.spec ?? {});
-  const bestOos = bestOosPct(backtests);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 1000 }}>
-      <StrategyHeader
-        name={strategy.name}
-        versionId={strategy.version_id}
-        passed={passed}
-        lane={[summaryLane.venue, summaryLane.timeframe]}
-        thesis={summaryLane.thesis}
-        bestOos={bestOos}
-      />
+      {/* No separate StrategyHeader here: the C-v3 sheet's merged TOP card now OWNS the title + subtitle +
+          Go-live/Stop + the Gated verdict, so a second title block above would duplicate it. The versionId /
+          full thesis live in the sheet's Spec tab + lifecycle trace. */}
 
       {/* The triplet header — the clicked (algo × asset × venue) cell + the asset/venue selector that
           navigates to a sibling triplet. Only shown when this algo has per-symbol cells. */}
@@ -222,18 +212,4 @@ function GateTab({ backtests, holdout }: { backtests: Backtest[] | null | undefi
       </div>
     </div>
   );
-}
-
-// Pull the lane/thesis off the REAL spec fields, defensively.
-function strategyLane(spec: Record<string, unknown>): { thesis: string | null; venue: string | null; timeframe: string | null } {
-  const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-  const universe = isRecord(spec.universe) ? spec.universe : null;
-  const horizon = isRecord(spec.horizon) ? spec.horizon : null;
-  const venues = universe && Array.isArray(universe.venues) ? (universe.venues as unknown[]).filter((x): x is string => typeof x === "string") : [];
-  const tfRaw = horizon && typeof horizon.timeframe === "string" ? horizon.timeframe : null;
-  return {
-    thesis: typeof spec.rationale === "string" && spec.rationale ? spec.rationale : null,
-    venue: venues.length ? venues.join(" · ") : null,
-    timeframe: tfRaw
-  };
 }

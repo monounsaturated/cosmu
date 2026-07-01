@@ -80,6 +80,32 @@ function currentHoldings(spec: Record<string, unknown> | null | undefined): stri
   return [...out].sort();
 }
 
+// ── The short one-line subtitle under the title (C-v3: "Keller DAA top-6 · monthly rebalance"). Built off the
+// real spec — the strategy's own summary_title/subtitle when present, else a family · rebalance descriptor. null
+// when nothing honest is available (→ no subtitle line, never fabricated). ──
+function deriveSubtitle(spec: Record<string, unknown> | null | undefined): string | null {
+  if (!spec || typeof spec !== "object") return null;
+  const s = spec as Record<string, unknown>;
+  // A spec-authored one-liner wins (the strategist's own words).
+  for (const k of ["subtitle", "tagline", "one_liner"]) {
+    const v = s[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  // Else compose from the family/name + rebalance cadence, whichever are present.
+  const parts: string[] = [];
+  const family = typeof s.family === "string" && s.family.trim() ? s.family.trim() : null;
+  if (family) parts.push(family);
+  const horizon = isRecord(s.horizon) ? s.horizon : null;
+  const rebalance =
+    horizon && typeof horizon.rebalance === "string" && horizon.rebalance.trim()
+      ? `${horizon.rebalance.trim()} rebalance`
+      : horizon && typeof horizon.bar_size === "string" && horizon.bar_size.trim()
+        ? `${horizon.bar_size.trim()} bars`
+        : null;
+  if (rebalance) parts.push(rebalance);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 // ── Venue · asset-class label off the real spec.universe ({asset_classes, venues}). "IBKR · equity"-style line
 // for the meta row + the Spec tab. null when nothing is recorded. ──
 function venueLabel(spec: Record<string, unknown> | null | undefined): string | null {
@@ -120,6 +146,7 @@ function TopCard({
   const spec = (strategy.spec ?? {}) as Record<string, unknown>;
   const mk: Kind = strategy.kind === "llm" ? "llm" : "quant";
   const venue = venueLabel(spec);
+  const subtitle = deriveSubtitle(spec);
   // "Gated" = the strongest backtest cleared the deterministic Gate. Absent when no backtest has run.
   const gated = Boolean(headlineBt?.passed_gates);
 
@@ -147,6 +174,7 @@ function TopCard({
         stage={stage}
         ageDays={ageDays}
         strategyName={strategy.name}
+        subtitle={subtitle}
         versionId={strategy.version_id}
         goLiveEligible={stage === "paper" || Boolean(headlineBt?.passed_gates)}
         gated={gated}
@@ -379,7 +407,12 @@ function StatsPanel({
               <td>Backtest</td>
               <td>OOS</td>
               <td className={btReturnPct !== null ? (btReturnPct >= 0 ? "up" : "dn") : ""}>{btReturnStr}</td>
-              <td>{formatOosWindow(headlineBt?.oos_window_days) ?? "—"}</td>
+              {/* OOS window MUST agree with the screener's sortable "OOS window" column: when a (algo × asset ×
+                  venue) CELL is focused, show THAT cell's own window (the per-cell backtest_symbols value the
+                  screener sorts on), NOT the parent backtest's full oos_start→oos_end span (which for a TAA
+                  strategy reads ~20yr and contradicted the screener's ~2.2yr cell cap). The parent span only
+                  shows on a version-level (no-cell) sheet, where there's no per-cell number to disagree with. */}
+              <td>{formatOosWindow(cell?.oos_window_days ?? headlineBt?.oos_window_days) ?? "—"}</td>
             </tr>
             <tr>
               <td>Paper</td>
@@ -606,7 +639,10 @@ export function StrategySheet({ strategy, stageOverride, origin, cell }: { strat
                     deflatedSharpeProb: headlineBt.deflated_sharpe_prob ?? null,
                     pbo: headlineBt.pbo,
                     oosReturn: cell ? cell.return_pct : headlineBt.oos_return,
-                    oosWindowDays: headlineBt.oos_window_days,
+                    // Window must match the return it annualizes: when the cell's OOS return is used, annualize
+                    // over the CELL's window (not the parent backtest's ~20yr span) — else the CAGR is wrong AND
+                    // it contradicts the screener. Falls back to the parent window at version level.
+                    oosWindowDays: (cell?.oos_window_days ?? null) !== null ? cell?.oos_window_days ?? null : headlineBt.oos_window_days,
                     maxDd: cell ? cell.max_drawdown : headlineBt.max_dd
                   }
                 : null

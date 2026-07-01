@@ -39,6 +39,18 @@ export function numOrNull(v: number | null | undefined): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+// Compact count formatting for nav counters + filter-option counts: a count over 999 reads "48.5k" (1 decimal),
+// "1.5k", while ≤ 999 stays bare ("10", "999"). A whole-thousand value drops the ".0" ("10k", not "10.0k"). Never
+// abbreviates below 1000, so the exact small counts the operator scans are always precise. Non-finite/negative → "0".
+export function formatCount(n: number | null | undefined): string {
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return "0";
+  if (n < 1000) return String(Math.round(n));
+  const k = n / 1000;
+  // 1 decimal, but trim a trailing ".0" so exact thousands read "48k" not "48.0k". toFixed(1) then strip.
+  const s = k.toFixed(1);
+  return `${s.endsWith(".0") ? s.slice(0, -2) : s}k`;
+}
+
 // The canonical paper-stage STATUS predicate (paper / forward_test). ONE taxonomy, imported everywhere
 // (screener, dashboards, sidebar counts) so the cohort never drifts between surfaces. Mirrors the engine's
 // PAPER_ALIASES (knowledge/lifecycle_status.py): "forward_test" is the tolerated legacy spelling of PAPER;
