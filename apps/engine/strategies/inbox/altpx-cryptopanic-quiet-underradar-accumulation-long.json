@@ -1,0 +1,109 @@
+{
+  "name": "CryptoPanic quiet (low bullish votes) + rising price \u2014 under-the-radar accumulation (spot long)",
+  "rationale": "MECHANISM (why low attention + rising price leads): a price that is grinding UP while CryptoPanic bullish votes are still LOW is being accumulated by informed flow before the retail crowd notices \u2014 the move is 'under the radar'. The predictive lead is the gap between price action and attention: when the crowd finally arrives (votes surge), the easy gains are late-stage. So we enter on quiet attention (bullish votes below a fitted ceiling) + positive ret_Nd (the quiet uptrend), and EXIT when bullish votes cross UP (the crowd shows up \u2014 time to distribute), or stop/TP/time. This is the mirror of the bullish-surge-momentum spec: same feature, opposite regime (absence vs presence of attention). DISCONFIRMER 1: if plain momentum without the low-attention gate matches the deflated Sharpe, the quiet-crowd filter adds nothing. DISCONFIRMER 2: low votes may just mean the coin is illiquid/ignored (no edge, only slippage) \u2014 the min_liquidity screen is the guard. Requires CRYPTOPANIC_API_KEY; low-confidence until validated OOS.",
+  "catalyst": "cryptopanic_bullish_votes stay BELOW a low ceiling (crowd not yet paying attention) while price is quietly rising.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "cryptopanic_bullish_votes"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "votes_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "cryptopanic_bullish_votes"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "votes_up_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "votes_ceiling": {
+      "kind": "float",
+      "lo": 1,
+      "hi": 18
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "votes_up_exit": {
+      "kind": "float",
+      "lo": 10,
+      "hi": 50
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

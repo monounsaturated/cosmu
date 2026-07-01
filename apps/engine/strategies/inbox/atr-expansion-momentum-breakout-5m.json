@@ -1,0 +1,38 @@
+{
+  "name": "ATR expansion momentum breakout (5m)",
+  "rationale": "A rising ATR on 5m signals a volatility expansion; pairing it with a positive short return says the expansion is directional, not two-sided chop. Entering as ATR expands with momentum catches the breakout bar before the move fully unfolds. The other side is the mean-reversion maker who fades every spike and is wrong when the spike is a real breakout. Edge persists because volatility expansions are autocorrelated and the initial thrust tends to continue for several bars. Distinct from the bandwidth-squeeze spec: this triggers on ATR level rising (not prior compression) and requires a return leg. Disconfirmer: exits when the short return flips negative, or the stop fires.",
+  "catalyst": "directional volatility expansion",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "atr"}, "op": "gt", "threshold": {"param": "atr_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "lt", "threshold": {"param": "mom_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "atr_floor": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "mom_lb": {"kind": "int", "lo": 3, "hi": 12, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.001, "hi": 0.015},
+    "mom_exit": {"kind": "float", "lo": -0.015, "hi": 0.0},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.006, "hi": 0.035},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.3}
+  }
+}

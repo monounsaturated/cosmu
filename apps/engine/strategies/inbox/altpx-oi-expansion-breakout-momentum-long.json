@@ -1,0 +1,109 @@
+{
+  "name": "Open-interest expansion + band breakout \u2014 leverage-backed breakout (spot long)",
+  "rationale": "MECHANISM (why OI leads the breakout): a breakout on rising open_interest means NEW leveraged capital is opening into the move \u2014 fresh money committing, the fuel a breakout needs to hold. A band breakout on FLAT or falling OI is short-covering or thin spot churn that fades back inside the range. OI (perp-derived) reveals whether the marginal breakout buyer is real leverage or a hollow print, and it builds INTO the breakout bar. We require open_interest above a fitted (normalized) floor AND bb_z above a breakout threshold (a statistically unusual push through the upper band), then ride it, exiting when bb_z falls back to the mean (breakout failed). Distinct from OI-confirmed-momentum (ret_Nd): this triggers on a VOLATILITY-band breakout, not a smooth return. DISCONFIRMER 1: if the bb_z breakout alone (no OI arm) matches the deflated Sharpe, OI adds nothing. DISCONFIRMER 2: OI co-moves with price, so if an OI-falling arm does as well, OI is a price proxy, not a leverage-flow signal.",
+  "catalyst": "open_interest is expanding (new leverage entering) AND price breaks ABOVE its Bollinger band (bb_z high).",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "oi_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bbz_break"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_floor": {
+      "kind": "float",
+      "lo": 0.3,
+      "hi": 2.2
+    },
+    "bb_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 48,
+      "step": 1
+    },
+    "bbz_break": {
+      "kind": "float",
+      "lo": 1.0,
+      "hi": 2.5
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.8
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "name": "BTC transaction throughput healthy + band washout \u2014 on-chain-supported dip (spot long)",
+  "rationale": "MECHANISM (why healthy throughput leads a bounce): when price is statistically washed out (bb_z stretched below its band) but on-chain settlement throughput (btc_tx_count) stays healthy, the sell-off is speculative, not a demand collapse \u2014 a divergence between real usage and price. Sticky on-chain activity anchors the recovery, so the healthy-throughput read leads the mean-reversion. This is the THROUGHPUT analogue of the active-addresses divergence spec, paired with a BAND washout (bb_z) rather than RSI for a different, volatility-relative over-extension gauge. Exit when bb_z reverts to the mean. DISCONFIRMER 1: if the bb_z washout alone matches the deflated Sharpe, tx-count adds nothing. DISCONFIRMER 2 (non-stationarity): tx-count drifted structurally, so a fitted floor risks always-true \u2014 if it never actually excludes low-usage bars, no divergence is captured and the Gate must kill it. Data knowable T+1; tier1, low-confidence until OOS.",
+  "catalyst": "btc_tx_count stays elevated (real usage intact) while bb_z shows a downside washout \u2014 price weak, chain busy.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "tx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_wash"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "bb_z"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "bbz_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tx_floor": {
+      "kind": "float",
+      "lo": 250000,
+      "hi": 550000
+    },
+    "bb_lb": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 60,
+      "step": 1
+    },
+    "bbz_wash": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.2
+    },
+    "bbz_exit": {
+      "kind": "float",
+      "lo": -0.5,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

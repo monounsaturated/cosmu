@@ -1,0 +1,37 @@
+{
+  "name": "Bollinger squeeze expansion breakout (15m)",
+  "rationale": "A low Bollinger bandwidth on 15m is a volatility squeeze — a coiled, low-energy range. When price then pushes to the top of the range (high range_position) the squeeze is releasing UP, and compressed volatility tends to expand directionally. The other side is the range-fader who assumes the quiet range persists and is run over by the expansion. Edge persists because volatility clusters: compression is followed by expansion, and the breakout direction seeds a short trend. Distinct from plain channel breakouts by requiring prior compression. Disconfirmer: exits when price falls back inside the range (failed release) or the stop fires.",
+  "catalyst": "volatility squeeze releasing to the upside",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_floor"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbw_floor": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "rp_ceiling": {"kind": "float", "lo": 0.7, "hi": 0.95},
+    "rp_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

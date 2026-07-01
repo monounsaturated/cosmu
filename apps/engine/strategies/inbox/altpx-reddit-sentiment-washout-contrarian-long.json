@@ -1,0 +1,109 @@
+{
+  "name": "Reddit sentiment washout + band oversold \u2014 crowd-pessimism contrarian (spot long)",
+  "rationale": "MECHANISM (why Reddit pessimism leads a bounce): Reddit crypto crowd chatter (bull-vs-bear post mix) is a fast, free retail-mood proxy. A deeply negative reading marks the point where the forum crowd has fully capitulated to a bearish narrative \u2014 sentiment extremes on retail forums mean-revert at the swing horizon because the marginal seller is spent. The mood print leads because posting-mood bottoms as/just before price does. We add a bb_z downside washout (price is statistically stretched below its band, not mid-range) as the price confirmation, and buy SPOT. Exit when Reddit mood crosses back up. Distinct from the reddit-attention-contagion spec (a cross-asset lead): this is a per-asset contrarian washout. DISCONFIRMER 1: if the bb_z washout alone matches the deflated Sharpe, Reddit mood adds nothing. DISCONFIRMER 2 (scale): the bull/bear mix scale is uncertain \u2014 if the fitted floor is always-true, it is a level artifact, not mood; the Gate must kill it. tier1, low-confidence until validated OOS.",
+  "catalyst": "reddit_sentiment is deeply negative (bear-heavy post mix) while bb_z shows a statistical downside washout.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "reddit_sentiment"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rs_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_wash"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "reddit_sentiment"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rs_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "rs_floor": {
+      "kind": "float",
+      "lo": -0.6,
+      "hi": -0.05
+    },
+    "bb_lb": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 60,
+      "step": 1
+    },
+    "bbz_wash": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.2
+    },
+    "rs_exit": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.25
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

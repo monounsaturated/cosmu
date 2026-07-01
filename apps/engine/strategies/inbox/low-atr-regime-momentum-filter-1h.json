@@ -1,0 +1,38 @@
+{
+  "name": "Low-ATR regime momentum filter (1h)",
+  "rationale": "ATR is a range-based volatility read distinct from close-to-close realized vol: a LOW ATR means tight true ranges, so a positive medium return in that regime is a clean, whipsaw-free trend worth following. Filtering momentum on low ATR avoids the wide-bar chop where trend signals decay fastest. The other side is the fader shorting a tight, grinding uptrend. Edge persists because low-true-range trends have the best follow-through per unit of stop risk. Distinct from the realized-vol momentum spec: ATR (true range incl. gaps) and vol_realized (return dispersion) capture different volatility facets. Disconfirmer: exits when the return flips negative or the stop fires.",
+  "catalyst": "clean positive drift in a tight-true-range regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 2
+  },
+  "entry": [
+    {"feature": {"name": "atr"}, "op": "lt", "threshold": {"param": "atr_ceiling"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "lt", "threshold": {"param": "mom_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "atr_ceiling": {"kind": "float", "lo": 0.004, "hi": 0.015},
+    "mom_lb": {"kind": "int", "lo": 12, "hi": 48, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.03},
+    "mom_exit": {"kind": "float", "lo": -0.02, "hi": 0.0},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.08},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 3}
+  }
+}

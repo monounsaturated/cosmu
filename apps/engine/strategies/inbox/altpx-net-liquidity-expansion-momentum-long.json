@@ -1,0 +1,109 @@
+{
+  "name": "Fed net-liquidity expansion turn + momentum \u2014 plumbing tailwind (spot long)",
+  "rationale": "MECHANISM (why net liquidity leads risk assets): net liquidity (Fed balance sheet minus the Treasury General Account) is the plumbing that funds risk-asset beta \u2014 when it expands, cash is released into the system and flows to the highest-beta assets, of which crypto is the extreme. The macro liquidity turn leads price because the plumbing moves first, then assets re-rate. We trigger on net_liquidity_usd crossing UP through a fitted level (an expansion regime turning ON) AND positive ret_Nd (crypto confirming its beta), and exit when net liquidity crosses back down (drain). DISCONFIRMER 1: if plain momentum without the liquidity gate matches the deflated Sharpe, liquidity adds nothing timeable. DISCONFIRMER 2 (PIT honesty): the keyless FRED series has a ~8-day publication lag and no vintage column, so we treat it as knowable only ~T+8 \u2014 if the edge depends on reacting FASTER than that lag, it is look-ahead and fake. Uses cross_up (a discrete regime turn) precisely because the level is non-stationary. tier1, low-confidence until validated OOS.",
+  "catalyst": "net_liquidity_usd crosses UP through a fitted level (Fed net liquidity expanding) while price momentum is positive.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "net_liquidity_usd"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "liq_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "net_liquidity_usd"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "liq_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "liq_floor": {
+      "kind": "float",
+      "lo": 5000000000000,
+      "hi": 6500000000000
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "liq_exit": {
+      "kind": "float",
+      "lo": 4800000000000,
+      "hi": 6200000000000
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

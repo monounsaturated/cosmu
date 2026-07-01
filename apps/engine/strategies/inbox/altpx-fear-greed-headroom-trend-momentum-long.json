@@ -1,0 +1,100 @@
+{
+  "name": "Fear & Greed below euphoria (headroom) + ADX trend \u2014 ride trends before the crowd is greedy (spot long)",
+  "rationale": "MECHANISM (why sentiment headroom leads trend durability): the Fear & Greed index measures how much of the crowd has already turned bullish. A confirmed trend (high ADX) while the index is still BELOW euphoria has 'headroom' \u2014 there are still sidelined participants left to convert to buyers, so the trend can extend. Once the index is pinned at extreme greed, the marginal buyer is exhausted and the trend is late-stage/top-heavy. So the sentiment level LEADS the trend's remaining runway. We ride an ADX-confirmed trend only while fear_greed is below a fitted greed ceiling, and EXIT when the index crosses up into extreme greed (runway spent). Distinct from the extreme-fear-BUY and greed-distribution-SHORT specs: this is a trend-CONTINUATION with a greed-ceiling headroom guard. DISCONFIRMER 1: if ADX-trend alone matches the deflated Sharpe, the greed ceiling adds nothing. DISCONFIRMER 2: the index rarely pins at extreme greed, so the ceiling may almost never bind \u2014 if it never excludes bars, the filter is inert and the Gate must treat this as plain ADX trend. tier0 daily read; low-confidence until validated OOS.",
+  "catalyst": "fear_greed is BELOW a fitted greed ceiling (sentiment has upside headroom, not yet euphoric) while ADX confirms a trend.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "fear_greed"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "greed_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "fear_greed"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "greed_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "greed_ceiling": {
+      "kind": "float",
+      "lo": 58,
+      "hi": 80
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 32
+    },
+    "greed_exit": {
+      "kind": "float",
+      "lo": 75,
+      "hi": 92
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "name": "VIX calm regime + RSI dip \u2014 buy dips only when equity vol is low (spot long)",
+  "rationale": "MECHANISM (why VIX regime leads dip resolution): the VIX is equity-implied volatility and a cross-asset fear gauge; crypto's beta to the macro risk regime means dips resolve very differently by VIX state. In a CALM regime (low VIX) a crypto dip is a routine shakeout that recovers; in a HIGH-VIX regime the same dip is the front edge of a cross-asset risk-off cascade and continues down. VIX conditions the environment ahead of the crypto tape, so it tells a buyable dip from a dangerous one. We require vix_level below a fitted ceiling AND an RSI dip, and exit if the VIX spikes up through its stress level (regime broke). Distinct from vix-calm-MOMENTUM (which rides trends in calm): this BUYS DIPS in calm. DISCONFIRMER 1: if a plain RSI-dip buy matches the deflated Sharpe, the VIX gate adds nothing. DISCONFIRMER 2: VIX is next-day-available (FRED lag) \u2014 if the edge needs intraday VIX it is look-ahead. tier0 macro read; low-confidence until validated OOS.",
+  "catalyst": "vix_level is BELOW a fitted calm ceiling (low equity-implied vol) while RSI has dipped.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "vix_level"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vix_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_dip"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "vix_level"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "vix_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "vix_ceiling": {
+      "kind": "float",
+      "lo": 13,
+      "hi": 22
+    },
+    "rsi_dip": {
+      "kind": "float",
+      "lo": 35,
+      "hi": 50
+    },
+    "vix_exit": {
+      "kind": "float",
+      "lo": 22,
+      "hi": 35
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

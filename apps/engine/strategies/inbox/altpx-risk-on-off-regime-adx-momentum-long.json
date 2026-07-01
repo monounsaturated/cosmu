@@ -1,0 +1,100 @@
+{
+  "name": "Risk-on macro regime + ADX trend \u2014 LLM risk-appetite-gated trend (spot long)",
+  "rationale": "MECHANISM (why the risk-appetite index leads): risk_on_off is an LLM-standardized [-1,+1] read on the shared macro/geopolitical risk regime, minted at evidence-availability time. Crypto is a high-beta risk asset, so a risk-ON macro backdrop is the tailwind that lets a trend extend, while a risk-OFF backdrop chops trends up. The regime tag conditions cross-asset risk premia BEFORE any single asset's price fully reflects it, giving a lead. We gate an ADX-confirmed trend on risk_on_off above a positive floor (only ride trends WITH the macro wind), and exit when the regime flips risk-off. The LLM only proposes the number against a fixed rubric; it is never on the money path. DISCONFIRMER 1: if ADX-trend alone matches the deflated Sharpe, the regime gate adds nothing. DISCONFIRMER 2: risk_on_off could lag headlines (coincident, not leading) \u2014 if entering on a risk-off reading does equally well, it is not a directional macro lead. tier1, low-confidence until validated OOS.",
+  "catalyst": "risk_on_off (LLM macro risk-appetite index) is positive while ADX confirms a trend.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "risk_on_off"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ro_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "risk_on_off"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "ro_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "ro_floor": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.6
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 32
+    },
+    "ro_exit": {
+      "kind": "float",
+      "lo": -0.3,
+      "hi": 0.1
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

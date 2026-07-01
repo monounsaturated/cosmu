@@ -1,0 +1,40 @@
+{
+  "name": "Intraday ADX momentum breakout (5m)",
+  "rationale": "On a 5m clock a confirmed ADX trend plus a fresh positive short-return and a break to the top of the recent range is momentum ignition: slower intraday participants (funds rebalancing on 15m/1h clocks, TWAP algos) react late, so the first movers ride the delayed continuation. The other side is the liquidity provider who gets run over by a real directional order flow. Edge persists because reaction latency across timeframes is structural. Disconfirmer: exits when ADX collapses below the exit floor (the trend was a fake-out) before the stop.",
+  "catalyst": "confirmed intraday trend breaking to a new range high",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "mom_lb": {"kind": "int", "lo": 6, "hi": 24, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.02},
+    "rp_ceiling": {"kind": "float", "lo": 0.7, "hi": 0.95},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.006, "hi": 0.035},
+    "time_stop": {"kind": "float", "lo": 0.05, "hi": 0.5}
+  }
+}

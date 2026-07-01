@@ -1,0 +1,38 @@
+{
+  "name": "ADX rising momentum ignition (5m)",
+  "rationale": "A high ADX combined with a strong very-short-lookback return on the 5m clock catches the ignition bar of a fresh intraday move — the moment order flow becomes one-sided before the wider market has repriced. The counterparty is the passive maker whose resting quotes are swept by the impulse. Edge persists because microstructure impulse precedes the broader repricing by minutes. Distinct from the range-breakout specs: this needs no range context, only raw trend strength plus an impulse. Disconfirmer: exits when ADX drops under the exit floor (impulse faded into chop) ahead of the stop.",
+  "catalyst": "one-sided intraday impulse under a strong-trend reading",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0,
+    "max_hold_days": 0.08
+  },
+  "entry": [
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "adx_floor": {"kind": "float", "lo": 22, "hi": 38},
+    "adx_exit": {"kind": "float", "lo": 14, "hi": 22},
+    "mom_lb": {"kind": "int", "lo": 2, "hi": 8, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.002, "hi": 0.02},
+    "stop": {"kind": "float", "lo": 0.003, "hi": 0.015},
+    "tp": {"kind": "float", "lo": 0.005, "hi": 0.025},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.2}
+  }
+}

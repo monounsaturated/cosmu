@@ -1,0 +1,40 @@
+{
+  "name": "Hourly trend pullback buy (1h)",
+  "rationale": "In a confirmed 1h uptrend (ADX high, positive medium return) a shallow RSI dip is a pullback, not a reversal: momentum traders take profits and value buyers step in at a discount before the trend resumes. The other side is the short-term profit-taker who sells the dip we buy. Edge persists because trend-following flows dominate the ignition but pause to rebalance, creating repeatable dip-buy windows. Disconfirmer: exits when ADX falls below the exit floor (trend has died) rather than a shallow pause.",
+  "catalyst": "shallow oversold pullback inside a confirmed uptrend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_dip"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "mom_lb": {"kind": "int", "lo": 12, "hi": 48, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.04},
+    "rsi_dip": {"kind": "float", "lo": 35, "hi": 50},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.08},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 2}
+  }
+}

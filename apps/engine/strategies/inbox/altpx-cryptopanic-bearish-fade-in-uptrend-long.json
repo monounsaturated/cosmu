@@ -1,0 +1,109 @@
+{
+  "name": "CryptoPanic bearish spike faded inside an uptrend \u2014 buy news-panic dips in a bull (spot long)",
+  "rationale": "MECHANISM (why bearish-vote panic within an uptrend leads a bounce): inside an established uptrend, a spike in CryptoPanic bearish votes marks a transient news-driven panic \u2014 weak hands flushing on a scary headline while the structural trend is intact. Such panics create dips that the trend absorbs; the vote spike leads the reversal because it tags the emotional low as it forms. The distinction from the RSI-paired capitulation spec is the CONFIRMATION: here a POSITIVE long-lookback ret_Nd (trend still up) is the guard that keeps us buying panics in bulls, not knives in bears. Exit when bearish votes subside (panic passed). DISCONFIRMER 1: if the trend filter alone (buy any dip in an uptrend) matches the deflated Sharpe, the bearish-vote spike adds nothing. DISCONFIRMER 2: if the 'panic' is the start of a real trend break, the long-lookback trend floor must keep us out \u2014 if the fit needs the trend floor set to always-true, the guard is inert. Requires CRYPTOPANIC_API_KEY; tier1, low-confidence until validated OOS.",
+  "catalyst": "cryptopanic_bearish_votes spike (news panic) while the medium-term trend (ret_Nd over a long lookback) is still UP.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "cryptopanic_bearish_votes"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bvotes_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "trend_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "trend_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "cryptopanic_bearish_votes"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "bvotes_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bvotes_floor": {
+      "kind": "float",
+      "lo": 5,
+      "hi": 60
+    },
+    "trend_lb": {
+      "kind": "int",
+      "lo": 20,
+      "hi": 80,
+      "step": 1
+    },
+    "trend_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": 0.06
+    },
+    "bvotes_exit": {
+      "kind": "float",
+      "lo": 2,
+      "hi": 30
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

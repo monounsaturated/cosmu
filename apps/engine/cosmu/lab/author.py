@@ -191,8 +191,8 @@ def draft_from_brief(
         spec.universe.venues = [venue]
         spec.universe.asset_classes = [asset_class]
 
-    # 3) horizon hints — the LLM's proposed bar_size (validated to 1h|4h|1d) wins; else detect from the brief.
-    if llm_bar in ("1h", "4h", "1d"):
+    # 3) horizon hints — the LLM's proposed bar_size (validated to the allowed set) wins; else detect from the brief.
+    if llm_bar in ("1m", "5m", "15m", "30m", "1h", "4h", "1d"):
         spec.horizon.bar_size = llm_bar  # type: ignore[assignment]
     elif any(k in text for k in ("intraday", "hourly", "1h", "scalp")):
         spec.horizon.bar_size = "1h"

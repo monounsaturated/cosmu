@@ -1,0 +1,100 @@
+{
+  "name": "Twitter/X sentiment extreme-negative + oversold \u2014 social capitulation reversion (spot long)",
+  "rationale": "MECHANISM (why X sentiment leads a bottom): crypto Twitter/X is where retail conviction forms and breaks in real time. A deeply negative Grok-scored sentiment reading marks a social capitulation \u2014 the crowd is loudly bearish, which historically coincides with washed-out, over-sold positioning that mean-reverts at the swing horizon. The sentiment print (availability == observation time, no look-ahead) captures the mood extreme slightly before price finishes bottoming. RSI oversold is the price confirmation so we fade a genuine washout. Exit when sentiment crosses back up through zero (mood normalizes). DISCONFIRMER 1: if RSI-oversold alone matches the deflated Sharpe, sentiment adds nothing. DISCONFIRMER 2: sentiment can stay negative through a whole downtrend (the crowd is right) \u2014 the tight stop and short hold guard the knife; a wide fitted stop means it is trend, not reversion. Requires XAI_API_KEY; tier1, low-confidence until validated OOS.",
+  "catalyst": "twitter_sentiment is deeply NEGATIVE (X crowd panic) while RSI is oversold \u2014 a social washout to fade.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "twitter_sentiment"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "tw_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "twitter_sentiment"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "tw_exit_up"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tw_floor": {
+      "kind": "float",
+      "lo": -0.7,
+      "hi": -0.1
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 33
+    },
+    "tw_exit_up": {
+      "kind": "float",
+      "lo": -0.1,
+      "hi": 0.3
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

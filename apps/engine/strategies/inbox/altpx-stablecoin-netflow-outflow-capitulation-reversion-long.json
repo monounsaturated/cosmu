@@ -1,0 +1,100 @@
+{
+  "name": "Stablecoin net OUTFLOW extreme + oversold \u2014 dry-powder capitulation reversion (spot long)",
+  "rationale": "MECHANISM (why an outflow extreme leads a bottom): a deeply NEGATIVE stablecoin net flow means capital is actively REDEEMING out of crypto \u2014 the on-ramp running in reverse, a de-risking flush. Like other capitulation signals, the extreme marks the exhaustion point: once the panicked money has redeemed, the marginal seller is gone and price snaps back. The redemption flow leads because it is the mechanical act of leaving (dollars burned) that accompanies the emotional low. We pair the outflow extreme with an RSI oversold price confirmation (a genuine washout) and buy SPOT, exiting when net flow crosses back up (redemptions stop / minting resumes). This is the mirror of the inflow-momentum spec: same feature, opposite tail. DISCONFIRMER 1: if RSI-oversold alone matches the deflated Sharpe, the outflow arm adds nothing. DISCONFIRMER 2: sustained outflows can mark a structural bear (the redemption is right) \u2014 the tight stop / short hold guard the knife. Data knowable T+1; tier1, low-confidence until validated OOS.",
+  "catalyst": "stablecoin_net_flow_usd is deeply NEGATIVE (fiat redeeming out of crypto) while RSI is oversold \u2014 peak capitulation.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "stablecoin_net_flow_usd"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "flow_floor_neg"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "stablecoin_net_flow_usd"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "flow_exit_up"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "flow_floor_neg": {
+      "kind": "float",
+      "lo": -2500000000,
+      "hi": -100000000
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 32
+    },
+    "flow_exit_up": {
+      "kind": "float",
+      "lo": -200000000,
+      "hi": 500000000
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

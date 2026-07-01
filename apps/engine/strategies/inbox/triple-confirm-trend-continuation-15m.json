@@ -1,0 +1,40 @@
+{
+  "name": "Triple-confirm trend continuation (15m)",
+  "rationale": "Demanding trend strength (ADX), momentum (positive return) AND positional breakout (range ceiling) to fire together on 15m is a high-conviction filter: it trades only when all three orthogonal reads of an uptrend agree, so the win rate is high enough to overcome fee drag despite fewer signals. The other side is the fader picking a top against a fully-confirmed trend. Edge persists because triple-confirmed continuation is rare but reliable. Distinct from each single/double family member: it is the full conjunction. Disconfirmer: exits when ADX collapses under the exit floor (the trend the conjunction identified has died) or the stop fires.",
+  "catalyst": "trend, momentum, and breakout all confirmed together",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "adx_floor": {"kind": "float", "lo": 22, "hi": 38},
+    "adx_exit": {"kind": "float", "lo": 14, "hi": 22},
+    "mom_lb": {"kind": "int", "lo": 8, "hi": 32, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.025},
+    "rp_ceiling": {"kind": "float", "lo": 0.75, "hi": 0.95},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

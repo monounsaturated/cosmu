@@ -1,0 +1,39 @@
+{
+  "name": "Deep-washout triple reversion, calm (5m)",
+  "rationale": "The reversion analogue of the triple-confirm trend spec: on 5m, a deeply negative band z-score AND an oversold RSI AND a low realized vol must all agree before buying. Statistical distance, momentum exhaustion, and calm regime together isolate the highest-quality snapback setups and reject the false oversolds that any single filter admits. The other side is the last panic seller into a quiet book. Edge persists because triple-confirmed exhaustion in a calm tape reverts reliably. Distinct from the double-oversold spec by adding the vol regime gate and running at 5m. Disconfirmer: exits when RSI recovers past its exit level, or the stop fires if the washout was a genuine breakdown.",
+  "catalyst": "triple-confirmed oversold in a calm regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.5},
+    "rsi_floor": {"kind": "float", "lo": 15, "hi": 30},
+    "vol_ceiling": {"kind": "float", "lo": 0.02, "hi": 0.07},
+    "rsi_exit": {"kind": "float", "lo": 45, "hi": 60},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "time_stop": {"kind": "float", "lo": 0.05, "hi": 0.5}
+  }
+}

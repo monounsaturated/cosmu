@@ -18,7 +18,7 @@ from cosmu.strategy.spec import (
     UniverseSelector,
 )
 
-BAR_SIZES = ["1h", "4h", "1d"]
+BAR_SIZES = ["5m", "15m", "30m", "1h", "4h", "1d"]
 ENTRY_OPS = ["gt", "gte", "lt", "lte", "cross_up", "cross_down"]
 
 

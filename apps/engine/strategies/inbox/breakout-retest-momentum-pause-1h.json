@@ -1,0 +1,40 @@
+{
+  "name": "Breakout retest — momentum pause (1h)",
+  "rationale": "After a 1h break to a range high with a confirmed trend (ADX high), a SHALLOW short-lookback pullback (a small-magnitude recent return that is negative but not a reversal) marks the retest of the breakout level — the classic re-entry where the breakout holds and continues. Requiring range_position still high ensures the retest has not failed. The other side is the breakout-fader who assumes the pullback is a failure and shorts into a continuation. Edge persists because breakout-retests are a well-known but hard-to-time continuation setup; the multi-condition timing captures it cleanly. Distinct from all specs: it entries on a controlled pause after a breakout, not on the breakout or the trend alone. Disconfirmer: exits when ADX falls under the exit floor (trend lost) or the stop fires if the retest breaks down.",
+  "catalyst": "shallow retest of a confirmed breakout level",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_ceiling"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "pull_lb"}}, "op": "lt", "threshold": {"param": "pull_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_ceiling": {"kind": "float", "lo": 0.65, "hi": 0.9},
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "pull_lb": {"kind": "int", "lo": 2, "hi": 8, "step": 1},
+    "pull_ceiling": {"kind": "float", "lo": -0.01, "hi": 0.0},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.08},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 2}
+  }
+}

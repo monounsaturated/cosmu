@@ -34,7 +34,7 @@ XAI_URL = "https://api.x.ai/v1/chat/completions"  # xAI (Grok) — OpenAI-compat
 # lab/author so the proposal only ever STEERS the existing magic-number-free templates — it cannot invent
 # raw structure or thresholds.
 ALLOWED_TEMPLATES: tuple[str, ...] = ("mean_reversion", "momentum", "carry", "breakout")
-ALLOWED_BAR_SIZES: tuple[str, ...] = ("1h", "4h", "1d")
+ALLOWED_BAR_SIZES: tuple[str, ...] = ("1m", "5m", "15m", "30m", "1h", "4h", "1d")
 
 # A chat seam: (model_id, prompt) -> raw model text. Real default hits OpenRouter; tests inject a fake so CI
 # stays offline. Returning None signals "no model available" (e.g. no key) → deterministic fallback.

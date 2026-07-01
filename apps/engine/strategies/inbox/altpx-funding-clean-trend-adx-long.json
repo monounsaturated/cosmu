@@ -1,0 +1,100 @@
+{
+  "name": "Uncrowded funding + ADX trend \u2014 ride trends NOT built on leverage froth (spot long)",
+  "rationale": "MECHANISM (why funding leads durability): a trend carried on hot positive funding is a crowded, over-leveraged move that unwinds violently on the first wobble (funding is the revealed cost the crowd is paying to chase). A trend where funding stays LOW/uncrowded is powered by spot demand, not borrowed conviction, and historically persists longer with shallower drawdowns. Funding \u2014 a forward-looking carry print \u2014 flags the crowding regime BEFORE the eventual leverage-unwind shows up in price. So we require funding_rate below a fitted ceiling (leverage not frothy) AND adx above a floor (a real trend, not chop), and ride it, exiting when ADX collapses (trend dies). Spot long; funding is read point-in-time as a filter, not traded. DISCONFIRMER 1: if dropping the funding ceiling and keeping only the ADX-trend arm matches the deflated Sharpe, funding adds no orthogonal crowding information and this is just ADX trend-follow. DISCONFIRMER 2: if the fit pushes the funding ceiling so high it is always-true, the filter is inert \u2014 the edge must come from actually EXCLUDING the frothy-funding trends.",
+  "catalyst": "funding_rate sits BELOW a fitted 'not-frothy' ceiling (leverage calm) while ADX confirms a real trend.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "fund_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "fund_ceiling": {
+      "kind": "float",
+      "lo": 5e-05,
+      "hi": 0.0004
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 32
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 20
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

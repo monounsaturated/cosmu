@@ -1,0 +1,109 @@
+{
+  "name": "Social sentiment positive regime + momentum \u2014 mood-confirmed continuation (spot long)",
+  "rationale": "MECHANISM (why social sentiment leads continuation): LunarCrush social sentiment is a broad crowd-mood proxy; a constructive reading reflects sustained positive engagement that keeps incremental buyers flowing before the mood is fully priced. Distinct from the social-sentiment-divergence CONTRARIAN (which fades a mood/price mismatch), this is the CONTINUATION regime: positive mood AND positive ret_Nd, i.e. the mood is confirming, not contradicting, price. Exit when sentiment rolls back below neutral (the mood regime broke). DISCONFIRMER 1: if plain momentum without the sentiment gate matches the deflated Sharpe, sentiment adds nothing. DISCONFIRMER 2 (scale/level trap): LunarCrush sentiment's scale can drift across regimes \u2014 if the fitted floor lands where it is always-true, the filter is inert and the Gate must kill it; the edge must come from actually excluding negative-mood bars. tier1, low-confidence until validated OOS.",
+  "catalyst": "social_sentiment is above a positive threshold (crowd mood constructive) while price momentum is positive.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "social_sentiment"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ss_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "social_sentiment"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "ss_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "ss_floor": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 68
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "ss_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 54
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

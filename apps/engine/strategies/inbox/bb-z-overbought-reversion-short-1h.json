@@ -1,0 +1,38 @@
+{
+  "name": "Bollinger-z overbought reversion (short, 1h)",
+  "rationale": "A strongly POSITIVE 1h band z-score in a calm (low-ADX) regime is a statistically unusual upside dislocation that mean-reverts as the buying impulse exhausts. We short it (direction -1) — the other side is the FOMO buyer paying the extension premium into a stretched band. Edge persists because upside overshoots in range-bound crypto revert just as downside washouts do, and greedy chasing is a durable retail bias. Distinct from the downside washout spec (opposite tail, short side) and from RSI fades (mean-distance z, not momentum). Disconfirmer: exits when z-score reverts toward zero, or the stop (above entry) fires if the dislocation was a genuine breakout.",
+  "catalyst": "statistically unusual upside dislocation in a calm regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_ceiling"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "param_space": {
+    "bbz_ceiling": {"kind": "float", "lo": 1.5, "hi": 3.0},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.07},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 2}
+  }
+}

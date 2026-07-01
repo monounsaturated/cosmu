@@ -1,0 +1,38 @@
+{
+  "name": "Range breakout with momentum confirmation (15m)",
+  "rationale": "A break to the top of the 15m Donchian range confirmed by a positive short return filters the false breakouts that plague naive channel systems: the momentum leg proves real order flow, not a single-print wick. The other side is the range-fader who sells the highs and is forced to cover as the breakout extends. Edge persists because breakouts from consolidations attract trend-followers who add liquidity demand in one direction. Disconfirmer: exits when price falls back inside the range (range_position drops below the exit level), signalling a failed breakout, before the stop.",
+  "catalyst": "range high break confirmed by positive momentum",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_ceiling"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_ceiling": {"kind": "float", "lo": 0.75, "hi": 0.98},
+    "rp_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "mom_lb": {"kind": "int", "lo": 8, "hi": 32, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.025},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "name": "BTC active addresses rising + momentum \u2014 organic-demand-confirmed uptrend (spot long)",
+  "rationale": "MECHANISM (why on-chain activity leads price): unique active Bitcoin addresses per day is a direct read on REAL network demand \u2014 actual wallets transacting, an axis orthogonal to price/funding/sentiment. An uptrend backed by rising organic on-chain usage is demand-driven and durable; an uptrend on flat on-chain activity is a hollow, speculative drift. On-chain adoption tends to build ahead of sustained price appreciation (users arrive, then price follows), giving activity a lead. We require btc_active_addresses above a fitted floor AND positive ret_Nd, and ride it, exiting when activity rolls over. (BTC on-chain is a market-wide read broadcast across the crypto universe.) DISCONFIRMER 1: if plain momentum without the on-chain gate matches the deflated Sharpe, activity adds nothing. DISCONFIRMER 2 (non-stationarity): active-address counts drift over years, so a fitted absolute floor risks being always-true \u2014 the Gate's deflated Sharpe must reject a degenerate level; the edge must be the activity regime, not the trend in the counter. Data knowable T+1. tier1, low-confidence OOS.",
+  "catalyst": "btc_active_addresses is above a fitted floor (network usage elevated) while price momentum is positive.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "addr_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "btc_active_addresses"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "addr_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "addr_floor": {
+      "kind": "float",
+      "lo": 600000,
+      "hi": 1050000
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "addr_exit": {
+      "kind": "float",
+      "lo": 500000,
+      "hi": 850000
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

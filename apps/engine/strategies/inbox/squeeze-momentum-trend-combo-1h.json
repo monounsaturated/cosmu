@@ -1,0 +1,40 @@
+{
+  "name": "Squeeze, momentum, and trend combo (1h)",
+  "rationale": "Combines the three volatility/trend reads that each have edge alone: a prior bandwidth squeeze (compressed energy), a positive medium return (momentum), and a strong ADX (trend confirmed). On 1h this catches a coiled range releasing into a confirmed directional move — the full life-cycle of a breakout in one signal. The other side is the range-scalper positioned for continued compression. Edge persists because the compression-plus-momentum-plus-trend conjunction marks genuine regime transitions, not noise. Distinct from the two-legged squeeze specs by requiring momentum as well. Disconfirmer: exits when ADX falls under the exit floor (the breakout fizzled) or the stop fires.",
+  "catalyst": "squeeze releasing into a confirmed momentum trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbw_floor": {"kind": "float", "lo": 0.015, "hi": 0.06},
+    "mom_lb": {"kind": "int", "lo": 8, "hi": 36, "step": 1},
+    "mom_floor": {"kind": "float", "lo": 0.0, "hi": 0.03},
+    "adx_floor": {"kind": "float", "lo": 18, "hi": 32},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.08},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 2}
+  }
+}
