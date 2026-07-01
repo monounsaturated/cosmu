@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass
 
 from cosmu.knowledge.store import Store
+from cosmu.master.track_equity import real_track_rows, track_starting_capital
 
 
 @dataclass(frozen=True)
@@ -198,6 +199,9 @@ def track_return_series(store: Store, version_id: str, *, limit: int = 500, symb
             (ref, limit),
         )
         if rows:
+            # Drop the funder's seed-collapse rows: interleaved seed marks manufacture a fake down/up round-trip that
+            # inflates realized vol and could trip the anticipatory auto-defund on a healthy track (see track_equity).
+            rows = real_track_rows(rows, track_starting_capital(store, ref))
             return _returns_from_equity([float(r["equity"]) for r in rows])
     return []
 
@@ -217,15 +221,17 @@ def batch_track_return_series(store: Store, version_ids: list[str], *, limit: in
         f"ORDER BY ref_id, ts ASC",
         tuple(version_ids),
     )
-    # Group equity values per ref_id preserving ts-order (ORDER BY above keeps it).
+    # Group the raw snapshot rows per ref_id preserving ts-order (ORDER BY above keeps it).
     from collections import defaultdict
-    grouped: dict[str, list[float]] = defaultdict(list)
+    grouped: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
-        grouped[r["ref_id"]].append(float(r["equity"]))
-    # Apply per-track limit (rare: most tracks have far fewer than 500 snapshots).
+        grouped[r["ref_id"]].append(r)
+    # Apply per-track limit (rare: most tracks have far fewer than 500 snapshots), AFTER dropping the funder's
+    # seed-collapse rows so the same phantom round-trip can't inflate vol / false-trip the batched drift read.
     result: dict[str, list[float]] = {}
     for vid in version_ids:
-        equities = grouped.get(vid, [])
+        kept = real_track_rows(grouped.get(vid, []), track_starting_capital(store, vid))
+        equities = [float(r["equity"]) for r in kept]
         if limit and len(equities) > limit:
             equities = equities[-limit:]
         result[vid] = _returns_from_equity(equities)
