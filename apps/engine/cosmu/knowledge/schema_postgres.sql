@@ -225,6 +225,11 @@ create table if not exists portfolio_snapshots (
   pnl numeric not null,
   drawdown numeric not null
 );
+-- The /leaderboard + /overview reads scan portfolio_snapshots by (scope, ref_id, ts) to pick each track's
+-- latest real mark. Without this the plan Seq-Scans the whole table per lookup (the O(rows²) correlated form
+-- took ≈6s on prod, tripping the web's 5s SSR timeout → the Paper page rendered "engine not connected").
+-- See migrations/2026-07-01_portfolio_snapshots_scope_ref_ts_index.sql.
+create index if not exists idx_portfolio_snapshots_scope_ref_ts on portfolio_snapshots (scope, ref_id, ts);
 
 create table if not exists positions (
   id text primary key,

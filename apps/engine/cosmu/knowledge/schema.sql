@@ -236,6 +236,8 @@ CREATE TABLE IF NOT EXISTS portfolio_snapshots (
   pnl NUMERIC NOT NULL,
   drawdown NUMERIC NOT NULL
 );
+-- Speeds the /leaderboard + /overview per-track "latest real mark" pick (parity with schema_postgres.sql).
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_scope_ref_ts ON portfolio_snapshots (scope, ref_id, ts);
 
 -- Sim/live open positions per strategy track, marked-to-market by master/portfolio.py. avg_price is the
 -- memoryless basis; venue distinguishes sim/testnet/live mechanics. Net-zero rows are kept for audit.

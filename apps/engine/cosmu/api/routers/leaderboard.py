@@ -92,8 +92,36 @@ def leaderboard() -> LeaderboardResponse:
     # We derive it from the marked SNAPSHOT (not tracks.return_pct, which is SEEDED with the backtest number at
     # funding time): a track with no marked snapshot yet has `tr_equity` NULL → paper_return_pct stays null
     # (day-0 truth), so a fresh track can NEVER surface its rosy backtest as forward performance.
+    # The `ps` CTE below = ONE row per version = the latest REAL track snapshot. The master loop writes a
+    # scope='track' snapshot from TWO writers each tick — the paper clock (real fetched marks) AND the funder (a
+    # marks-dict carrying only freshly-funded cells, so an already-held track re-marks to cost basis =
+    # starting_capital + 0 = the SEED). Reading the plain MAX(ts) snapshot would flip tr_equity to the $1,000 seed
+    # whenever a funder tick landed last, so the paper return would sawtooth to zero (same root cause as the
+    # strategy-sheet chart). We rank each track's scope='track' snapshots preferring a REAL mark (equity ≠ seed to
+    # the cent), then the LATEST ts, then MAX(equity) to break a same-ts tie — and keep the top-ranked one (rn=1).
+    # Falls through to a seed row only when EVERY snapshot is at seed (day-0, never marked). Display-only; stored
+    # rows untouched. Computed ONCE as a leading CTE with a window function instead of a per-row correlated
+    # subquery: the old correlated form re-scanned portfolio_snapshots O(rows²) (≈6s on prod, over the web's 5s SSR
+    # timeout → the Paper page rendered "engine not connected"); this scans the table once (~90ms). is_real_mark is
+    # CAST to INTEGER so both SQLite and Postgres can ORDER BY it descending. The query string starts with `WITH`
+    # (no leading SQL comment) so store._is_read_sql keeps routing it through the warm read pool.
     rows = store.rows(
-        f"""
+        f"""WITH ps AS (
+            SELECT ref_id, equity FROM (
+                SELECT p.ref_id, p.equity,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY p.ref_id
+                           ORDER BY CAST(
+                               (tk.starting_capital IS NULL
+                                OR ABS(p.equity - tk.starting_capital) >= 0.005) AS INTEGER
+                           ) DESC, p.ts DESC, p.equity DESC
+                       ) AS rn
+                FROM portfolio_snapshots p
+                LEFT JOIN tracks tk ON tk.strategy_version_id = p.ref_id
+                WHERE p.scope = 'track'
+            ) ranked
+            WHERE rn = 1
+        )
         SELECT sv.id, s.name, sv.status, sv.spec, sv.origin, sv.kind, b.deflated_sharpe, b.oos_return, b.pbo,
                b.oos_start, b.oos_end, b.num_trades AS bt_trades, b.max_dd AS bt_max_dd, ev.funded_at,
                tr.starting_capital, ps.equity AS tr_equity,
@@ -119,36 +147,7 @@ def leaderboard() -> LeaderboardResponse:
             WHERE t1.id = (SELECT t2.id FROM tracks t2 WHERE t2.strategy_version_id = t1.strategy_version_id
                            ORDER BY t2.id DESC LIMIT 1)
         ) tr ON tr.strategy_version_id = sv.id
-        -- ONE row per version from the latest REAL track snapshot. The master loop writes a scope='track' snapshot
-        -- from TWO writers each tick — the paper clock (real fetched marks) AND the funder (a marks-dict carrying
-        -- only freshly-funded cells, so an already-held track re-marks to cost basis = starting_capital + 0 = the
-        -- SEED). Reading the plain MAX(ts) snapshot would flip tr_equity to the $1,000 seed whenever a funder tick
-        -- landed last, so the paper return would sawtooth to zero (same root cause as the strategy-sheet chart). We
-        -- take the latest snapshot whose equity is NOT the seed to the cent (a genuine mark on the seed to the penny
-        -- is vanishingly unlikely), falling back to the overall latest only when EVERY snapshot is at seed (day-0,
-        -- never marked). MAX(equity) still breaks the rare same-ts tie. Display-only; stored rows untouched.
-        LEFT JOIN (
-            SELECT p1.ref_id, MAX(p1.equity) AS equity FROM portfolio_snapshots p1
-            LEFT JOIN tracks tk ON tk.strategy_version_id = p1.ref_id
-            WHERE p1.scope = 'track' AND p1.ts = (
-                SELECT MAX(p2.ts) FROM portfolio_snapshots p2
-                LEFT JOIN tracks tk2 ON tk2.strategy_version_id = p2.ref_id
-                WHERE p2.scope = 'track' AND p2.ref_id = p1.ref_id
-                  -- prefer the latest NON-seed snapshot; only fall through to a seed row when NO real mark exists
-                  AND (
-                    tk2.starting_capital IS NULL
-                    OR ABS(p2.equity - tk2.starting_capital) >= 0.005
-                    OR NOT EXISTS (
-                        SELECT 1 FROM portfolio_snapshots p3
-                        LEFT JOIN tracks tk3 ON tk3.strategy_version_id = p3.ref_id
-                        WHERE p3.scope = 'track' AND p3.ref_id = p2.ref_id
-                          AND tk3.starting_capital IS NOT NULL
-                          AND ABS(p3.equity - tk3.starting_capital) >= 0.005
-                    )
-                  )
-            )
-            GROUP BY p1.ref_id
-        ) ps ON ps.ref_id = sv.id
+        LEFT JOIN ps ON ps.ref_id = sv.id
         -- ACTIVE-FIRST then strength: a funded/active track must NEVER be ranked off the board by a stronger
         -- KILLED one. Killed versions hugely outnumber the live ones (graveyard grows unbounded), so a pure
         -- deflated_sharpe sort + a tight LIMIT silently truncated funded paper tracks below the cut — the

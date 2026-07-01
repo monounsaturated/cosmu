@@ -220,7 +220,7 @@ export function VerdictBadge({ verdict }: { verdict: string | null }) {
 }
 
 export function SymbolsTable({
-  rows,
+  rows: ssrRows,
   symbols,
   venues,
   timeframes = [],
@@ -231,6 +231,7 @@ export function SymbolsTable({
   highlight,
   navigateOnClick,
   totalCombos,
+  loadAll = false,
 }: {
   rows: LabSymbolRow[];
   symbols: string[];
@@ -243,12 +244,78 @@ export function SymbolsTable({
   highlight?: TripletKey;
   navigateOnClick?: boolean; // comparison grid: a row navigates to the sibling triplet fiche; omitted → side panel
   // The engine's TRUE distinct-combo total over the WHOLE set (LeaderboardResponse.total_combos). When the loaded
-  // `rows` are fewer than this (the engine capped the response at its LIMIT), the table draws an EXPLICIT
-  // "showing the first N of M" note so the cap is never a SILENT truncation. Omitted (comparison grid / older
-  // engine) → no note (the loaded set IS the whole set for that view).
+  // rows are fewer than this, the table background-pages the rest (see `loadAll`) and shows an honest
+  // "loading N of M" note. Omitted (comparison grid / older engine) → no note (the loaded set IS the whole set).
   totalCombos?: number;
+  // /strategies passes loadAll=true: the SSR sends only the first page (top-N by return) so the initial paint is
+  // small; the table then background-pages through the engine (?limit=&offset=) until every combo is loaded, so the
+  // in-memory global sort / filter / stable combo numbers / pager span the WHOLE ~48k universe (the operator can
+  // reach the LAST combo). Off (default) for the comparison grid, which is already handed its complete row set.
+  loadAll?: boolean;
 }) {
   const router = useRouter();
+  // Progressive full-universe load. `rows` starts as the SSR first page and GROWS as background pages arrive, so
+  // every derived value below (combo numbers, filters, sort, pager) recomputes over the accumulating set. When
+  // loadAll is off the prop is the whole set and no fetching happens.
+  const [rows, setRows] = useState<LabSymbolRow[]>(ssrRows);
+  const [loadingAll, setLoadingAll] = useState<boolean>(false);
+  // Guards the background pager against a re-run for the SAME SSR page: React StrictMode (dev) double-invokes
+  // effects, and a naive effect would then double-fetch + double-append (duplicate combos). We remember which
+  // ssrRows identity we've begun paging for and skip if it's already started; a genuinely NEW ssrRows resets it.
+  const loadStartedFor = useRef<LabSymbolRow[] | null>(null);
+  // Re-seed if the SSR rows change identity (route re-render): reset the loaded set to the fresh first page and
+  // clear the pager guard so the new page loads from scratch. Stable ssrRows (the normal case) → no reset.
+  useEffect(() => {
+    if (loadStartedFor.current !== null && loadStartedFor.current !== ssrRows) {
+      setRows(ssrRows);
+      loadStartedFor.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ssrRows]);
+  useEffect(() => {
+    if (!loadAll || typeof totalCombos !== "number") return;
+    // Already have everything (track-only rows can nudge the count past the cell total)? Nothing to do.
+    if (ssrRows.length >= totalCombos) return;
+    // Start paging AT MOST once per SSR page identity (StrictMode-safe — see loadStartedFor above).
+    if (loadStartedFor.current === ssrRows) return;
+    loadStartedFor.current = ssrRows;
+    let cancelled = false;
+    const PAGE = 5000; // ~0.7s/page on the engine; ~10 requests cover the whole universe
+    setLoadingAll(true);
+    (async () => {
+      // Page from the SSR CELL offset onward. The engine's `offset` indexes the ranked CELL stream ONLY — the
+      // track-only (armed, cell-less) synthetic rows ride on page 0 exclusively and are NOT part of that stream, so
+      // the resume offset must count CELL rows (symbol !== "") in the SSR response, not its total length. Otherwise
+      // the track-only rows would inflate the offset and SKIP that many real cells. Track-only rows come back only at
+      // offset 0, so background pages (offset ≥ cell count) never re-fetch or double them.
+      let offset = ssrRows.filter((r) => r.symbol !== "").length;
+      try {
+        // Guard against an unbounded loop: cap the number of pages generously above the real page count.
+        for (let guard = 0; guard < 200 && !cancelled; guard++) {
+          const resp = await engineGetJson<{ rows: LabSymbolRow[] }>(
+            `/lab/symbols?limit=${PAGE}&offset=${offset}`,
+            60_000,
+          );
+          const batch = resp?.rows ?? [];
+          if (cancelled || batch.length === 0) break;
+          setRows((prev) => prev.concat(batch));
+          offset += batch.length;
+          if (batch.length < PAGE) break; // last (short) page
+        }
+      } catch {
+        // A page fetch failed (transient) — stop paging and keep what loaded. The honest "loaded N of M" note stays,
+        // never a white screen; the operator can reload to resume. No fabricated rows.
+      } finally {
+        if (!cancelled) setLoadingAll(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on the SSR identity + total only — the effect appends via functional setState and must NOT re-run when
+    // `rows` grows (that would restart paging every batch). loadStartedFor makes it idempotent per SSR page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadAll, totalCombos, ssrRows]);
   // Deep-link: ?v=<version_id> opens that strategy's sheet on load; optional ?symbol=&venue= PIN the exact
   // (algo × symbol × venue) combo so the matching row is selected + highlighted + scrolled into view (and its
   // page jumped to). A link from /paper / any dashboard lands on the precise cell, not just the algorithm.
@@ -604,15 +671,24 @@ export function SymbolsTable({
         </p>
       ) : null}
 
-      {/* EXPLICIT truncation note — never a silent cap. When the engine's TRUE combo total exceeds the loaded rows
-          (the response was LIMIT-capped), say so loudly with the exact numbers, so "1,000 rows" is never mistaken for
-          the whole universe. loadedCombos counts DISTINCT (algo × asset × venue) triplets in the loaded rows (the same
-          unit as totalCombos), mirroring the page ribbon. Hidden when everything fits. */}
+      {/* HONEST load note — never a silent cap. While the table is background-paging the full universe it shows the
+          live "loading N of M" progress; once every combo is in memory the note disappears (the pager then reaches
+          the last combo). If a page fetch fails mid-load, loadingAll clears but loadedComboCount < totalCombos, so the
+          static note stays and tells the operator to reload to resume. loadedComboCount counts DISTINCT (algo × asset
+          × venue) triplets loaded so far (same unit as totalCombos), mirroring the ribbon. */}
       {typeof totalCombos === "number" && totalCombos > loadedComboCount ? (
         <p className="quiet" style={{ fontSize: 11, margin: "0 4px 10px", color: "var(--gold)" }}>
-          Showing the first {loadedComboCount.toLocaleString("en-US")} of {totalCombos.toLocaleString("en-US")} combos
-          (the newest cells). Narrow with the Strategies / Symbols / Venues / Status filters to reach the rest — no row
-          is dropped silently.
+          {loadingAll ? (
+            <>
+              Loading all combos — {loadedComboCount.toLocaleString("en-US")} of {totalCombos.toLocaleString("en-US")}
+              {" "}so far. Sort, filter and paging work on what&apos;s loaded; the rest stream in.
+            </>
+          ) : (
+            <>
+              Loaded {loadedComboCount.toLocaleString("en-US")} of {totalCombos.toLocaleString("en-US")} combos.
+              Reload to fetch the remainder — no row is dropped silently.
+            </>
+          )}
         </p>
       ) : null}
 

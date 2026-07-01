@@ -80,7 +80,7 @@ def lab_author(request: AuthorRequest) -> AuthorResponse:
 # `bs.oos_window_days` is the CELL's OWN validation window (the annualizer denominator) — selected only when the
 # live schema carries the column (see _cell_select); pre-migration prod falls back to the parent backtest window.
 _CELL_SELECT_BASE = (
-    "SELECT bs.strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
+    "SELECT bs.id AS cell_id, bs.strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
     "bs.symbol, bs.venue_id, bs.return_pct, bs.sharpe, bs.max_drawdown, bs.trades, bs.verdict, "
     "{cell_window}{cell_timeframe}b.oos_return AS pooled_return, b.oos_start, b.oos_end, bs.created_at, "
     # Has this cell's VERSION genuinely traded on paper? A real is_paper=1 fill in the executions ledger — the SAME
@@ -242,19 +242,26 @@ def _track_only_row(r: dict) -> LabSymbolRow:
 def lab_symbols(symbol: str | None = None, venue: str | None = None,
                 verdict: str | None = None, version_id: str | None = None,
                 timeframe: str | None = None,
-                limit: int = 500) -> LabSymbolsResponse:
+                limit: int = 500, offset: int = 0) -> LabSymbolsResponse:
     """Per-symbol backtest cells — one row per (strategy × symbol × venue) TRIPLET, the granular truth the pooled
     leaderboard averages away. ONE row per combo (algo × asset × venue): a strategy's many versions on the SAME
-    triplet collapse to the LATEST (see `_dedup_cells`), never the best-return one. Outlier-sorted (highest
-    standalone return first) so the operator can SNIPE, with the honest verdict carried. Optional filters narrow by
-    symbol / venue / verdict / version_id. Pure read; never a funding signal.
+    triplet collapse to the LATEST, never the best-return one (the dedup runs in the DB). Outlier-sorted (highest
+    standalone return first) so the operator can SNIPE. Optional filters narrow by symbol / venue / verdict /
+    version_id. Pure read; never a funding signal.
+
+    SERVER-SIDE PAGINATION (`limit` + `offset`): the combo universe is ~48k, so the whole set must be REACHABLE, not
+    just a cap's worth. The screener page pulls successive `offset` windows until `total_combos` is covered, so the
+    operator can page to the LAST combo. The dedup + return-desc rank happen ONCE in the DB over a LEAN projection
+    (only the columns the window + ranking need), and only the requested page's cells are hydrated with the full
+    (name / paper-fill / pooled) joins — so a deep page (offset 46,000) is as cheap as the first (~0.4s), never the
+    5–9s a whole-universe hydrate costs on the throttled Free DB. `total_combos` is the honest denominator.
 
     TRACK-ONLY strategies (a paper/live track but NO backtest_symbols cell — armed via the documented-cohort /
     arm_fleet path, e.g. DAA / ADM / TSMOM / funding-carry) are ALSO surfaced — one synthetic row each, carrying the
     version's REAL status (so the badge reads Paper/Live, not "New") with metrics NULL/"—" (nothing was computed per
-    symbol). They are appended AFTER the computed cells (no return to rank by), only when no symbol/venue/verdict
-    filter is active (a cell-less row has no symbol/venue/verdict to match), and only for strategies NOT already
-    represented by a cell-backed row (no double-counting a strategy that has both cells and a track)."""
+    symbol). They ride on the FIRST page only (offset == 0) — they have no return to rank into the ranked cell
+    stream, and must appear exactly once — and only when no symbol/venue/verdict filter is active, and only for
+    strategies NOT already represented by a cell-backed row (no double-counting a strategy with both cells + a track)."""
     conds: list[str] = []
     params: list[object] = []
     if symbol:
@@ -271,17 +278,52 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
         params.append(version_id)
     # The timeframe filter (LOT-C 4th axis) is applied ONLY when the column is live — a pre-migration prod table has no
     # `timeframe` column, so the predicate would raise UndefinedColumn. Absent → the filter is silently a no-op.
-    if timeframe and backtest_symbols_has_timeframe(store):
+    has_tf = backtest_symbols_has_timeframe(store)
+    if timeframe and has_tf:
         conds.append("bs.timeframe = ?")
         params.append(timeframe)
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
     # Track-only rows only make sense unfiltered (or filtered to a specific version_id) — a symbol/venue/verdict/
     # timeframe filter is asking for cells, which a track-only (uncomputed) version has none of.
     include_track_only = not (symbol or venue or verdict or timeframe)
+    cap = max(1, limit)
+    off = max(0, offset)
+    # ── The RANKED PAGE of combo cell-ids ────────────────────────────────────────────────────────────────────────
+    # LEAN dedup: partition ONLY the columns the window + return-rank need (no name join, no per-row EXISTS) so the
+    # window over ~49k rows is ~0.2s, not the 5–25s the wide projection cost. Dedup key = (algo × symbol × venue ×
+    # timeframe), matching the old `_dedup_cells`, keeping the LATEST version's cell (created_at DESC, version_id DESC
+    # tie-break). Then rank the survivors by return DESC and take the `limit`/`offset` window. Only cell-ids come back
+    # here; the page is hydrated below. The timeframe axis joins the key only when the column is live.
+    tf_part = ", COALESCE(bs.timeframe, '')" if has_tf else ""
+    # The WHERE filters reference only bs.* columns (symbol / venue_id / verdict / strategy_version_id / timeframe),
+    # all present in this lean CTE (which joins only backtest_symbols + strategy_versions), so `where` slots in as-is.
+    page_sql = (
+        "WITH dd AS ("
+        "  SELECT bs.id AS cell_id, bs.return_pct,"
+        "         ROW_NUMBER() OVER ("
+        "           PARTITION BY sv.strategy_id, bs.symbol, COALESCE(bs.venue_id, '')" + tf_part +
+        "           ORDER BY bs.created_at DESC, bs.strategy_version_id DESC"
+        "         ) AS _rn"
+        "  FROM backtest_symbols bs"
+        "  JOIN strategy_versions sv ON sv.id = bs.strategy_version_id"
+        + where +
+        ") SELECT cell_id FROM dd WHERE _rn = 1 ORDER BY return_pct DESC, cell_id LIMIT ? OFFSET ?"
+    )
     with store.reading():
-        # Fetch latest-first so the per-triplet dedup below keeps the most recent version's cell, then we
-        # re-sort by return for the outlier ranking. A generous cap pre-dedup; the response is trimmed to `limit`.
-        rows = store.rows(f"{_cell_select()}{where} ORDER BY bs.created_at DESC LIMIT 5000", tuple(params))
+        page = store.rows(page_sql, (*params, cap, off))
+        order = {r["cell_id"]: i for i, r in enumerate(page)}
+        cell_ids = list(order.keys())
+        # Hydrate ONLY this page's cells with the full projection (name / paper-fill / pooled / windows), then re-sort
+        # to the page's return-desc order (the IN-list is unordered). Chunk the IN-list at 900 ids/query so a large
+        # page never trips SQLite's SQLITE_MAX_VARIABLE_NUMBER (999 on older builds); Postgres has no such limit but
+        # the chunking is harmless there. A page is ≤ `limit` rows, so this is a handful of small joins.
+        rows: list[dict] = []
+        cell_sql = _cell_select()
+        for i in range(0, len(cell_ids), 900):
+            chunk = cell_ids[i : i + 900]
+            ph = ", ".join("?" for _ in chunk)
+            rows.extend(store.rows(f"{cell_sql} WHERE bs.id IN ({ph})", tuple(chunk)))
+        rows.sort(key=lambda r: order.get(r["cell_id"], 1 << 30))
         symbols = [r["symbol"] for r in store.rows("SELECT DISTINCT symbol FROM backtest_symbols ORDER BY symbol")]
         venues = [
             r["venue_id"]
@@ -295,27 +337,27 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
                 r["timeframe"]
                 for r in store.rows("SELECT DISTINCT timeframe FROM backtest_symbols WHERE timeframe IS NOT NULL ORDER BY timeframe")
             ]
-            if backtest_symbols_has_timeframe(store)
+            if has_tf
             else []
         )
+        # Track-only (armed, cell-less) strategies ride on the FIRST page only — they have no return to rank into the
+        # per-page cell stream and must appear exactly once across the paged set. Fetch them only when offset == 0.
         track_only: list[dict] = []
-        if include_track_only:
+        if include_track_only and off == 0:
             vsql = _TRACK_ONLY_SELECT
             vparams: tuple = ()
             if version_id:
                 vsql += " AND sv.id = ?"
                 vparams = (version_id,)
             track_only = store.rows(f"{vsql} ORDER BY sv.created_at DESC LIMIT 5000", vparams)
+    # Belt-and-suspenders: the DB already returns one row per combo, but keep the Python dedup as a no-op safety over
+    # the small page (it also normalises the pre-migration cell_timeframe-absent case). The page is already sorted.
     deduped = _dedup_cells(rows)
-    deduped.sort(key=lambda r: _metric(r["return_pct"]), reverse=True)
-    cap = max(1, limit)
-    # The track-only (armed, cell-less) strategies — the FUNDED forward-test bots (DAA / VAA / ADM / … and any
-    # live track). These are the operationally critical rows (real capital at work), so they must NEVER be squeezed
-    # out by a fat cell universe: RESERVE their space first and trim the ranked CELLS to fit, instead of appending
-    # them only "if room is left" (which silently dropped every funded Paper bot whenever the killed/screened cell
-    # count alone filled the cap — the grid then showed zero Paper rows while the ribbon still counted them as
-    # 'Trading'). Skip any strategy ALREADY represented by a cell-backed row so a strategy with both cells and a
-    # track isn't doubled with a redundant synthetic row.
+    # The track-only (armed, cell-less) strategies — the FUNDED forward-test bots (DAA / VAA / ADM / … and any live
+    # track). They are the operationally critical rows (real capital at work), so on the first page RESERVE their
+    # space first and trim the ranked CELLS to fit (never squeeze a funded Paper bot out behind a fat cell universe).
+    # Skip any strategy ALREADY represented by a cell-backed row on this page so a strategy with both cells + a track
+    # isn't doubled with a redundant synthetic row.
     seen_strategies = {r["strategy_id"] for r in deduped}
     fresh_tracks = [r for r in track_only if r["strategy_id"] not in seen_strategies] if track_only else []
     track_rows = [_track_only_row(r) for r in fresh_tracks[:cap]]
