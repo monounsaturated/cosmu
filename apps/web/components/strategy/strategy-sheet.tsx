@@ -153,6 +153,15 @@ function TopCard({
   // Max-drawdown box — the per-cell value when a cell is focused, else the headline backtest's (fractions → %).
   const maxDdPct = cell ? cell.max_drawdown * 100 : headlineBt ? headlineBt.max_dd * 100 : null;
 
+  // Backtest-stage KPI swap: when the track carries NO marks yet (value_usd null) but a backtest exists, the
+  // three empty money boxes (Value/P&L/Fees) are replaced by the real BACKTEST performance so a screened bot
+  // shows its numbers instead of a wall of "—". oos_return / oos_return_annualized are FRACTIONS.
+  const asBacktest = strategy.value_usd == null && headlineBt != null;
+  const btNetPct = headlineBt ? headlineBt.oos_return * 100 : null;
+  const btAnnPct = headlineBt && headlineBt.oos_return_annualized != null ? headlineBt.oos_return_annualized * 100 : null;
+  const btDsr = headlineBt ? headlineBt.deflated_sharpe : null;
+  const btNetTone = btNetPct == null || btNetPct === 0 ? "" : btNetPct > 0 ? "up" : "dn";
+
   // P&L box — the % INLINE next to the dollar amount on the SAME line (C-v3 spec). Neutral at exactly $0.
   const pnlClass = paperPnl === null || paperPnl === 0 ? "" : paperPnl > 0 ? "up" : "dn";
   const pnlDollar =
@@ -200,34 +209,62 @@ function TopCard({
         </div>
       ) : null}
 
-      {/* Four COMPACT number boxes: Value · P&L (inline %) · Max drawdown · Fees. Invested is NOT here — it's
-          in the Gate tab. Reuses the existing .money-band / .mb-cell chrome. */}
+      {/* Four COMPACT number boxes. PAPER/LIVE (marked): Value · P&L (inline %) · Max drawdown · Fees. BACKTEST
+          (no marks yet): the empty Value/P&L/Fees boxes are replaced by the real backtest performance —
+          Net return · Return/yr · Max drawdown · DSR — so a screened bot shows its numbers, not a wall of "—".
+          Max drawdown stays the 3rd box in both. Same figures the chart's stat row + Stats tab carry; nothing
+          fabricated. Reuses the existing .money-band / .mb-cell chrome. */}
       <div className="money-band sheet-nums">
-        <div className="mb-cell">
-          <div className="mb-label">Value</div>
-          <div className="mb-val">{strategy.value_usd != null ? formatUsd(strategy.value_usd, 2) : "—"}</div>
-          <div className="mb-sub">{strategy.value_usd != null ? "marked now" : "not marked yet"}</div>
-        </div>
-        <div className="mb-cell">
-          <div className="mb-label">P&amp;L</div>
-          <div className={cn("mb-val", pnlClass)}>
-            {pnlDollar}
-            {pnlPctStr !== null ? <span className={cn("mb-pnl-pct", pnlClass)}> ({pnlPctStr})</span> : null}
-          </div>
-          <div className="mb-sub">
-            {paperPnl == null ? "not marked yet" : ageDays !== null ? `${ageDays}d · realized + unrealized` : "realized + unrealized"}
-          </div>
-        </div>
+        {asBacktest ? (
+          <>
+            <div className="mb-cell">
+              <div className="mb-label">Net return</div>
+              <div className={cn("mb-val", btNetTone)}>{btNetPct == null ? "—" : `${btNetPct >= 0 ? "+" : ""}${btNetPct.toFixed(1)}%`}</div>
+              <div className="mb-sub">backtest OOS</div>
+            </div>
+            <div className="mb-cell">
+              <div className="mb-label">Return / yr</div>
+              <div className={cn("mb-val", btNetTone)}>{btAnnPct == null ? "—" : `${btAnnPct >= 0 ? "+" : ""}${btAnnPct.toFixed(1)}%`}</div>
+              <div className="mb-sub">annualized (CAGR)</div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mb-cell">
+              <div className="mb-label">Value</div>
+              <div className="mb-val">{strategy.value_usd != null ? formatUsd(strategy.value_usd, 2) : "—"}</div>
+              <div className="mb-sub">{strategy.value_usd != null ? "marked now" : "not marked yet"}</div>
+            </div>
+            <div className="mb-cell">
+              <div className="mb-label">P&amp;L</div>
+              <div className={cn("mb-val", pnlClass)}>
+                {pnlDollar}
+                {pnlPctStr !== null ? <span className={cn("mb-pnl-pct", pnlClass)}> ({pnlPctStr})</span> : null}
+              </div>
+              <div className="mb-sub">
+                {paperPnl == null ? "not marked yet" : ageDays !== null ? `${ageDays}d · realized + unrealized` : "realized + unrealized"}
+              </div>
+            </div>
+          </>
+        )}
         <div className="mb-cell">
           <div className="mb-label">Max drawdown</div>
           <div className="mb-val">{maxDdPct !== null ? `−${maxDdPct.toFixed(1)}%` : "—"}</div>
           <div className="mb-sub">{maxDdPct !== null ? "backtest worst drop" : "no backtest yet"}</div>
         </div>
-        <div className="mb-cell">
-          <div className="mb-label">Fees</div>
-          <div className="mb-val">{totalFee != null ? formatUsd(totalFee, 2) : "—"}</div>
-          <div className="mb-sub">{totalFee != null ? (stage === "paper" ? "off simulated fills" : "off real fills") : "no fills yet"}</div>
-        </div>
+        {asBacktest ? (
+          <div className="mb-cell">
+            <div className="mb-label">DSR</div>
+            <div className={cn("mb-val", btDsr != null && btDsr >= 0.95 ? "up" : "")}>{btDsr != null ? btDsr.toFixed(2) : "—"}</div>
+            <div className="mb-sub">deflated Sharpe · gate ≥ 0.95</div>
+          </div>
+        ) : (
+          <div className="mb-cell">
+            <div className="mb-label">Fees</div>
+            <div className="mb-val">{totalFee != null ? formatUsd(totalFee, 2) : "—"}</div>
+            <div className="mb-sub">{totalFee != null ? (stage === "paper" ? "off simulated fills" : "off real fills") : "no fills yet"}</div>
+          </div>
+        )}
       </div>
     </div>
   );

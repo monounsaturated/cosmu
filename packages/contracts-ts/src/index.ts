@@ -879,6 +879,7 @@ export interface LeaderboardRow {
   pnl_usd?: number | null;
   signal_family: string;
   signal_family_label: string;
+  spark?: number[] | null;
   status: string;
   timeframe: string;
   track_return_pct: number;

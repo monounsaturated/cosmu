@@ -164,6 +164,42 @@ def test_leaderboard_equity_prefers_latest_non_seed_snapshot(tmp_path, monkeypat
     assert abs(row["paper_return_pct"] - 6.146) < 0.01
 
 
+# ── BUG 2 integration: the /overview hero curve + headline are seed-safe (the Paper page reader) ─────────────────
+
+
+def test_overview_hero_curve_and_headline_are_seed_safe(tmp_path, monkeypatch):
+    """The Paper hero reads /overview's aggregate curve. On a FUNDER tick the aggregate `pnl` collapses to ~0 so
+    value = allocated + 0 = the allocated seed baseline; interleaved with real marks the raw series sawtooths AND
+    the raw last snapshot mis-reads the headline. /overview must carry the last real mark (honest_track_equity_series,
+    seed = allocated) for BOTH the curve and pnl_net — it was the third reader missing the fix the sheet + LB have."""
+    client, store = _client(tmp_path, monkeypatch, "overview")
+    sid = store.insert("strategies", {"name": "agg", "thesis": "t", "origin": "test", "created_at": utcnow()})
+    vid = store.insert("strategy_versions", {
+        "strategy_id": sid, "spec": {"name": "agg"}, "generated_code": "", "code_hash": "h", "params": {},
+        "origin": "test", "status": "paper", "kind": "quant", "created_at": utcnow(),
+    })
+    # allocated = Σ starting_capital of forward-stage tracks = $10,000 (the seed baseline the funder collapses to).
+    store.insert("tracks", {
+        "strategy_version_id": vid, "symbol": None, "venue_id": None,
+        "starting_capital": "10000", "equity": "10024.75", "return_pct": "0.2475", "updated_at": utcnow(),
+    })
+    # Aggregate pnl sawtooth: real marks (0.02, 20.08, 24.75) interleaved with the funder's pnl=0 collapse, ENDING
+    # on a collapse so the raw last snapshot (pnl 0) would mis-read the headline as $0 P&L.
+    for i, pnl in enumerate(["0.02", "20.08", "0.00", "24.75", "0.00", "24.75", "0.00"]):
+        eq = 10000.0 + float(pnl)
+        store.insert("portfolio_snapshots", {
+            "scope": "aggregate", "ref_id": "global", "ts": f"2026-06-{8 + i:02d}T00:00:00+00:00",
+            "equity": f"{eq:.2f}", "cash": "0.00", "positions_value": f"{eq:.2f}", "pnl": pnl, "drawdown": "0.0000",
+        })
+    data = client.get("/overview").json()
+    curve = [round(p["value"], 2) for p in data["equity_curve"]]
+    # No point snaps back to the $10,000 allocated floor after a real mark — the sawtooth is gone.
+    assert curve == [10000.02, 10020.08, 10020.08, 10024.75, 10024.75, 10024.75, 10024.75]
+    assert 10000.00 not in curve
+    # The headline reads the last REAL mark's P&L (+$24.75), not the $0 the funder-collapse last row stored.
+    assert round(data["pnl_net"], 2) == 24.75
+
+
 # ── BUG 1: the engine serves the TRUE whole-set denominators, independent of the row limit ──────────────────────
 
 

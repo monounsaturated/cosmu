@@ -114,6 +114,11 @@ class LeaderboardRow(BaseModel):
     # Max drawdown from the STRONGEST backtest (peak-to-trough fraction, 0..1). Surfaced so the Strategies
     # table can show the real worst-case drop alongside the OOS return and DSR — honest "—" when no backtest.
     max_dd: float | None = None
+    # DISPLAY-ONLY row sparkline — a compact, downsampled (~24-pt) honest paper-equity trajectory so each Paper /
+    # Bots row shows its SHAPE at a glance. Built from the SAME seed-collapse carry-forward the sheet + hero use
+    # (honest_track_equity_series), populated ONLY for rows with real paper fills; `null` otherwise (an un-traded
+    # row must never render a fabricated trend). Never a gate, never on the money path.
+    spark: list[float] | None = None
     # Faceted taxonomy (cosmu/strategy/taxonomy.py), all DERIVED from the spec — never hand-tagged. The
     # Strategies surface filters on these real fields. `signal_family` is the primary filter (from the
     # named features the spec references); the rest are orthogonal facets.

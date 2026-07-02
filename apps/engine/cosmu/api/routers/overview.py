@@ -5,11 +5,28 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from cosmu.adapters.exec.binance import resolve_mode
-from cosmu.api._shared import _portfolio, settings, store
+from cosmu.api._shared import _portfolio, honest_track_equity_series, settings, store
 from cosmu.api.models import CostSlice, OverviewResponse, Point, PortfolioSummaryResponse
 from cosmu.knowledge.lifecycle_status import FORWARD_STATUSES, sql_in_list
 
 router = APIRouter()
+
+
+def _honest_aggregate_curve(allocated: float, limit: int = 120) -> list[tuple[str, float]]:
+    """The honest aggregate paper-equity series for the Overview hero + the ribbon — the two readers of the
+    `scope='aggregate'` snapshots. Each point is rebuilt as `allocated + pnl` (NO pooled wallet; the stored
+    `equity` column is a bankroll artifact we ignore), then a FUNDER seed-collapse tick — where already-held
+    cells re-marked to cost basis drop the aggregate `pnl` to ~0 so `value ≈ allocated`, the seed baseline —
+    is carried to the last real mark by `honest_track_equity_series` (seed = allocated). This is the SAME rule
+    the strategy sheet + leaderboard already apply; /overview was the third, un-fixed reader (the raw series
+    drew a sawtooth that snapped back to the allocated floor). Robust path if a cohort ever accrues realized
+    P&L at collapse points (so `value != allocated` to the cent): sum the per-track honest series aligned by
+    `ts` (each track detects its own $1k seed) — see `strategies.py::_forward_track_series`."""
+    rows = list(reversed(store.rows(
+        f"SELECT ts, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT {int(limit)}"
+    )))
+    raw = [{"ts": r["ts"], "equity": allocated + float(r["pnl"])} for r in rows]
+    return honest_track_equity_series(raw, allocated)
 
 
 @router.get("/overview", response_model=OverviewResponse)
@@ -20,13 +37,6 @@ def overview() -> OverviewResponse:
     All four reads share ONE autocommit Postgres connection (store.reading()) — without this each store.row()
     opens + closes a separate psycopg2 connection (~1s RTT × 5 ≈ 5–7s, over the 5s frontend budget)."""
     with store.reading():
-        # MOST-RECENT 120 aggregate snapshots, returned oldest→newest for the chart. `ORDER BY ts DESC LIMIT 120`
-        # grabs the freshest window (the older `ORDER BY ts ASC LIMIT 120` pinned the hero to the OLDEST 120 points
-        # — frozen at the first ~5 days forever as snapshots accrued past it); reversing back to chronological order
-        # leaves the curve drawn left→old, right→new AND keeps `snapshots[-1]` the latest point (pnl_net / equity below).
-        snapshots = list(reversed(
-            store.rows("SELECT ts, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT 120")
-        ))
         # NO POOLED WALLET (locked invariant): the honest Paper equity is the Σ of per-strategy ALLOCATED capital
         # (each track funds itself with sim_track_capital, ~$1k), NOT the $100k sim_bankroll. The stored aggregate
         # snapshot's `equity` column = bankroll + P&L (a pooled-wallet artifact), so we IGNORE it and rebuild the
@@ -39,8 +49,12 @@ def overview() -> OverviewResponse:
             f"WHERE sv.status IN {sql_in_list(FORWARD_STATUSES)}"
         )
         allocated = float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0
-        curve = [Point(ts=row["ts"], value=allocated + float(row["pnl"])) for row in snapshots]
-        pnl_net = float(snapshots[-1]["pnl"]) if snapshots else 0.0
+        # HONEST hero curve (the sawtooth fix): funder seed-collapse ticks are carried to the last real mark, and
+        # the headline (`pnl_net`/`equity`) is derived from the last HONEST point — not the raw last snapshot,
+        # which could itself be a funder tick that flickers the headline to the collapsed value. Oldest→newest.
+        honest = _honest_aggregate_curve(allocated)
+        curve = [Point(ts=ts, value=val) for ts, val in honest]
+        pnl_net = (honest[-1][1] - allocated) if honest else 0.0
         equity = allocated + pnl_net  # honest book = allocated capital + P&L; never the bankroll
         cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
         costs = [CostSlice(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
@@ -63,16 +77,19 @@ def portfolio_summary() -> PortfolioSummaryResponse:
     `live_free` is BUDGET HEADROOM (global_cap − invested), NOT exchange cash; `live_equity` is None until a
     live portfolio snapshot exists (none does yet). One connection for all reads (remote-Postgres latency)."""
     with store.reading():
-        snap_row = store.row("SELECT pnl FROM portfolio_snapshots WHERE scope = 'aggregate' ORDER BY ts DESC LIMIT 1")
-        sim_pnl_net = float(snap_row["pnl"]) if snap_row else 0.0
         # sim_equity = Σ per-strategy ALLOCATED capital + P&L (NO pooled wallet; never the sim_bankroll). Mirrors
         # the /overview read-out so the ribbon and the Paper hero agree on the real allocated book, not $100k.
+        # sim_pnl_net comes from the HONEST aggregate series (last real mark), NOT the raw latest snapshot — a
+        # funder seed-collapse tick as the newest row would otherwise flicker the ribbon's SIM P&L to ~0.
         alloc_row = store.row(
             "SELECT COALESCE(SUM(CAST(t.starting_capital AS REAL)), 0) AS allocated "
             "FROM tracks t JOIN strategy_versions sv ON sv.id = t.strategy_version_id "
             f"WHERE sv.status IN {sql_in_list(FORWARD_STATUSES)}"
         )
-        sim_equity = (float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0) + sim_pnl_net
+        allocated = float(alloc_row["allocated"]) if alloc_row and alloc_row["allocated"] is not None else 0.0
+        honest = _honest_aggregate_curve(allocated)
+        sim_pnl_net = (honest[-1][1] - allocated) if honest else 0.0
+        sim_equity = allocated + sim_pnl_net
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
         caps_row = store.row("SELECT max_notional FROM live_caps WHERE id = 'global'")
         live_global_cap = float(caps_row["max_notional"]) if caps_row else float(settings.live.global_live_cap)

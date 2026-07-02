@@ -4678,6 +4678,20 @@
             "title": "Signal Family Label",
             "type": "string"
           },
+          "spark": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spark"
+          },
           "status": {
             "title": "Status",
             "type": "string"

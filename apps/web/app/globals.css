@@ -1320,3 +1320,24 @@ select.search-input{cursor:pointer}
   .sheet-nums{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .kv-tbl td.k{width:50%}
 }
+
+/* ── Paper fix+polish: chart cost-basis baseline · row sparkline · donut center total · P&L inline % ── */
+/* Equity-chart baseline: a faint dashed reference line at the cost-basis value (charts/equity-chart.tsx folds it
+   into the y-domain so a small move reads in context). Label sits just above the line — a rising paper book keeps
+   the baseline low, so above stays in view. */
+.eq-base{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--border-s);opacity:.6;pointer-events:none}
+.eq-base-lbl{position:absolute;right:3px;top:-13px;font-size:9px;color:var(--quiet);background:color-mix(in oklab,var(--surf2) 82%,transparent);padding:0 3px;border-radius:3px;line-height:1.4}
+
+/* Row sparkline (charts/sparkline.tsx) — a tiny axis-less trend inside a positions row. */
+.sparkline{display:block}
+.mini-tbl td.pos-trend{width:92px;text-align:right}
+.mini-tbl td.pos-trend .sparkline{display:inline-block;vertical-align:middle;opacity:.9}
+
+/* Capital-allocation donut center total (paper/wallet-alloc.tsx). */
+.wdonut-wrap{position:relative;width:118px;height:118px;flex-shrink:0}
+.wdonut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;pointer-events:none}
+.wdonut-total{font-size:13px;font-weight:700;letter-spacing:-.02em;color:var(--fg)}
+.wdonut-cap{font-size:8px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--quiet)}
+
+/* P&L KPI inline % beside the dollar value (paper/sim-summary.tsx) — inherits the up/dn tone from .kpi-val. */
+.kpi-pct{font-size:13px;font-weight:500;margin-left:6px;font-variant-numeric:tabular-nums}
