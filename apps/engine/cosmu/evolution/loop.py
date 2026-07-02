@@ -242,6 +242,13 @@ class FarmLoop:
         # the ranker never sees its own cohort's labels). Cold-start => trained=False + heuristic ordering.
         survival = load_survival_model(self.store)
 
+        # LEARNED FEATURE PRIORS — feed the exploit lane the flywheel's own memory so the search COMPOUNDS instead
+        # of re-searching blind noise: each feature → its best surviving-skill grade (curator.skill_feature_priors).
+        # Best-effort + offline/empty-safe (mirrors _record_flywheel / _novelty_ok): a priors failure or an empty
+        # skill set yields {} → mutate_exploit falls back to its unweighted default (byte-identical to before). A
+        # priors hiccup must NEVER break the cohort the deterministic Gate alone judges.
+        feature_priors = self._feature_priors()
+
         lanes = {"seed": 0, "chat": 0, "exploit": 0, "explore": 0, "pine": 0}
         # version_id → its spec, so the self-improvement flywheel (graveyard memory + Curator skills) can record
         # each death/win and distill survivors AFTER the cohort transaction commits (no nested writers).
@@ -349,7 +356,18 @@ class FarmLoop:
 
         for _ in range(exploit_n):
             parent = rng.choice(parents)
-            child = mutator.mutate_exploit(parent.cand.spec, rng)
+            # STEER the mutation with the flywheel's learned signal (this is the COMPOUNDING — the tick no longer
+            # re-searches blind noise): feature_priors bias WHICH feature a swap/add_condition draws, and the
+            # PARENT's own survival score biases refine-vs-escape (high → tune the winner in place; low → change its
+            # shape to escape a losing basin). We pass `feature_priors or None` so an EMPTY skill set (cold start)
+            # falls back to the mutator's unweighted feature draw; the parent's survival score always steers the
+            # operator choice (the survival model returns a real heuristic score even cold, so the search adapts
+            # from tick one). mutate_exploit's default (both None) stays byte-identical for direct callers/tests.
+            child = mutator.mutate_exploit(
+                parent.cand.spec, rng,
+                feature_priors=(feature_priors or None),
+                survival=parent.survival_score,
+            )
             cand = Candidate(spec=child.spec, origin="mutation", lane="exploit", operator=child.operator, rationale=child.rationale)
             if not self._novelty_ok(cand.spec, live_specs):
                 invalid += 1
@@ -576,6 +594,18 @@ class FarmLoop:
         if not admitted or self._novelty_ok(cand.spec, admitted):
             return "ok"
         return "skip" if cand.authored_by == "agent" else "flag"
+
+    def _feature_priors(self) -> dict[str, float]:
+        """The flywheel's learned FEATURE priors (feature → best surviving-skill grade) for the exploit lane to
+        steer feature selection with. Best-effort + offline/empty-safe (imported lazily so the loop stays importable
+        even if the curator changes): an error, an absent skills table (pre-migration prod), or an empty skill set
+        all return {} — the mutator then falls back to its unweighted default. NEVER raises into the cohort."""
+        try:
+            from cosmu.lab.curator import skill_feature_priors
+
+            return skill_feature_priors(self.store) or {}
+        except Exception:  # noqa: BLE001 — priors are advisory steering, never the Gate; a hiccup must not break the cohort
+            return {}
 
     def _novelty_ok(self, spec: StrategySpec, live_specs: list[StrategySpec]) -> bool:
         """Quick novelty gate: reject specs too similar to recent dead-ends or the live population."""

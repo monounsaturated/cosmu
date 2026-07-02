@@ -42,17 +42,46 @@ def _registry_feature_names(spec: StrategySpec) -> list[str]:
     return [f.name for f in features_for(spec.universe.asset_classes)]
 
 
+# The learned-prior exploration FLOOR: every candidate feature keeps at least this share of the weight even if its
+# prior is 0, so a feature the flywheel has never scored can never be sampled with probability 0 (the search must
+# stay able to escape the basin the priors describe). Small relative to a strong prior (≈1.0) but strictly non-zero.
+_PRIOR_FLOOR = 0.05
+
+
+def _prior_weighted_choice(candidates: list[str], rng: random.Random, feature_priors: dict[str, float]) -> str:
+    """Draw one feature from `candidates` with probability ∝ (floor + its learned prior). A feature the priors have
+    never seen still carries `_PRIOR_FLOOR` weight (exploration floor: no feature is ever probability 0). Consumes
+    EXACTLY ONE rng draw (rng.random()) so a caller's rng-draw accounting stays stable. `candidates` is assumed
+    non-empty (callers guard that). Deterministic for a fixed rng + priors."""
+    weights = [_PRIOR_FLOOR + max(0.0, float(feature_priors.get(name, 0.0))) for name in candidates]
+    total = sum(weights)
+    if total <= 0:  # defensive — the floor makes this unreachable, but never divide by zero
+        return candidates[rng.randrange(len(candidates))]
+    target = rng.random() * total
+    upto = 0.0
+    for name, w in zip(candidates, weights):
+        upto += w
+        if upto >= target:
+            return name
+    return candidates[-1]
+
+
 # ---- exploit-lane operators (single-variable by default for clean attribution) ----
 
 
-def swap_feature(spec: StrategySpec, rng: random.Random) -> Child:
+def swap_feature(spec: StrategySpec, rng: random.Random, *, feature_priors: dict[str, float] | None = None) -> Child:
     child = spec.model_copy(deep=True)
     pool = _registry_feature_names(child)
     if child.entry and pool:
         idx = rng.randrange(len(child.entry))
         current = child.entry[idx].feature.name
         candidates = [n for n in pool if n != current] or pool
-        new_feature = rng.choice(candidates)
+        # DEFAULT (feature_priors is None): an unweighted rng.choice — byte-identical to the pre-prior behaviour.
+        # STEERED: draw the replacement feature ∝ its learned prior (with the exploration floor); a single rng draw
+        # either way, so the child count / downstream rng stream is unchanged only in the None path.
+        new_feature = (
+            rng.choice(candidates) if feature_priors is None else _prior_weighted_choice(candidates, rng, feature_priors)
+        )
         child.entry[idx].feature = FeatureRef(name=new_feature, lookback=child.entry[idx].feature.lookback)
         rationale = f"swap entry feature {current}→{new_feature}"
     else:
@@ -125,13 +154,15 @@ def change_horizon(spec: StrategySpec, rng: random.Random) -> Child:
     return Child(spec=child, operator="change_horizon", rationale="shift holding horizon / bar size")
 
 
-def add_condition(spec: StrategySpec, rng: random.Random) -> Child:
+def add_condition(spec: StrategySpec, rng: random.Random, *, feature_priors: dict[str, float] | None = None) -> Child:
     child = spec.model_copy(deep=True)
     pool = _registry_feature_names(child)
     used = {c.feature.name for c in child.entry}
     candidates = [n for n in pool if n not in used] or pool
     if candidates:
-        feature = rng.choice(candidates)
+        # DEFAULT: unweighted rng.choice (byte-identical). STEERED: draw the confluence feature ∝ its learned prior
+        # (floor-guarded) — one rng draw either way.
+        feature = rng.choice(candidates) if feature_priors is None else _prior_weighted_choice(candidates, rng, feature_priors)
         pname = _param_name(f"th_{feature}", set(child.param_space))
         child.entry.append(
             Condition(feature=FeatureRef(name=feature), op=rng.choice(["gt", "lt"]), threshold=ParamRef(param=pname))
@@ -181,10 +212,54 @@ EXPLOIT_OPERATORS = [
     add_condition,
 ]
 
+# The operators that SELECT a feature from the registry — the only ones the learned feature_priors can steer.
+_FEATURE_OPERATORS = (swap_feature, add_condition)
 
-def mutate_exploit(parent: StrategySpec, rng: random.Random) -> Child:
-    """Single-operator child for clean causal attribution."""
-    op = rng.choice(EXPLOIT_OPERATORS)
+# "Refine" operators keep the parent's structure and tune it in place (a high-survival parent is worth refining);
+# "escape" operators change the parent's shape — feature/horizon/confluence (a low-survival parent is worth
+# escaping from). Ordering matches EXPLOIT_OPERATORS above; each op is in exactly one bucket.
+_REFINE_OPERATORS = (widen_param, narrow_param, tighten_risk, loosen_risk)
+_ESCAPE_OPERATORS = (swap_feature, change_horizon, add_condition)
+
+
+def _survival_biased_operator(rng: random.Random, survival: float):  # noqa: ANN202 — returns one operator callable
+    """Pick an exploit operator, biased by the parent's survival score in [0,1]. High survival → weight the REFINE
+    operators (tune the winner in place); low survival → weight the ESCAPE operators (change its shape to break out
+    of a losing basin). Never zeroes either bucket (both stay reachable). Only reached when survival is not None, so
+    the None default keeps its original single rng.choice draw. Consumes one rng draw (rng.random())."""
+    s = max(0.0, min(1.0, float(survival)))
+    # refine share rises with survival (0.3 → 0.7 across s∈[0,1]); both buckets always keep weight.
+    refine_share = 0.3 + 0.4 * s
+    bucket = _REFINE_OPERATORS if rng.random() < refine_share else _ESCAPE_OPERATORS
+    return bucket[rng.randrange(len(bucket))]
+
+
+def mutate_exploit(
+    parent: StrategySpec,
+    rng: random.Random,
+    *,
+    feature_priors: dict[str, float] | None = None,
+    survival: float | None = None,
+) -> Child:
+    """Single-operator child for clean causal attribution.
+
+    Two OPTIONAL steering inputs let the autonomous search COMPOUND instead of re-searching blind noise:
+      - `feature_priors` (feature → learned grade): when given, feature-selecting operators draw features ∝ their
+        prior, with an exploration floor so no feature is ever probability 0.
+      - `survival` (the parent's edge-persistence score in [0,1]): when given, biases the operator choice — a
+        high-survival parent is REFINED in place, a low-survival one is ESCAPED from (its shape is changed).
+
+    INVARIANT: when BOTH steering inputs are None this is BYTE-IDENTICAL to the pre-steering behaviour — the same
+    `rng.choice(EXPLOIT_OPERATORS)` draw, then the operator called with no priors → the exact same output. The
+    compounding paths only activate when the caller passes real learned signal (offline/cold-start → None → old)."""
+    if survival is None:
+        op = rng.choice(EXPLOIT_OPERATORS)
+    else:
+        op = _survival_biased_operator(rng, survival)
+    # Only the feature-selecting operators can consume priors; passing the kwarg to them (and NOT to the others)
+    # keeps every other operator's signature + rng stream untouched.
+    if feature_priors is not None and op in _FEATURE_OPERATORS:
+        return op(parent, rng, feature_priors=feature_priors)
     return op(parent, rng)
 
 

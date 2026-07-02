@@ -214,7 +214,12 @@ def tick() -> int:
     paper clock + cohort re-arm share this slot). Discovery (author → deterministic gate/FDR → fund SIM
     survivors) + advance the paper clock (mark held positions + re-arm the documented equity cohort), and refresh
     vendor-cost budgets once/day. SIM only by invariant — NEVER an order. The standalone gate_sweep / paper_mark /
-    arm_fleet / cost_refresh functions stay for on-demand `modal run`."""
+    arm_fleet / cost_refresh functions stay for on-demand `modal run`.
+
+    HEAVY-slot rider (no 6th Modal schedule): the discovery `_run(["cosmu.master.scheduler"])` below now ALSO
+    schedules the differentiated funding/microstructure cohorts ≈once/day (scheduler._run_heavy_cohorts, gated on
+    cycle_count % _HEAVY_EVERY) and seeds each tick's cohort from the epoch-hour (time-varied), so the search
+    compounds instead of re-running the same seed=7 blind walk. Rides THIS slot — Modal Free's 5-schedule cap is full."""
     from datetime import UTC, datetime
 
     rc = _run(["cosmu.master.scheduler"])   # discovery: author → gate/FDR → fund SIM survivors
