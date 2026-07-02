@@ -293,6 +293,15 @@ _STORE_PROVIDER_OF = {
     # net buy/sell pressure (free, no key). Both per equity ticker — deliberately ABSENT from _STORE_MARKET_WIDE.
     "jet_colocation": "jet_colocation",
     "insider_buy_ratio": "sec_edgar",
+    # --- Hyperliquid LONG-TAIL POSITIONING (next-data-axis #1, 2026-06-28; forward-hoarded, PIT-immutable) ---
+    # The two DERIVED features the registry exposes (crowding-extreme z + OI-normalized long-liq density). They are
+    # MATERIALIZED point-in-time from the raw hoarded snapshots into the SAME provider bucket on each hoard pass
+    # (data/sources/hyperliquid_positioning.py::materialize_features), so the correlation scan + gate read them via
+    # the normal per-bar as-of join. Per-symbol (per coin), NOT market-wide. tier1, data-starved until the hoard
+    # accrues (~2-3 wks forward). The raw metrics (hl_open_interest / hl_funding_rate / hl_net_position_usd / …)
+    # live under the same provider but are NOT registry features — they are inputs to the two derived ones.
+    "hl_crowding_extreme_z": "hyperliquid_positioning",
+    "hl_long_liq_density_norm": "hyperliquid_positioning",
 }
 _STORE_MARKET_WIDE = frozenset({
     "fear_greed", "pm_risk_on", "macro_regime", "putcall_ratio", "vix_level", "fed_funds_rate",

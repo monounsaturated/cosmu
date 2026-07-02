@@ -524,6 +524,31 @@ def _backfill_exotic_controls(store: Any, symbols: list[str], providers: Any, *,
     return out
 
 
+def _fetch_hl_positioning(store: Any, symbols: list[str], providers: Any) -> int:
+    """ONE forward-hoard capture of Hyperliquid long-tail positioning + materialize the two derived features.
+    Keyless aggregate poll (OI/funding/mark) + optional per-account watchlist fold (HL_POSITIONING_ACCOUNTS env).
+    Returns the count of DERIVED feature-points written this pass (0 in early passes until the trailing z-window
+    fills — an honest 'not enough forward history yet', never a fabricated value). Composes the source module's
+    own primitives (no re-implementation here, mirroring every other catalog fetch)."""
+    del symbols  # HL positioning uses its OWN long-tail coin basket, not the bar-universe symbols
+    import os
+
+    from cosmu.data.sources.hyperliquid_positioning import (
+        DEFAULT_LONGTAIL_COINS,
+        PositioningPoller,
+        hoard_once,
+        materialize_features,
+    )
+
+    accounts = tuple(
+        a.strip() for a in os.environ.get("HL_POSITIONING_ACCOUNTS", "").split(",") if a.strip()
+    )
+    poller = PositioningPoller(coins=DEFAULT_LONGTAIL_COINS, accounts=accounts)
+    hoard_once(store, poller=poller)  # raw snapshot append (the forward hoard)
+    feat = materialize_features(store, coins=DEFAULT_LONGTAIL_COINS)  # derive the two registry features
+    return sum(feat.values())
+
+
 # --------------------------------------------------------------------------- the catalog
 
 
@@ -577,6 +602,7 @@ def managed_sources() -> dict[str, SourceSpec]:
         # --- OSINT corporate-intelligence (free, no key; PER-SYMBOL/equity; PIT-honest; degrade to [] offline) ---
         SourceSpec("jet_colocation", "alt", ("jet_colocation",), _fetch_jet_colocation, note="OSINT corporate-jet co-location intensity per equity ticker (free OpenSky; per-symbol; PIT T+1; low-confidence). Co-location with another tracked public company's jet = deal-proximity proxy."),
         SourceSpec("sec_edgar", "alt", ("insider_buy_ratio",), _fetch_sec_edgar, note="SEC EDGAR Form 4 net insider buy/sell pressure per equity ticker (free, no key; per-symbol; PIT via filing acceptanceDateTime; low-confidence)."),
+        SourceSpec("hyperliquid_positioning", "alt", ("hl_crowding_extreme_z", "hl_long_liq_density_norm"), _fetch_hl_positioning, note="Hyperliquid long-tail perp positioning (next-data-axis #1, 2026-06-28): FORWARD-HOARDED keyless on-chain crowding/liq-density per coin. PIT-immutable (ts == available_at == capture instant). DATA-STARVED at birth (depth accrues only forward, ~2-3 wks); per-coin; the two metrics are DERIVED from the raw hoard each pass."),
         # DORMANT (no-op fetch): disabled-but-banked metrics kept ROUTED so old rows stay readable and the
         # catalog↔store-routing lock-step holds, but NEVER re-ingested (mislabeled / phantom-duplicate honesty
         # fixes — see _DORMANT_METRICS). per_symbol=False so coverage uses the canonical store route, not a fan-out.

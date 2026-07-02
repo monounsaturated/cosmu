@@ -157,6 +157,28 @@ def ingest() -> int:
 
 
 @app.function(**_LIGHT)
+def hl_positioning() -> int:
+    """Hyperliquid LONG-TAIL POSITIONING forward-hoard (next-data-axis #1, 2026-06-28). ONE keyless `/info`
+    capture of the long-tail perp basket's OI/funding/mark + optional per-account watchlist fold, then
+    materialize the crowding-extreme z + OI-normalized long-liq-density features. Append-only, PIT-immutable.
+
+    CADENCE: native HL history is shallow, so the binding cost is TIME — the denser this runs, the faster the
+    Gate can rule (~2-3 wks). The thesis wants ~10-min snapshots; Modal Free caps schedules at 5 and all are
+    taken, so by DEFAULT this rides the hourly `ingest` cron (cosmu.research.loop._hoard_hl_positioning, hourly =
+    the keyless-window refresh rate). To get the denser ~10-min cadence, the operator either (a) frees a schedule
+    slot and uncomments the @app.function(schedule=modal.Cron("*/10 * * * *"), **_LIGHT) decorator below, or
+    (b) runs this on-demand. The forward hoard works either way — hourly already starts the clock TODAY."""
+    return _run(["cosmu.data.sources.hyperliquid_positioning"])
+
+
+# NOT-DEPLOYED denser cadence (operator opt-in): to capture every ~10 min (the thesis cadence), free a Modal
+# schedule slot and replace the @app.function(**_LIGHT) above with the decorator below, then redeploy. Until
+# then the hourly `ingest` cron carries the forward hoard (one capture/hour) — the clock is already running.
+#   @app.function(schedule=modal.Cron("*/10 * * * *"), **_LIGHT)
+#   def hl_positioning() -> int: ...
+
+
+@app.function(**_LIGHT)
 def paper_mark() -> int:
     """Re-mark held SIM positions against the latest real close (paper clock, paper-only, no orders).
     Scheduled via the combined `tick` (Modal Free = 5 schedules max); also runnable on-demand."""
@@ -419,6 +441,7 @@ def main(job: str = "gate_sweep", module: str = "", args: str = "", apply: bool 
         "tick": tick,
         "gate_sweep": gate_sweep,
         "ingest": ingest,
+        "hl_positioning": hl_positioning,
         "paper_mark": paper_mark,
         "forward_mark": paper_mark,  # legacy alias (pre-2026-06-11 vocabulary) — same job
         "arm_fleet": arm_fleet,
