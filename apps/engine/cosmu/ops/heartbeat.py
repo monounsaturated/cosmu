@@ -34,14 +34,20 @@ from typing import Any
 from cosmu.config.settings import Settings
 from cosmu.knowledge.store import Store
 from cosmu.master.scheduler import autonomy_status
-from cosmu.notify.slack import SlackNotifier
+from cosmu.notify.slack import SlackNotifier, record_watchdog_pulse
 
 # Staleness ceilings in HOURS. None of these gate money; they only decide when to page.
 # `exec` shares the daily paper-clock cadence (paper_step runs alongside paper_mark), so 30h ~= 2x a daily run —
 # a single missed run won't page, a dark executor will. `backup` rides the same 2x-daily logic: the dump fires
 # at 05:00 UTC daily, so 30h means a single missed run is tolerated but a dark backup job pages.
+#
+# `watchdog` is the heartbeat's SELF-signal: run() writes a watchdog_pulse after every HEALTHY check, so check()
+# reads MAX(ts) of kind='watchdog_pulse' to report on the heartbeat's OWN last run. The heartbeat cron is hourly,
+# so a 2h ceiling (2x cadence) means one missed run is tolerated but a DARK HEARTBEAT (the cron itself stopped —
+# the SPOF that let the fleet die silently for 10 days) trips it. The external prober (.github fleet-watchdog)
+# reads this same age from OUTSIDE Modal, so the absence of a pulse pages even when the whole engine is dark.
 DEFAULT_THRESHOLDS_H: dict[str, float] = {
-    "ingest": 3.0, "tick": 9.0, "mark": 30.0, "exec": 30.0, "backup": 30.0,
+    "ingest": 3.0, "tick": 9.0, "mark": 30.0, "exec": 30.0, "backup": 30.0, "watchdog": 2.0,
 }
 
 
@@ -103,12 +109,16 @@ def check(
     stepped = store.row(
         "SELECT MAX(ts) AS t FROM events WHERE kind IN ('paper_stepped', 'forward_entry')"
     )
+    # The heartbeat's SELF-signal: run() writes a watchdog_pulse after every healthy check, so the MAX(ts) here
+    # is the timestamp of the heartbeat's OWN last successful run. Stale ⇒ the heartbeat cron itself stopped.
+    pulse = store.row("SELECT MAX(ts) AS t FROM events WHERE kind = 'watchdog_pulse'")
     ages: dict[str, float | None] = {
         "ingest": _age_hours(canary.get("t") if canary else None, now),
         "tick": _age_hours(autonomy_status(store).last_tick_at, now),
         "mark": _age_hours(marked.get("t") if marked else None, now),
         "exec": _age_hours(stepped.get("t") if stepped else None, now),
         "backup": _newest_backup_age_h(settings, now),  # R2 freshness — the only non-DB signal
+        "watchdog": _age_hours(pulse.get("t") if pulse else None, now),  # the heartbeat's own last run
     }
     # A signal is stale if it has NEVER fired (None) or exceeds its ceiling.
     stale = {k: ages[k] for k in ages if ages[k] is None or ages[k] > th[k]}
@@ -118,11 +128,23 @@ def check(
 
 
 def run(store: Store | None = None, *, notifier: SlackNotifier | None = None, now: datetime | None = None) -> int:
-    """Probe the fleet; Slack-alert (once) if anything is stale. Returns 0 when healthy, 1 when stale — so the
-    Modal run itself goes RED on a dark fleet (a second signal alongside the Slack ping)."""
+    """Probe the fleet; Slack-PAGE (once) if anything is stale. Returns 0 when healthy, 1 when stale — so the
+    Modal run itself goes RED on a dark fleet (a second signal alongside the Slack page). On a HEALTHY run it
+    records a watchdog_pulse (the heartbeat's own aliveness beacon) so the external prober can detect the
+    heartbeat cron ITSELF dying by the pulse going stale."""
     store = store or Store(Settings())
-    notifier = notifier or SlackNotifier.from_env()
+    # A dark fleet is a master-WARNING → route through the PAGE tier (slack_webhook_url_page, falling back to
+    # slack_webhook_url). A test-injected notifier overrides this (the recorder seam is preserved).
+    notifier = notifier or SlackNotifier.tiered(store.settings, "page")
     report = check(store, now=now)
+    # Beat the watchdog on EVERY successful probe. check() returning at all proves the heartbeat cron RAN and
+    # reached the DB — which is precisely what the pulse records ("alive AND can read/write the store"). Writing
+    # it unconditionally (not only on a fully-green fleet) keeps the `watchdog` signal ORTHOGONAL to the other
+    # signals: it goes stale ONLY when the cron itself stops, never merely because some other job is dark — so it
+    # cleanly isolates "the heartbeat itself died" (the SPOF) from "a watched job died". Also bootstraps the very
+    # first pulse (a cold DB has no pulse, so the watchdog signal would otherwise never self-heal). Best-effort
+    # inside record_watchdog_pulse — a store hiccup never turns the run red.
+    record_watchdog_pulse(store)
     if report["ok"]:
         print(f"[heartbeat] OK ages_h={report['ages_h']}")
         return 0
@@ -137,7 +159,7 @@ def run(store: Store | None = None, *, notifier: SlackNotifier | None = None, no
         + "\n".join(lines)
         + f"\n(thresholds_h={report['thresholds_h']}). Check the Modal app `cosmu-engine`."
     )
-    print(f"[heartbeat] STALE {report['stale']} — alerted Slack")
+    print(f"[heartbeat] STALE {report['stale']} — paged Slack")
     return 1
 
 

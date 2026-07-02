@@ -17,6 +17,16 @@ _THRESHOLDS = [
 ]
 
 
+def _tier_webhook(settings: Any, severity: str) -> str | None:
+    """Resolve the Slack webhook for a severity via the shared aviation two-tier router. 'page' →
+    slack_webhook_url_page (falling back to slack_webhook_url); 'log' → slack_webhook_url. Reused so the budget
+    100%-crossed (critical) and account-EXHAUSTED events reach the PAGE bus while info/warn/stride stay on LOG.
+    Deferred import so this module stays importable without pulling notify at module load."""
+    from cosmu.notify.slack import SlackNotifier
+
+    return SlackNotifier.tiered(settings, "page" if severity == "page" else "log")._url
+
+
 @dataclass
 class BudgetAlert:
     vendor: str
@@ -72,12 +82,11 @@ def emit_alerts(
     *,
     _http_post: Callable[[str, bytes], Any] | None = None,
 ) -> None:
-    """Post budget alerts to Slack and write open recommendation rows. Best-effort."""
+    """Post budget alerts to Slack and write open recommendation rows. Best-effort. The 100%-crossed (critical)
+    tier routes to the aviation PAGE bus; info/warn stay on the LOG bus (per-alert routing inside _post_slack)."""
     if not alerts:
         return
-    webhook_url = getattr(settings, "slack_webhook_url", None)
-    if webhook_url:
-        _post_slack(alerts, webhook_url, _http_post=_http_post)
+    _post_slack(alerts, settings, _http_post=_http_post)
     if store is not None:
         _write_recommendations(alerts, store)
 
@@ -107,13 +116,21 @@ def post_slack_text(
 
 def _post_slack(
     alerts: list[BudgetAlert],
-    webhook_url: str,
+    settings: Any,
     *,
     _http_post: Callable[[str, bytes], Any] | None = None,
 ) -> None:
     http_post = _http_post or _live_slack_post
     icon = {"info": ":information_source:", "warning": ":warning:", "critical": ":rotating_light:"}
+    # Resolve both buses once. A 100%-crossed (critical) budget alert is a "wake me up" event → PAGE bus;
+    # info/warn are routine → LOG bus. When no page bus is configured, tiered() falls the page tier back to the
+    # log webhook, so a single-channel operator still gets every alert on their one channel.
+    log_url = _tier_webhook(settings, "log")
+    page_url = _tier_webhook(settings, "page")
     for alert in alerts:
+        webhook_url = page_url if alert.level == "critical" else log_url
+        if not webhook_url:
+            continue
         pct_str = f"{int(alert.threshold_pct * 100)}%"
         text = (
             f"{icon.get(alert.level, ':moneybag:')} *Cosmu budget alert — {alert.vendor}*\n"
@@ -186,7 +203,10 @@ def check_account_strides(store: Any, settings: Any, *, _http_post: Callable[[st
         return []
     from cosmu.costs.accounts import bump_notified_floor, list_accounts
 
-    webhook_url = getattr(settings, "slack_webhook_url", None)
+    # Two buses: an EXHAUSTED account (failing over) is a "wake me up" event → PAGE; a mid-run stride crossing
+    # is routine → LOG. tiered() falls the page tier back to the log webhook for a single-channel operator.
+    log_url = _tier_webhook(settings, "log")
+    page_url = _tier_webhook(settings, "page")
     emitted: list[AccountStrideAlert] = []
     try:
         open_bodies = {r["body"] for r in store.rows("SELECT body FROM recommendations WHERE state = 'open'")}
@@ -214,6 +234,7 @@ def check_account_strides(store: Any, settings: Any, *, _http_post: Callable[[st
             f"(${floor * SPEND_STRIDE_USD:.0f} stride). "
             + ("Pool advancing to the next account." if exhausted else "On track; will fail over near exhaustion.")
         )
+        webhook_url = page_url if exhausted else log_url  # EXHAUSTED → PAGE bus; stride crossing → LOG bus
         if webhook_url:
             post_slack_text(webhook_url, text, _http_post=_http_post)
 

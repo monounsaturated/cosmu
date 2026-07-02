@@ -73,12 +73,15 @@ app.add_middleware(
 
 
 # API AUTH — the shared-secret gate docs/KEYS.md documents. When API_SECRET_KEY is set (production), every
-# route except /health (the platform healthcheck) requires a matching `x-api-key` header — the Next.js proxy
-# injects it server-side, so the secret never reaches a browser and nobody else can drive the control plane
-# (toggle live, launch, override forward tests). Unset (local dev / tests) → the gate is a no-op, exactly as
-# documented. Reads settings through the _shared seam at REQUEST time so the test-injection path (writes to
-# cosmu.api.app.settings fan out below) governs auth too. OPTIONS passes: CORS preflights carry no headers.
-_AUTH_EXEMPT_PATHS = frozenset({"/health"})
+# route except /health + /health/fleet (the platform healthcheck and the external dead-man prober) requires a
+# matching `x-api-key` header — the Next.js proxy injects it server-side, so the secret never reaches a browser
+# and nobody else can drive the control plane (toggle live, launch, override forward tests). /health/fleet is
+# exempt so the OFF-Modal .github fleet-watchdog can curl it from a GitHub runner (a different failure domain)
+# with no engine secret; it exposes only fleet-freshness ages, never a secret or a money control. Unset (local
+# dev / tests) → the gate is a no-op, exactly as documented. Reads settings through the _shared seam at REQUEST
+# time so the test-injection path (writes to cosmu.api.app.settings fan out below) governs auth too. OPTIONS
+# passes: CORS preflights carry no headers.
+_AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/fleet"})
 
 
 @app.middleware("http")
