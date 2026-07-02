@@ -55,7 +55,7 @@ url = url.replace(':6543/', ':5432/')           # DDL port
 | Table | Description |
 |-------|-------------|
 | `backtests` | One row per gate run: DSR, PBO, holdout, per-symbol JSON, cost assumptions |
-| `backtest_symbols` | Per-(backtest × symbol) breakdown — the honest, non-pooled visibility row |
+| `backtest_symbols` | Per-(backtest × symbol) breakdown — the honest, non-pooled visibility row. `equity_curve_json` is a **recomputable cache** (the API rebuilds it from spec/bars on view) pruned to a ~1-day keep-window by `cosmu.data.backtest_curve_retention` so it stops TOASTing to hundreds of MB; the scalars (return/sharpe/dd/verdict) are permanent |
 | `gate_verdicts` | Every gate pass/fail logged for the UI |
 | `trials` | Global multiple-testing ledger (trial count for BH-FDR deflation) |
 | `holdout_ledger` | One-shot holdout: each version may be evaluated exactly once |

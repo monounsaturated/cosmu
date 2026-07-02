@@ -360,17 +360,22 @@ def prune_alt_data(apply: bool = False, hot_window_days: int = 90) -> int:
     return _run(["cosmu.data.retention", *args])
 
 
-@app.function(schedule=modal.Cron("0 6 * * 1"), **_HEAVY)
+@app.function(schedule=modal.Cron("0 6 * * *"), **_HEAVY)
 def cold_tier_maintenance() -> int:
-    """WEEKLY (Mon 06:00 UTC), off the Railway box / M2: mirror new alt_data → the DuckLake lake, THEN gated-prune
-    the aged-out (>90d) Postgres rows + VACUUM. The prune deletes ONLY rows the lake is confirmed to hold
-    (funding_rate exempt), so no row is ever lost; if the mirror fails, the prune is skipped. Keeps Postgres at
-    the ~90d hot window and the lake complete. Disable with `modal app stop cosmu-engine` or by removing this
-    schedule + redeploying."""
-    rc = _run(["cosmu.data.age_out"])  # mirror first
-    if rc != 0:
-        return rc  # never prune if the mirror failed — the prune's gate would refuse anyway, but bail early
-    return _run(["cosmu.data.retention", "--apply"])  # gated: lake-completeness checked inside before any DELETE
+    """DAILY (06:00 UTC), off the Railway box / M2 — keeps Postgres inside its Supabase-Free quota. Two prunes:
+      1. alt_data: mirror new rows → the DuckLake lake, THEN gated-prune the aged-out (>90d) Postgres rows + VACUUM.
+         The prune deletes ONLY rows the lake is confirmed to hold (funding_rate exempt), so no row is ever lost;
+         if the mirror fails the prune is skipped.
+      2. backtest_symbols.equity_curve_json: null the aged per-cell curve cache — the finder re-writes it on EVERY
+         screen and it TOASTs to hundreds of MB within weeks. It is recomputable (the API rebuilds it on view), so
+         nulling is loss-free; scalars stay. Independent of the lake, so it always runs.
+    Was WEEKLY — daily so a deep-backfill spike can't sit over quota for days. Disable with `modal app stop
+    cosmu-engine` or by removing this schedule + redeploying."""
+    curve_rc = _run(["cosmu.data.backtest_curve_retention", "--apply"])  # recomputable cache; independent of the lake
+    mirror_rc = _run(["cosmu.data.age_out"])  # mirror new alt_data → lake
+    # only prune Postgres alt_data when the mirror succeeded (else the gate would refuse the delete anyway)
+    prune_rc = _run(["cosmu.data.retention", "--apply"]) if mirror_rc == 0 else mirror_rc
+    return curve_rc or prune_rc
 
 
 @app.function(schedule=modal.Cron("0 5 * * *"), **_HEAVY)
