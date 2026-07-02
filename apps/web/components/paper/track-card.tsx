@@ -13,6 +13,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { LeaderboardRow } from "@cosmu/contracts-ts";
 import { EmptyState } from "@/components/ui/honest-state";
+import { Sparkline } from "@/components/charts/sparkline";
 import { cn, formatPct, formatUsd, formatVenue, numOrNull } from "@/lib/utils";
 
 const LIM = 4;
@@ -86,6 +87,7 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                 <th className="r">Value</th>
                 <th className="r">P&amp;L</th>
                 <th className="r">P&amp;L %</th>
+                <th className="r">Trend</th>
               </tr>
             </thead>
             <tbody>
@@ -112,6 +114,7 @@ export function PaperPositions({ rows }: { rows: LeaderboardRow[] }) {
                     <td className="r tab">{value === null ? "—" : formatUsd(value)}</td>
                     <td className={cn("r tab", pnlCls)}>{pnl === null ? "—" : formatUsd(pnl)}</td>
                     <td className={cn("r tab", pnlCls)}>{pct === null ? "—" : formatPct(pct)}</td>
+                    <td className="r pos-trend"><Sparkline values={row.spark} /></td>
                   </tr>
                 );
               })}

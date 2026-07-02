@@ -66,18 +66,26 @@ export function SimSummary({ rows }: { rows: LeaderboardRow[] }) {
         }
       />
 
-      {/* P&L — Σ net-of-fee dollar P&L; cohort % + divergence split in the sub-line. */}
+      {/* P&L — Σ net-of-fee dollar P&L with the cohort % inline; the tracking/diverging health split in the sub. */}
       <KBox
         label="P&L"
         cls={pnlTone}
-        value={totalPnl === null ? <span className="quiet">—</span> : formatUsd(totalPnl)}
+        value={
+          totalPnl === null ? (
+            <span className="quiet">—</span>
+          ) : (
+            <>
+              {formatUsd(totalPnl)}
+              {cohortPct !== null ? <span className="kpi-pct">{formatPct(cohortPct)}</span> : null}
+            </>
+          )
+        }
         sub={
           <span className="tab">
-            {cohortPct === null ? "net of fees" : `${formatPct(cohortPct)} net`}
-            <span className="quiet"> · </span>
             <span className="up">{tracking}</span> tracking
             <span className="quiet"> · </span>
             <span className={diverging > 0 ? "gold" : "quiet"}>{diverging}</span> diverging
+            <span className="quiet"> · net of fees</span>
           </span>
         }
       />

@@ -25,9 +25,12 @@ export type EquityChartProps = {
   onScrub?: (i: number) => void;
   /** Honest empty-state message when there is no series. */
   emptyHint?: string;
+  /** Optional cost-basis / window-start reference: draws a faint dashed line and is folded into the y-domain so
+   *  a small move reads relative to invested capital instead of being auto-zoomed into noise. */
+  baseline?: number;
 };
 
-export function EquityChart({ values, labels, color, height = 150, valueFormat, axis = false, onScrub, emptyHint }: EquityChartProps) {
+export function EquityChart({ values, labels, color, height = 150, valueFormat, axis = false, onScrub, emptyHint, baseline }: EquityChartProps) {
   const gid = useId().replace(/:/g, "");
   const wrapRef = useRef<HTMLDivElement>(null);
   const lineRef = useRef<HTMLDivElement>(null);
@@ -37,15 +40,23 @@ export function EquityChart({ values, labels, color, height = 150, valueFormat, 
   const n = values.length;
   const stroke = color ?? (n > 1 && values[n - 1] >= values[0] ? "var(--up)" : "var(--down)");
   const fmt = valueFormat ?? ((i: number) => `$${Math.round(values[i]).toLocaleString("en-US")}`);
+  const fmtV = (v: number) => `$${Math.round(v).toLocaleString("en-US")}`;
 
   const geom = useMemo(() => {
     if (n === 0) return null;
+    // Defensive parity with Sparkline: derive the domain from the FINITE values only, so a stray non-finite point
+    // (should never happen — callers pass real series) breaks just its own line segment instead of NaN-ing the
+    // whole chart into a blank box; an all-non-finite series falls through to the honest empty state below.
+    const finite = values.filter((v) => Number.isFinite(v));
+    if (finite.length === 0) return null;
     const W = 1000;
     const H = height;
     const PT = 14;
     const PB = 14;
-    const mn = Math.min(...values);
-    const mx = Math.max(...values);
+    // Frame the y-domain around the data AND the baseline (cost basis), so a small +/- move reads relative to
+    // what was invested rather than being auto-zoomed into noise. With no baseline this is the data min/max as before.
+    const mn = Math.min(...finite, baseline ?? Infinity);
+    const mx = Math.max(...finite, baseline ?? -Infinity);
     const rng = mx - mn || Math.abs(mx) * 0.01 || 1;
     const lo = mn - rng * 0.3;
     const hi = mx + rng * 0.3;
@@ -56,8 +67,9 @@ export function EquityChart({ values, labels, color, height = 150, valueFormat, 
     const line = pts.join(" ");
     const area = `M0,${Y(values[0]).toFixed(1)} L${pts.join(" L")} L${W},${H} L0,${H}Z`;
     const grids = [0.25, 0.5, 0.75].map((g) => (PT + (H - PT - PB) * g).toFixed(1));
-    return { W, H, X, Y, line, area, grids };
-  }, [values, n, height]);
+    const baseTopPct = baseline != null ? (Y(baseline) / H) * 100 : null;
+    return { W, H, X, Y, line, area, grids, baseTopPct };
+  }, [values, n, height, baseline]);
 
   if (!geom) {
     return (
@@ -116,6 +128,11 @@ export function EquityChart({ values, labels, color, height = 150, valueFormat, 
           <path d={geom.area} fill={`url(#eg-${gid})`} />
           <polyline points={geom.line} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         </svg>
+        {geom.baseTopPct != null ? (
+          <div className="eq-base" style={{ top: `${geom.baseTopPct}%` }}>
+            <span className="eq-base-lbl mono">{fmtV(baseline!)}</span>
+          </div>
+        ) : null}
         <div className="xh-line" ref={lineRef} />
         <div className="xh-dot" ref={dotRef} />
         <div className="xh-tip" ref={tipRef}>

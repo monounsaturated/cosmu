@@ -30,7 +30,9 @@ const bucketOf = (r: LeaderboardRow, dim: Dim): string =>
   dim === "venue" ? formatVenue(r.venue) : dim === "class" ? r.asset_class || "—" : r.name;
 
 export function WalletAllocCard({ rows }: { rows: LeaderboardRow[] }) {
-  const [dim, setDim] = useState<Dim>("venue");
+  // Default to the STRATEGY split: with a single venue (IBKR) the Venue view is one lonely full ring; the
+  // Strategy view is the real N-way breakdown of where the paper book's capital actually sits.
+  const [dim, setDim] = useState<Dim>("strategy");
 
   // Sum invested (value_usd − pnl_usd, only when both real marks exist) into the chosen bucket.
   const byBucket = new Map<string, number>();
@@ -84,6 +86,7 @@ export function WalletAllocCard({ rows }: { rows: LeaderboardRow[] }) {
           />
         ) : (
           <div className="wallet-alloc">
+            <div className="wdonut-wrap">
             <svg className="wdonut" width="118" height="118" viewBox="0 0 36 36" aria-label={`Capital by ${dim}`}>
               <circle cx="18" cy="18" r="15.9155" fill="none" stroke="var(--surf3)" strokeWidth="3.4" />
               {arcs.map((a) => (
@@ -101,6 +104,11 @@ export function WalletAllocCard({ rows }: { rows: LeaderboardRow[] }) {
                 />
               ))}
             </svg>
+              <div className="wdonut-center">
+                <span className="wdonut-total mono">{formatUsd(total)}</span>
+                <span className="wdonut-cap">invested</span>
+              </div>
+            </div>
             <div className="alloc-leg">
               {arcs.map((a) => (
                 <div className="arow" key={a.name}>

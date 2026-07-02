@@ -40,14 +40,20 @@ export function EquityHero({
   const [range, setRange] = useState<Range>("30D");
   const [scrub, setScrub] = useState<number>(-1);
 
-  // Slice the REAL curve by trailing length for the selected range. No fabricated intraday points.
-  // `curve` is typed Point[] but the engine can omit it (null) — normalize so the empty state shows
-  // instead of a white screen.
+  // Sort by timestamp + dedup, THEN window by real CALENDAR DAYS — not trailing-N array points. A curve with
+  // many points/day made "30D" show only ~2 days (`slice(-30)` = 30 points, not 30 days), and plotting an
+  // unsorted series drew a sawtooth. "All" = the full series. `curve` is typed Point[] but the engine can omit
+  // it (null) — normalize so the honest empty state shows instead of a white screen. No fabricated points.
   const sliced = useMemo(() => {
-    const safe = curve ?? [];
+    const safe = [...(curve ?? [])]
+      .filter((p) => p && p.ts != null && Number.isFinite(p.value) && Number.isFinite(new Date(p.ts).getTime()))
+      .sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+    const deduped = safe.filter((p, i) => i === safe.length - 1 || p.ts !== safe[i + 1].ts);
     const r = RANGES.find((x) => x.key === range)!;
-    if (r.days === null) return safe;
-    return safe.slice(-r.days);
+    if (r.days === null || deduped.length === 0) return deduped;
+    const maxTs = new Date(deduped[deduped.length - 1].ts).getTime();
+    const cutoff = maxTs - r.days * 86_400_000;
+    return deduped.filter((p) => new Date(p.ts).getTime() >= cutoff);
   }, [curve, range]);
 
   const values = sliced.map((p) => p.value);
@@ -93,6 +99,7 @@ export function EquityHero({
         color={color}
         height={160}
         axis
+        baseline={base ?? undefined}
         onScrub={setScrub}
         emptyHint="No equity curve yet — this fills in once the engine reports a real net-of-fee series. Nothing here is fabricated."
       />
