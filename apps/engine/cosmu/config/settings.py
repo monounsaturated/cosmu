@@ -275,6 +275,17 @@ class Settings(BaseSettings):
     alpaca_api_key: str | None = Field(default=None, repr=False)
     alpaca_api_secret: str | None = Field(default=None, repr=False)
     api_secret_key: str | None = Field(default=None, repr=False)
+    # SECOND-TIER money-path auth (DARK-LAUNCHED — off by default). `api_secret_key` above authenticates the
+    # WEB PROXY to the engine (every route). `operator_secret_key` is a SEPARATE shared secret the proxy injects
+    # (as x-operator) ONLY on money-mutating routes (toggle/live, live/launch|defund|liquidate|activate,
+    # live/rules|jurisdiction, ops/breaker/rearm) AFTER it has verified a real operator session cookie — so a
+    # leaked x-api-key alone can no longer drive the money control plane. `operator_auth_enforced` is the single
+    # switch: while False (default) the engine's two-tier check and the extra prod boot-assert are BOTH no-ops,
+    # so merging + deploy is byte-identical to today and can never lock the operator out. Flip
+    # OPERATOR_AUTH_ENFORCED=true (and set OPERATOR_SECRET_KEY on the engine + the web session secrets on Vercel)
+    # to activate. See docs/KEYS.md.
+    operator_secret_key: str | None = Field(default=None, repr=False)
+    operator_auth_enforced: bool = Field(default=False)
     railway_api_token: str | None = Field(default=None, repr=False)
     slack_webhook_url: str | None = Field(default=None, repr=False)
     # Aviation two-tier alerting: slack_webhook_url is the master-CAUTION / LOG bus (routine, high-signal

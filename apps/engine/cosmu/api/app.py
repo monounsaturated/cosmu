@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from cosmu.api import _shared as _shared_mod
 from cosmu.api._lifespan import lifespan
+from cosmu.api._money_routes import is_money_mutation
 
 # Pure helpers live in cosmu.api._shared; re-exported here so `from cosmu.api.app import _metric / _json /
 # ensure_recommendations` keeps working. The mutable singletons (store, settings) and _alt_store are served
@@ -86,13 +87,36 @@ _AUTH_EXEMPT_PATHS = frozenset({"/health", "/health/fleet"})
 
 @app.middleware("http")
 async def _require_api_key(request: Request, call_next):
-    secret = getattr(_shared_mod.settings, "api_secret_key", None)
+    settings = _shared_mod.settings
+    secret = getattr(settings, "api_secret_key", None)
     if secret and request.method != "OPTIONS" and request.url.path not in _AUTH_EXEMPT_PATHS:
         presented = request.headers.get("x-api-key") or ""
         # Compare as BYTES: hmac.compare_digest raises TypeError on non-ASCII str (e.g. a key with a
         # smart-quote / stray byte), which would surface as a confusing 500 instead of a clean 401.
         if not hmac.compare_digest(presented.encode("utf-8"), secret.encode("utf-8")):
             return JSONResponse(status_code=401, content={"detail": "missing or invalid x-api-key"})
+
+    # SECOND-TIER money-path auth — DARK-LAUNCHED behind operator_auth_enforced (default False → this whole
+    # block is a NO-OP and behavior is byte-identical to the x-api-key-only gate above). When enforced AND the
+    # request is a money mutation (arm/launch/defund/liquidate/rules/jurisdiction/breaker-rearm), the web proxy
+    # must ALSO present a matching x-operator header — which it only injects after verifying a real operator
+    # session cookie — so a leaked x-api-key alone can no longer drive the money control plane. Reduce-only
+    # SAFETY exits (kill-switch / order-cancel) and every read are UNAFFECTED (not in the money set). Fail
+    # CLOSED: enforced-but-secret-missing rejects the money route (never silently degrades to one-tier).
+    if (
+        getattr(settings, "operator_auth_enforced", False)
+        and request.method != "OPTIONS"
+        and is_money_mutation(request.method, request.url.path)
+    ):
+        operator_secret = getattr(settings, "operator_secret_key", None)
+        if not operator_secret:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "operator auth enforced but OPERATOR_SECRET_KEY unset — refusing money route"},
+            )
+        presented_op = request.headers.get("x-operator") or ""
+        if not hmac.compare_digest(presented_op.encode("utf-8"), operator_secret.encode("utf-8")):
+            return JSONResponse(status_code=403, content={"detail": "missing or invalid x-operator"})
     return await call_next(request)
 
 # One APIRouter per URL prefix. Order is irrelevant to behavior (no overlapping paths) and to the generated

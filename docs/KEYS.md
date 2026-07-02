@@ -31,11 +31,19 @@ app needs two **server-side** vars to reach the engine:
 - `NEXT_PUBLIC_API_BASE_URL` — client "is the engine wired?" flag (no secret; any truthy value enables the
   interactive surfaces, which then call the engine through the same-origin proxy).
 
+Optionally, once you activate the two-tier money-path auth, the web also needs `OPERATOR_SESSION_SECRET`,
+`OPERATOR_PASSPHRASE_HASH`, and `OPERATOR_AUTH_ENFORCED` (see the operator rows in the table below). These stay
+inert until `OPERATOR_AUTH_ENFORCED` is set on both sides.
+
 ## The table
 
 | Key | Env var | Unlocks | Requirement | Free/Paid | Where to add |
 | --- | --- | --- | --- | --- | --- |
 | API secret | `API_SECRET_KEY` | Locks the control-plane API — the web app sends it via the proxy; nobody else can call the engine. When unset, the API is open (fine for local dev only). | required | free | Engine env (Railway) + web env (must match) |
+| Operator (money-path) | `OPERATOR_SECRET_KEY` | Second-tier secret the web proxy injects (`x-operator`) **only on money-mutating routes** (toggle/live, live/launch·defund·liquidate·activate, live/rules·jurisdiction, ops/breaker/rearm) after an operator sign-in. Blocks a leaked `API_SECRET_KEY` from driving live. **Dark-launched — inert until `OPERATOR_AUTH_ENFORCED` is on.** | optional | free | Engine env (Railway) |
+| Operator session (web) | `OPERATOR_SESSION_SECRET` | HMAC key the web signs the operator session cookie (`cosmu_op`) with. Needed only once you turn on `OPERATOR_AUTH_ENFORCED`. | optional | free | Web env (Vercel) |
+| Operator passphrase (web) | `OPERATOR_PASSPHRASE_HASH` | sha256 hex of the operator sign-in passphrase (plaintext never stored — compute once, e.g. `printf '%s' "<passphrase>" \| shasum -a 256`). Needed only once you turn on `OPERATOR_AUTH_ENFORCED`. | optional | free | Web env (Vercel) |
+| Operator auth switch | `OPERATOR_AUTH_ENFORCED` | The single dark-launch switch for two-tier money-path auth. **Off by default (zero behavior change).** Set `true` on **both** the engine (Railway) and the web (Vercel) — with the operator secrets above set — to activate enforcement. | optional | free | Engine (Railway) + web (Vercel) |
 | xAI (Grok) | `XAI_API_KEY` | LLM strategy authoring (preferred provider). Research still runs offline without it. | optional | paid | Engine env (Railway) |
 | OpenRouter | `OPENROUTER_API_KEY` | LLM authoring fallback when xAI is not set. | optional | paid | Engine env (Railway) |
 | LunarCrush | `LUNARCRUSH_API_KEY` | Social-sentiment scores **and a real (non-synthetic) edge-gate verdict**. Until a real source is wired, the gate shows an honest "needs real data" state — never a synthetic PASS. | optional | paid | Engine env (Railway) |
@@ -59,6 +67,20 @@ app needs two **server-side** vars to reach the engine:
   stay open for liveness probes). The web app's `/api/engine` proxy injects the header server-side, so the
   secret never reaches the browser. If `API_SECRET_KEY` is unset on the engine, the gate is a no-op
   (keyless local dev/tests).
+- **Two-tier money-path auth (`OPERATOR_SECRET_KEY` / `OPERATOR_SESSION_SECRET` / `OPERATOR_PASSPHRASE_HASH` /
+  `OPERATOR_AUTH_ENFORCED`)** — closes the gap where `API_SECRET_KEY` alone (injected by the *unauthenticated*
+  public proxy) let anyone with the site URL reach the money control plane. **Dark-launched: with
+  `OPERATOR_AUTH_ENFORCED` unset/false (the default) NOTHING changes** — the Next middleware passes through, the
+  proxy behaves exactly as before, the engine's two-tier check is skipped, and the boot-assert does not fire.
+  When ON, a money mutation (arm/launch/defund/liquidate/rules/jurisdiction/breaker-rearm) requires a valid,
+  HMAC-signed `cosmu_op` operator session cookie (minted by `POST /api/operator/login` against
+  `OPERATOR_PASSPHRASE_HASH`, signed with `OPERATOR_SESSION_SECRET`); the proxy then injects `x-operator:
+  <OPERATOR_SECRET_KEY>`, which the engine verifies. **Activation runbook:** (1) set `OPERATOR_SECRET_KEY` on
+  Railway and `OPERATOR_SESSION_SECRET` + `OPERATOR_PASSPHRASE_HASH` on Vercel; (2) set `OPERATOR_AUTH_ENFORCED=true`
+  on **both**; (3) enable Vercel **Deployment Protection**; (4) sign in via the login route, confirm a money
+  route works signed-in and 401s signed-out. **Rollback:** unset/flip `OPERATOR_AUTH_ENFORCED` to false on both
+  → instantly back to the one-tier behavior. Reduce-only safety exits (kill-switch, order-cancel) are never
+  gated by the operator tier — a stop always routes.
 - **LLM keys (`XAI_API_KEY`, `OPENROUTER_API_KEY`)** — the LLM only *authors and mutates* ideas. It is out
   of the survival/scoring/money path; the deterministic Gate alone decides what survives and gets funded.
 - **`LUNARCRUSH_API_KEY` / market bars** — wiring these is what turns the edge gate from a synthetic-fixture

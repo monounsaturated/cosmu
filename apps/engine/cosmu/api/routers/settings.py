@@ -25,6 +25,15 @@ def _key_table() -> list[tuple[str, str, str, str, str, str, bool]]:
     env = os.environ
     return [
         ("API_SECRET_KEY", "API secret", "Locks the control-plane API — the web app sends it; nobody else can call the engine.", "required", "free", "railway", bool(settings.api_secret_key)),
+        # Second-tier money-path auth (dark-launched behind OPERATOR_AUTH_ENFORCED, default off). The engine
+        # verifies x-operator against OPERATOR_SECRET_KEY on money-mutating routes; the web mints/holds the
+        # operator session with OPERATOR_SESSION_SECRET (HMAC key) + OPERATOR_PASSPHRASE_HASH (sha256 of the
+        # passphrase). OPERATOR_AUTH_ENFORCED is the single switch — set it true on BOTH the engine (Railway)
+        # AND the web (Vercel) to activate. See docs/KEYS.md.
+        ("OPERATOR_SECRET_KEY", "Operator (money-path)", "Second-tier secret the web proxy injects (x-operator) ONLY on money-mutating routes after an operator sign-in. Blocks a leaked API_SECRET_KEY from driving live. Dark-launched — inert until OPERATOR_AUTH_ENFORCED is on.", "optional", "free", "railway", bool(settings.operator_secret_key)),
+        ("OPERATOR_SESSION_SECRET", "Operator session (web)", "HMAC key the web signs the operator session cookie (cosmu_op) with. Set on Vercel. Needed only once you turn on OPERATOR_AUTH_ENFORCED.", "optional", "free", "vercel", False),
+        ("OPERATOR_PASSPHRASE_HASH", "Operator passphrase (web)", "sha256 hex of the operator sign-in passphrase (plaintext never stored). Set on Vercel. Needed only once you turn on OPERATOR_AUTH_ENFORCED.", "optional", "free", "vercel", False),
+        ("OPERATOR_AUTH_ENFORCED", "Operator auth switch", "The single dark-launch switch for two-tier money-path auth. Off by default (no behavior change). Set 'true' on BOTH the engine (Railway) and the web (Vercel) — with the operator secrets above — to activate enforcement.", "optional", "free", "railway", bool(settings.operator_auth_enforced)),
         # The two vars the WEB needs on Vercel to reach the engine (the proxy forwards to API_BASE_URL with the
         # secret; NEXT_PUBLIC_API_BASE_URL drives the connected/offline state). The engine runs on Railway and
         # cannot observe Vercel's env, so their presence is left honestly unverified (see _settings_key_rows).
