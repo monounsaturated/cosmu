@@ -28,6 +28,13 @@ class FeatureDefinition(BaseModel):
     # Pins the (frozen, versioned) ingest transform a feature depends on, so a survivor is
     # re-runnable byte-for-byte. None = pure price/registry feature, no ingest transform.
     transform_version: str | None = None
+    # True ONLY for the NON-CAUSAL CONTROL / ORTHOGONALITY-CONTROL features (astro ephemeris, weather,
+    # exotic earthquakes/Kp) whose priors literally say "the Gate must kill them". They are wired as a
+    # known-false noise floor the Gate is EXPECTED to reject — they must NOT enter the autonomous discovery
+    # corpus (feeding them to the brief author would inflate the BH-FDR / deflation effective-N with placebos
+    # that can never win). Deliberately EXCLUDED from registry_version()'s hashed surface (below) so adding
+    # this metadata field leaves a promoted survivor's frozen registry hash byte-unchanged.
+    is_control: bool = False
 
 
 FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
@@ -484,6 +491,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
             "expected to survive."
         ),
         transform_version="weather-openmeteo-v1",
+        is_control=True,
     ),
     # --- Deterministic astro ephemeris (NON-CAUSAL controls; stdlib-only; market-wide; available_at = day midnight UTC) ---
     FeatureDefinition(
@@ -494,6 +502,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (knowable at day-start; no look-ahead, no revision)",
         prior="NON-CAUSAL CONTROL FEATURE — lunar illuminated fraction [0,1] (0 = new, 1 = full). The Moon does not cause price moves; wired honestly as a known-false baseline the Gate is expected to reject.",
         transform_version="astro-ephemeris-v1",
+        is_control=True,
     ),
     FeatureDefinition(
         name="astro_sun_longitude",
@@ -503,6 +512,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
         prior="NON-CAUSAL CONTROL FEATURE — Sun ecliptic longitude [0,360) (a calendar-season proxy). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
         transform_version="astro-ephemeris-v1",
+        is_control=True,
     ),
     FeatureDefinition(
         name="astro_jupiter_longitude",
@@ -512,6 +522,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
         prior="NON-CAUSAL CONTROL FEATURE — Jupiter ecliptic longitude [0,360) (~12-year cycle). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
         transform_version="astro-ephemeris-v1",
+        is_control=True,
     ),
     FeatureDefinition(
         name="astro_saturn_longitude",
@@ -521,6 +532,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
         prior="NON-CAUSAL CONTROL FEATURE — Saturn ecliptic longitude [0,360) (~29-year cycle). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
         transform_version="astro-ephemeris-v1",
+        is_control=True,
     ),
     FeatureDefinition(
         name="astro_sun_jupiter_aspect",
@@ -530,6 +542,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="deterministic per-day geometry, available_at = midnight UTC of the day (no look-ahead, no revision)",
         prior="NON-CAUSAL CONTROL FEATURE — Sun-Jupiter angular separation [0,180] (0 = conjunction, 180 = opposition). Wired honestly as a known-false baseline; the Gate is expected to reject it.",
         transform_version="astro-ephemeris-v1",
+        is_control=True,
     ),
     # --- Exotic ORTHOGONALITY CONTROLS (USGS earthquakes + NOAA Kp; non-causal; market-wide; Gate must kill them) ---
     FeatureDefinition(
@@ -540,6 +553,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="past-24h global count; live-query available_at = as_of (snapshot); daily-batch floor = obs_day + 1 (no look-ahead)",
         prior="ORTHOGONALITY CONTROL — global earthquake event count (USGS free feed). No plausible causal path to crypto prices; a known-false baseline so the Gate has a noise floor to kill. If it ever drives a signal that is a data-snooping red flag, not an edge. Must be killed by the Gate.",
         transform_version="exotic-usgs-eq-v1",
+        is_control=True,
     ),
     FeatureDefinition(
         name="usgs_max_magnitude",
@@ -549,6 +563,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="past-24h global max magnitude; live-query available_at = as_of (snapshot); gap = None, never 0",
         prior="ORTHOGONALITY CONTROL — daily maximum earthquake magnitude (USGS free feed). No plausible causal path to crypto prices; a known-false baseline. Must be killed by the Gate.",
         transform_version="exotic-usgs-eq-v1",
+        is_control=True,
     ),
     FeatureDefinition(
         name="noaa_kp_index",
@@ -558,6 +573,7 @@ FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
         asof_semantics="daily-max Kp; live-query available_at = as_of (snapshot); daily-batch floor = obs_day + 1; gap = None, never 0",
         prior="ORTHOGONALITY CONTROL — NOAA planetary Kp geomagnetic index (daily max [0-9]). Geomagnetic activity has no plausible causal path to crypto prices; a known-false baseline. Must be killed by the Gate.",
         transform_version="exotic-noaa-kp-v1",
+        is_control=True,
     ),
     # =====================================================================================================
     # TOOL-WAVE-A: 4 MORE FREE, NO-KEY alt-data sources (DefiLlama stablecoins, CoinGecko, BTC on-chain,
@@ -711,6 +727,21 @@ def feature_names() -> set[str]:
     return {feature.name for feature in FEATURE_REGISTRY if feature.enabled}
 
 
+def control_feature_names() -> set[str]:
+    """The ENABLED non-causal CONTROL features (astro/weather/exotic earthquakes+Kp) — the known-false noise
+    floor the Gate is EXPECTED to reject. Kept in feature_names()/the gate universe (the Gate still needs a
+    placebo baseline to kill) but held OUT of the autonomous discovery corpus so they don't dilute the
+    BH-FDR / deflation effective-N with theses that can never win. Invariant (asserted in tests):
+    control_feature_names() | discovery_feature_names() == feature_names()."""
+    return {feature.name for feature in FEATURE_REGISTRY if feature.enabled and feature.is_control}
+
+
+def discovery_feature_names() -> set[str]:
+    """The ENABLED NON-control features — the honest hypothesis surface the autonomous brief author draws from.
+    Equals feature_names() minus control_feature_names() (see the invariant there)."""
+    return {feature.name for feature in FEATURE_REGISTRY if feature.enabled and not feature.is_control}
+
+
 def registry_version() -> str:
     """A deterministic 16-char content hash of the ENABLED feature registry — each feature's (name, source,
     transform_version). Pinned into a promotion's freeze so a survivor stays reproducible: if a feature's source
@@ -723,6 +754,17 @@ def registry_version() -> str:
         for f in sorted((f for f in FEATURE_REGISTRY if f.enabled), key=lambda f: f.name)
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+_ASSET_CLASSES_BY_NAME: dict[str, tuple[str, ...]] = {
+    f.name: tuple(f.asset_classes) for f in FEATURE_REGISTRY
+}
+
+
+def asset_classes_of(name: str) -> tuple[str, ...]:
+    """The declared asset classes of a registered feature (empty tuple if unknown). Lets callers route a brief
+    to the class a feature actually supports (an equity-only feature must be briefed on EQUITY, not CRYPTO)."""
+    return _ASSET_CLASSES_BY_NAME.get(name, ())
 
 
 def features_for(asset_classes: list[str]) -> list[FeatureDefinition]:

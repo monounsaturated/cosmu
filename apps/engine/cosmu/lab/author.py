@@ -190,6 +190,20 @@ def draft_from_brief(
     elif venue:
         spec.universe.venues = [venue]
         spec.universe.asset_classes = [asset_class]
+    else:
+        # HONEST ROUTING (discovery-corpus fix): the brief names NO asset. If EVERY named feature is exclusive
+        # to a single NON-crypto asset class (e.g. an equity-only credit_spread / insider_buy_ratio), keep the
+        # default crypto universe would make the crypto validator strip the feature → the equity signal is
+        # never tested. Retarget the universe to that class so the feature survives valid_feats. When features
+        # are crypto / multi-class (the common case) this is a no-op and the DEFAULT crypto behavior stands.
+        pinned = features or llm_features or _detect_features(text, asset_class)
+        retarget = _sole_nonprice_class(pinned)
+        if retarget is not None and retarget != "crypto":
+            asset_class = retarget
+            spec.universe.asset_classes = [retarget]
+            hint_venue = _VENUE_BY_CLASS.get(retarget)
+            if hint_venue:
+                spec.universe.venues = [hint_venue]
 
     # 3) horizon hints — the LLM's proposed bar_size (validated to 1h|4h|1d) wins; else detect from the brief.
     if llm_bar in ("1h", "4h", "1d"):
@@ -384,6 +398,36 @@ def _pick_asset(text: str) -> tuple[str, str | None]:
         if key in text:
             return asset, venue
     return "crypto", None
+
+
+# The default execution venue for a retargeted universe (mirrors _ASSET_HINTS' venue picks) — used when a
+# brief names no asset but its features pin a single non-crypto class, so the honest-routing retarget lands on
+# a sensible venue too.
+_VENUE_BY_CLASS: dict[str, str] = {"equity": "ibkr", "prediction": "polymarket"}
+
+
+def _sole_nonprice_class(features: list[str] | None) -> str | None:
+    """If EVERY registered feature in `features` is exclusive to ONE non-crypto asset class (crypto not among
+    its declared classes), return that class; otherwise None. Pure price/TA features (multi-class, e.g. ret_Nd)
+    and unregistered names are ignored — they never force a retarget. A mixed / crypto-capable set returns None
+    so the DEFAULT crypto universe stands. Deterministic, offline, keyless."""
+    from cosmu.config.feature_registry import asset_classes_of
+
+    classes_seen: set[str] = set()
+    for name in features or []:
+        cls = set(asset_classes_of(name))
+        if not cls:
+            continue  # unregistered name (e.g. a price/TA alias) → ignore, never forces a retarget
+        if "crypto" in cls:
+            # crypto-capable OR crypto-exclusive → the default crypto universe can read it; do NOT retarget
+            # (this also guards a contradictory mixed brief from silently stripping the crypto leg).
+            return None
+        if len(cls) == 1:
+            classes_seen.add(next(iter(cls)))
+        # a non-crypto MULTI-class feature (rare) is permissive — it doesn't pin a single class, so skip it.
+    if len(classes_seen) == 1:
+        return next(iter(classes_seen))
+    return None
 
 
 # For a PREDICTION-asset brief, the per-conditionId odds bar (the finder feeds the cell's OWN odds as the bars)

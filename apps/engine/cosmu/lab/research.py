@@ -39,22 +39,40 @@ _BRIEFS: tuple[tuple[str, list[str]], ...] = (
 
 
 def _registry_briefs() -> tuple[tuple[str, list[str]], ...]:
-    """One falsifiable brief per enabled REGISTRY alt feature the hand-written corpus doesn't already cover —
-    so the brain's hypothesis space is the data layer's whole enabled surface, not 6 frozen ideas (the audit's
-    novelty-starvation finding: `_BRIEFS[i % 6]` re-proposed the same six theses forever). Two structural
+    """One falsifiable brief per enabled DISCOVERY registry alt feature the hand-written corpus doesn't already
+    cover — so the brain's hypothesis space is the data layer's whole enabled surface, not 6 frozen ideas (the
+    audit's novelty-starvation finding: `_BRIEFS[i % 6]` re-proposed the same six theses forever). Two structural
     angles per feature (level condition + confirmation overlay) give the screen distinct shapes to judge.
+
+    Two honesty fixes (2026-07 discovery-corpus fix):
+      (a) NON-CAUSAL CONTROL features (astro/weather/exotic quakes+Kp) are sourced from
+          discovery_feature_names() (NOT feature_names()), so they NEVER enter the corpus — feeding a
+          placebo that can never win only inflates the BH-FDR / deflation effective-N.
+      (b) HONEST asset class: an equity-ONLY feature is briefed on EQUITY (with an equity anchor), not the
+          hardcoded "crypto" that the downstream crypto validator would strip → the feature never tested. A
+          crypto-capable / multi-class feature keeps the default crypto framing.
+
     Deterministic (sorted registry read at call time); a newly registered+ingested feature is proposed
     automatically on the next tick; volume can't manufacture a winner — every extra brief is one more trial
     the SAME deflation/BH-FDR brake must absorb."""
-    from cosmu.config.feature_registry import feature_names
+    from cosmu.config.feature_registry import asset_classes_of, discovery_feature_names
     from cosmu.data.backtest import PRICE_FEATURES
 
     covered = {f for _, feats in _BRIEFS for f in feats}
     out: list[tuple[str, list[str]]] = []
-    for name in sorted(feature_names() - PRICE_FEATURES - covered):
+    for name in sorted(discovery_feature_names() - PRICE_FEATURES - covered):
         plain = name.replace("_", " ")
-        out.append((f"Condition crypto entries on {plain} extremes (registry-derived; must earn its place)", [name]))
-        out.append((f"Momentum on crypto confirmed by {plain} (registry-derived overlay; must earn its place)", ["ret_Nd", name]))
+        classes = set(asset_classes_of(name))
+        # HONEST class: only retarget to equity when the feature is EXCLUSIVELY equity (crypto can't read it).
+        # A crypto-capable or multi-class feature keeps the default crypto framing (the momentum anchor ret_Nd
+        # is valid for both, so it never forces a strip).
+        if classes and "crypto" not in classes and "equity" in classes:
+            noun, anchor = "equity", "equity momentum"  # ret_Nd is equity-valid → survives valid_feats
+            out.append((f"Condition {noun} entries on {plain} extremes (registry-derived; must earn its place)", [name]))
+            out.append((f"{anchor.capitalize()} confirmed by {plain} (registry-derived overlay; must earn its place)", ["ret_Nd", name]))
+        else:
+            out.append((f"Condition crypto entries on {plain} extremes (registry-derived; must earn its place)", [name]))
+            out.append((f"Momentum on crypto confirmed by {plain} (registry-derived overlay; must earn its place)", ["ret_Nd", name]))
     return tuple(out)
 
 
