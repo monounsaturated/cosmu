@@ -804,6 +804,48 @@
         "title": "BrainSurvivor",
         "type": "object"
       },
+      "BreakerRearmRequest": {
+        "description": "The HUMAN-ONLY re-arm of the latching circuit-breaker (POST /ops/breaker/rearm). `confirm` MUST be true\n(two-click safety \u2014 clearing the safety latch is a deliberate act, never a fat-finger). The breaker is NEVER\nauto-cleared on a timer; this route is the only reset. Re-arming clears the latch but does NOT itself re-enable\nlive \u2014 the operator re-arms live separately via POST /toggle/live (which the interlock now permits once open).",
+        "properties": {
+          "confirm": {
+            "default": false,
+            "title": "Confirm",
+            "type": "boolean"
+          }
+        },
+        "title": "BreakerRearmRequest",
+        "type": "object"
+      },
+      "BreakerRearmResponse": {
+        "description": "The result of a re-arm attempt. `rearmed` is True when the latch was open (cleared) this call; False (with a\n`reason`) when confirm was omitted or the breaker was not latched (a no-op \u2014 nothing to clear). `was_latched`\nreports the pre-call state so the caller knows whether it actually did anything.",
+        "properties": {
+          "rearmed": {
+            "title": "Rearmed",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "was_latched": {
+            "default": false,
+            "title": "Was Latched",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rearmed"
+        ],
+        "title": "BreakerRearmResponse",
+        "type": "object"
+      },
       "CancelOrderResponse": {
         "description": "The result of POST /live/orders/{order_id}/cancel. `canceled` is True only when the resolved venue\nadapter accepted the cancel. `reason` carries the honest failure (order not on the live ledger, venue has\nno execution adapter, or the adapter rejected the cancel). Never cancels a sim/paper order \u2014 those are not\nreal and have nothing to cancel at a venue.",
         "properties": {
@@ -6025,6 +6067,22 @@
       "OverviewResponse": {
         "description": "The aggregate read-out for the Overview surface (\"are we making money?\"): the \u03a3 of all standalone\npaper tracks. This is a pure read-out \u2014 there is NO pooled wallet and no cross-track allocation.",
         "properties": {
+          "breaker_latched": {
+            "default": false,
+            "title": "Breaker Latched",
+            "type": "boolean"
+          },
+          "breaker_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breaker Reason"
+          },
           "costs": {
             "items": {
               "$ref": "#/components/schemas/CostSlice"
@@ -8762,6 +8820,27 @@
         "summary": "Health"
       }
     },
+    "/health/fleet": {
+      "get": {
+        "description": "External dead-man probe target (curled by the off-Modal .github fleet-watchdog cron). Returns\nheartbeat.check(store)'s dict plus a top-level `stale: bool` and the age of the newest watchdog_pulse\n(the heartbeat's own aliveness beacon). ALWAYS HTTP 200 \u2014 a store read error yields {ok:false, stale:true,\nerror:...} at 200 so the prober reads \"engine up but fleet stale\" rather than confusing it with the engine\nbeing down (which surfaces as a connection refusal / 5xx). Auth-exempt (in _AUTH_EXEMPT_PATHS) so the\nexternal prober can reach it without the x-api-key the browser proxy injects.",
+        "operationId": "health_fleet_health_fleet_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Fleet Health Fleet Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health Fleet"
+      }
+    },
     "/indexes": {
       "get": {
         "operationId": "indexes_indexes_get",
@@ -9803,6 +9882,45 @@
           }
         },
         "summary": "Mind Source Trust"
+      }
+    },
+    "/ops/breaker/rearm": {
+      "post": {
+        "description": "RE-ARM the latching circuit-breaker \u2014 the HUMAN-ONLY reset of the weight-on-wheels latch. When a hard\naggregate breach trips the breaker it DISARMS live + LIQUIDATES the book and STAYS latched (survives process\ndeath via the events ledger); nothing auto-clears it \u2014 this route is the ONLY reset, so re-arming is a\ndeliberate human act (the aviation/rail model). Same x-api-key auth as every route (the global middleware).\n\nSafety: `confirm` MUST be true (two-click \u2014 an accidental call never clears the safety latch). Re-arming\nappends a breaker_rearmed marker so the interlock lets live be re-enabled again, but it does NOT itself\nre-enable live (the operator re-arms live separately via POST /toggle/live, which the interlock now permits)\nand it funds/opens NOTHING. A no-op (rearmed=false) when confirm is omitted or the breaker was not latched.",
+        "operationId": "ops_breaker_rearm_ops_breaker_rearm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BreakerRearmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BreakerRearmResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ops Breaker Rearm"
       }
     },
     "/ops/killswitch": {

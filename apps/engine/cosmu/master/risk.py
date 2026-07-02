@@ -90,6 +90,13 @@ class PortfolioRiskState(BaseModel):
     # only at a fully-drained wallet; a small positive fraction kills slightly early so the wallet is never
     # actually breached by the next adverse mark. Per-combo, NOT the aggregate drawdown kill-switch (which stays).
     track_kill_floor_pct: Decimal = Decimal("0")
+    # WEIGHT-ON-WHEELS INTERLOCK (ops/breaker.py): True when the latching circuit-breaker is TRIPPED and not since
+    # re-armed. A latched breaker means a hard aggregate breach already DISARMED live + LIQUIDATED the book, so no
+    # new LIVE ENTRY may route until a human re-arms. Set ONLY for live-armed orders (the executor reads
+    # breaker.is_latched when live is enabled); SIM/paper always leaves it False, so the paper lane is untouched.
+    # ⚠️ Therac-25 lesson: this is checked in the NON-reduce_only branch ONLY — a reduce-only CLOSE must NEVER be
+    # blocked (trapping an exit behind the latch would lock in the very loss the breaker exists to stop).
+    breaker_latched: bool = False
 
 
 def validate_order(order: OrderIntent, venue: Venue, instrument: Instrument, risk: RiskSettings) -> RiskDecision:
@@ -191,6 +198,12 @@ def validate_order_full(
         issues.append("drawdown_killswitch")
     if state.daily_loss >= state.daily_loss_cap:
         issues.append("daily_loss_auto_disarm")
+    # WEIGHT-ON-WHEELS INTERLOCK: a LATCHED circuit-breaker (a hard aggregate breach that already disarmed live +
+    # liquidated the book) blocks any new LIVE ENTRY until a human re-arms. In the NON-reduce_only branch ONLY (a
+    # reduce-only CLOSE returned above, never reaching here) so an exit is never trapped — Therac-25 lesson. Set by
+    # the executor for live-armed orders only; the SIM/paper lane leaves it False → today's behaviour unchanged.
+    if state.breaker_latched:
+        issues.append("breaker_latched")
     # Martingale / averaging-down ban: never add to a losing position, and never buy below your average
     # entry to "improve" the basis. Both are the classic ruin patterns; either is an outright reject.
     if order.side == "buy" and state.existing_qty > 0:

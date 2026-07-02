@@ -24,6 +24,12 @@ class OverviewResponse(BaseModel):
     costs: list[CostSlice]
     live_enabled: bool
     opex_vs_alpha: float
+    # LATCHING CIRCUIT-BREAKER state (ops/breaker.py) — SURFACED so the operator sees the machine is safed. When
+    # `breaker_latched` is True a hard aggregate breach has DISARMED live + LIQUIDATED the book and live cannot be
+    # re-enabled until a human re-arms (POST /ops/breaker/rearm). `breaker_reason` is the black-box freeze-frame
+    # trigger (e.g. "drawdown" / "daily_loss") from the trip event, or None when the breaker is open. Read-only.
+    breaker_latched: bool = False
+    breaker_reason: str | None = None
 
 
 class PortfolioSummaryResponse(BaseModel):
@@ -418,6 +424,25 @@ class KillswitchResponse(BaseModel):
     evaluated: int = 0
     closed: int = 0
     actions: list[dict] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class BreakerRearmRequest(BaseModel):
+    """The HUMAN-ONLY re-arm of the latching circuit-breaker (POST /ops/breaker/rearm). `confirm` MUST be true
+    (two-click safety — clearing the safety latch is a deliberate act, never a fat-finger). The breaker is NEVER
+    auto-cleared on a timer; this route is the only reset. Re-arming clears the latch but does NOT itself re-enable
+    live — the operator re-arms live separately via POST /toggle/live (which the interlock now permits once open)."""
+
+    confirm: bool = False
+
+
+class BreakerRearmResponse(BaseModel):
+    """The result of a re-arm attempt. `rearmed` is True when the latch was open (cleared) this call; False (with a
+    `reason`) when confirm was omitted or the breaker was not latched (a no-op — nothing to clear). `was_latched`
+    reports the pre-call state so the caller knows whether it actually did anything."""
+
+    rearmed: bool
+    was_latched: bool = False
     reason: str | None = None
 
 

@@ -98,6 +98,27 @@ class RiskSettings(BaseModel):
     drawdown_killswitch_pct: Decimal = Decimal("0.15")
     min_cash_reserve: Decimal = Decimal("1000")
     sandbox_seconds_cap: int = 30
+    # --- LATCHING CIRCUIT-BREAKER (ops/breaker.py) — aviation graduated bands ------------------------------
+    # The old drawdown/daily-loss guards only BLOCK the next entry; the breaker is the LATCHING actuator that
+    # LIQUIDATES the armed book + DISARMS live on a hard breach and stays tripped until a human re-arms. These are
+    # SENSE/DECIDE thresholds read by breaker.assess — they NEVER move money themselves (actuation delegates to the
+    # existing gauntlet-exempt capital_guard.kill). Ordered warn < HALT < liquidate on the aggregate drawdown axis:
+    #   • warn  (breaker_warn_drawdown_pct): the earliest CAUTION band — emits a breaker_warn event only, no action.
+    #   • HALT  reuses the existing drawdown_killswitch_pct (the breaker READS it, never mutates/duplicates it): the
+    #     entry-blocking band the gauntlet already enforces — the breaker escalates it to a warn-with-dwell, still no
+    #     liquidation, so today's "block new entries" behaviour is preserved and only made observable.
+    #   • liquidate (breaker_liquidate_drawdown_pct): the HARD band — trips the latch (disarm + liquidate) at 1 tick.
+    # DAILY-LOSS axis: liquidate when daily_loss >= daily_loss_cap * breaker_liquidate_daily_loss_mult (the cap alone
+    # is the existing entry-disarm; a MULTIPLE of it is the "we blew clean through the soft cap" hard trip).
+    # DWELL: the SOFT (warn/halt) band must persist breaker_dwell_ticks consecutive marks before it escalates — a
+    # single mark-to-market spike (one bad print, a transient wick) must not raise a warn. The HARD/liquidate band
+    # trips at ONE tick (no dwell — a real hard breach is not debounced). breaker_enabled is the config-kill (no
+    # deploy): False → assess still reads but trip() is a NO-OP, so the operator can disable the actuator instantly.
+    breaker_enabled: bool = True
+    breaker_warn_drawdown_pct: Decimal = Decimal("0.08")
+    breaker_liquidate_drawdown_pct: Decimal = Decimal("0.25")
+    breaker_liquidate_daily_loss_mult: Decimal = Decimal("1.5")
+    breaker_dwell_ticks: int = 2
 
 
 class VendorBudget(BaseModel):

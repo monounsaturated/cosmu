@@ -483,6 +483,12 @@ def mark_tracks(
         return (p.strategy_version_id, p.symbol, venue)
 
     snapshot = portfolio.mark_to_market(marks, funding_by_track=funding_by_track, cell_resolver=_cell_resolver)
+    # LATCHING CIRCUIT-BREAKER — assessed on the FRESH aggregate equity mark_to_market just wrote (so it judges
+    # this tick's book, not a stale one). SENSE→DECIDE→(on a HARD band only) ACTUATE: disarm live + liquidate via
+    # the gauntlet-exempt capital_guard.kill, then latch. A strict no-op until a hard aggregate breach; the soft
+    # bands only debounce+warn; already-latched is skipped (liquidate exactly once). Wrapped so a breaker error
+    # can never crash the mark. This is what makes the hard-stop run on EVERY paper-clock tick, not the 4h cron.
+    breaker_result = run_breaker_pass(store, catalog=cat, router=pricer)
     # Drive each CELL's tracks.return_pct from the LIVE marked trajectory (the cell-keyed per-track snapshot
     # mark_to_market just wrote), so the paper net P&L — not a stale seed — is what the leaderboard +
     # master/live_eligibility read for live_ready. EVERY held cell updates, including FLAT cells the executor
@@ -512,9 +518,73 @@ def mark_tracks(
             "promoted_to_paper": promoted,
             "equity": float(snapshot["equity"]),
             "pnl": float(snapshot["pnl"]),
+            "breaker_tier": breaker_result.get("tier"),
+            "breaker_tripped": breaker_result.get("tripped", 0),
         },
     )
     return snapshot
+
+
+def run_breaker_pass(
+    store: Store,
+    *,
+    catalog: VenueCatalog | None = None,
+    router: PricingRouter | None = None,
+) -> dict[str, int]:
+    """The LATCHING CIRCUIT-BREAKER pass — run AS PART OF the paper clock (every mark tick, far more often than
+    the 4h capital-guard cron), so a hard aggregate breach LIQUIDATES the armed book + DISARMS live within one
+    mark instead of riding a losing book for hours. SENSE (breaker.assess reads the aggregate drawdown / daily
+    loss) → DECIDE (graduated bands: none / warn / halt / liquidate, the soft bands debounced by
+    breaker_dwell_ticks consecutive ticks so a single spike never escalates) → ACTUATE only on the HARD liquidate
+    band (breaker.trip: disarm → capital_guard.kill(scope='all') → latch). Idempotent + fail-safe:
+      • a strict NO-OP when nothing is breached (tier 'none') — it only ever DISARMS/REDUCES, never opens/arms;
+      • skips entirely when ALREADY LATCHED (the latch liquidates exactly ONCE; re-arm is human-only);
+      • wrapped so a breaker error can NEVER crash the marking tick (worst case: a skipped pass, audited).
+
+    Returns {tripped, tier} for the caller's log line. The trip delegates ACTUATION to the existing gauntlet-exempt
+    capital_guard.kill, so with no armed venue every close reduce-fills the SIM/paper book (identical to the paper
+    executor's exits) — real money moves ONLY once a venue is armed, and even then only ever to REDUCE."""
+    try:
+        from cosmu.ops import breaker
+
+        # Already latched → the breaker has done its one job; don't re-assess or re-liquidate (idempotent).
+        if breaker.is_latched(store):
+            return {"tripped": 0, "tier": "latched"}
+
+        verdict = breaker.assess(store)
+        if verdict.tier == "liquidate":
+            # HARD band → trip at ONE tick (no dwell). trip() is itself a NO-OP if config-disabled or already
+            # latched, so this can never double-liquidate. Delegates the actual close to capital_guard.kill.
+            tripped = breaker.trip(store, verdict.freeze_frame, catalog=catalog, router=router)
+            return {"tripped": 1 if tripped else 0, "tier": verdict.tier}
+        if verdict.soft:
+            # SOFT band (warn/halt): debounce. Only emit a breaker_warn once the band has PERSISTED
+            # breaker_dwell_ticks consecutive marks — a lone spike (count 1 < dwell) stays silent.
+            count = breaker.note_soft_dwell(store, verdict)
+            dwell = int(store.settings.risk.breaker_dwell_ticks)
+            if count >= dwell:
+                store.append_event(
+                    actor="master",
+                    kind="breaker_warn",
+                    ref_type="breaker",
+                    ref_id="global",
+                    payload={"tier": verdict.tier, "dwell": count, **verdict.freeze_frame},
+                )
+            return {"tripped": 0, "tier": verdict.tier}
+        # tier 'none' — the book left (or never entered) the soft band → clear the debounce so a fresh run of
+        # soft ticks must persist the FULL dwell again (idempotent: no write when already clear).
+        breaker.reset_dwell(store)
+        return {"tripped": 0, "tier": verdict.tier}
+    except Exception as exc:  # noqa: BLE001 — a breaker error must NEVER crash the marking tick (fail-safe: skip)
+        log.warning("circuit-breaker pass failed", exc_info=True)
+        store.append_event(
+            actor="master",
+            kind="breaker_pass_failed",
+            ref_type="breaker",
+            ref_id="global",
+            payload={"error": type(exc).__name__},
+        )
+        return {"tripped": 0, "tier": "error"}
 
 
 # CAPITAL-GUARD safety pass — default ON (it can only PROTECT; never opens/grows/arms). Flip OFF with

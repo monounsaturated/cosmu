@@ -11,7 +11,12 @@ from cosmu.api._shared import (  # noqa: F401 — settings kept for the back-com
     settings,
     store,
 )
-from cosmu.api.models import KillswitchRequest, KillswitchResponse
+from cosmu.api.models import (
+    BreakerRearmRequest,
+    BreakerRearmResponse,
+    KillswitchRequest,
+    KillswitchResponse,
+)
 
 router = APIRouter()
 
@@ -63,4 +68,42 @@ def ops_killswitch(request: KillswitchRequest) -> KillswitchResponse:
         evaluated=report.evaluated,
         closed=report.protected,
         actions=report.actions,
+    )
+
+
+@router.post("/ops/breaker/rearm", response_model=BreakerRearmResponse)
+def ops_breaker_rearm(request: BreakerRearmRequest) -> BreakerRearmResponse:
+    """RE-ARM the latching circuit-breaker — the HUMAN-ONLY reset of the weight-on-wheels latch. When a hard
+    aggregate breach trips the breaker it DISARMS live + LIQUIDATES the book and STAYS latched (survives process
+    death via the events ledger); nothing auto-clears it — this route is the ONLY reset, so re-arming is a
+    deliberate human act (the aviation/rail model). Same x-api-key auth as every route (the global middleware).
+
+    Safety: `confirm` MUST be true (two-click — an accidental call never clears the safety latch). Re-arming
+    appends a breaker_rearmed marker so the interlock lets live be re-enabled again, but it does NOT itself
+    re-enable live (the operator re-arms live separately via POST /toggle/live, which the interlock now permits)
+    and it funds/opens NOTHING. A no-op (rearmed=false) when confirm is omitted or the breaker was not latched."""
+    from cosmu.ops import breaker
+
+    if not request.confirm:
+        # Two-click safety: never clear the latch on an unconfirmed call. No state touched.
+        return BreakerRearmResponse(
+            rearmed=False,
+            was_latched=breaker.is_latched(store),
+            reason="re-arm requires confirm=true",
+        )
+
+    was_latched = breaker.is_latched(store)
+    rearmed = breaker.rearm(store)  # NO-OP + returns False when not currently latched (never writes a spurious marker)
+
+    store.append_event(
+        actor="human",
+        kind="ops_breaker_rearm",
+        ref_type="breaker",
+        ref_id="global",
+        payload={"was_latched": was_latched, "rearmed": rearmed},
+    )
+    return BreakerRearmResponse(
+        rearmed=rearmed,
+        was_latched=was_latched,
+        reason=None if rearmed else "breaker was not latched — nothing to clear",
     )
