@@ -238,6 +238,11 @@ def tick() -> int:
     if datetime.now(UTC).hour < 4:           # ~once/day (the 00:00 UTC tick): vendor-cost budget alerts + universe refresh
         _run(["cosmu.costs.refresh"])
         _run(["cosmu.data.universe_build"])  # refresh universe_pairs + R2 snapshot from live venue APIs
+        _run(["cosmu.ingest.audit_registry", "--all"])  # OBSERVE-ONLY leakage-tripwire smoke over every enabled
+        #                                          feature (keyless, non-fatal — _run never aborts the tick). Rides
+        #                                          THIS daily slot; NO new Modal schedule. Surfaces a failing audit
+        #                                          in the logs; the fail-closed gate_eligible_names() is the real
+        #                                          enforcement (a new source stays out of the Gate until audited).
     return rc
 
 

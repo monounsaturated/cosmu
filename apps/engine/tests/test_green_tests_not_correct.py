@@ -73,6 +73,20 @@ LEAKAGE_CRITICAL: tuple[Surface, ...] = (
             ("test_disconfirmer_harness",)),
     Surface("symbol_anonymization_null", "cosmu.research.disconfirmers", "labeling",
             ("test_disconfirmer_harness",)),
+    # --- LEAKAGE WIRING (fail-closed upstream of the Gate): these three MUST stay wired into the money-path.
+    # audit_feature gates a NEW source's admission (via ingest.audit_registry → gate_eligible_names → static_check),
+    # and run_placebo_panel is the cohort's negative-control rider. A guard test references each so the wiring
+    # cannot be silently un-wired while the suite stays green. ---
+    Surface("audit_feature", "cosmu.research.leakage_tripwire", "labeling",
+            ("test_leakage_wiring",)),
+    Surface("run_placebo_panel", "cosmu.research.placebo_panel", "labeling",
+            ("test_leakage_wiring",)),
+    Surface("gate_eligible_names", "cosmu.config.feature_registry", "join",
+            ("test_leakage_wiring",)),
+    Surface("audit_registered_source", "cosmu.ingest.audit_registry", "join",
+            ("test_leakage_wiring",)),
+    Surface("FarmLoop._run_placebo_rider", "cosmu.evolution.loop", "labeling",
+            ("test_leakage_wiring",)),
 )
 
 
