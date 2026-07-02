@@ -177,9 +177,14 @@ class Settings(BaseSettings):
     # the per-track slice above). Must stay >> sim_track_capital so multiple tracks fit. Override SIM_BANKROLL.
     sim_bankroll: Decimal = Decimal("100000")
     openrouter_api_key: str | None = Field(default=None, repr=False)
-    # LLM author: xAI (Grok) is preferred when XAI_API_KEY is set (already on Railway) — most efficient,
-    # no new key; OpenRouter is the fallback. Both are OpenAI-compatible (same request shape).
+    # xAI (Grok) key. RESERVED FOR ON-DEMAND USE by default: the scheduled/unattended crons (ingest tweet
+    # LiveSearch, llm_index rubric scoring, the tick author + research live_search) NEVER auto-spend it —
+    # they route to OpenRouter ":free" instead (see llm_provider). This preserves the small xAI credit for
+    # explicit on-demand tweet ingestion (scripts/backfill_voices.py reads XAI_API_KEY directly). Flip
+    # XAI_SCHEDULED_ENABLED=1 to let the crons author/score with Grok again. Both APIs are OpenAI-compatible.
     xai_api_key: str | None = Field(default=None, repr=False)
+    # Opt-in: allow the SCHEDULED crons to spend xAI (default off → xAI is on-demand only). See xai_api_key.
+    xai_scheduled_enabled: bool = False
     # PAID-call throttle for LLM-BACKED ingest sources (xAI LiveSearch, llm_index rubric scoring): a source
     # whose newest stored point is younger than this many minutes is SKIPPED for the pass. Exists because the
     # Tier-1 15-min ingest cadence (realtime-data-lane epic) would otherwise multiply paid LLM calls ×24 vs
@@ -285,9 +290,11 @@ class Settings(BaseSettings):
 
     @property
     def llm_provider(self) -> str | None:
-        """Which LLM provider is live: xAI if XAI_API_KEY is set (preferred — already on Railway), else
-        OpenRouter, else None (deterministic template authoring). Centralizes the choice in one place."""
-        if self.xai_api_key:
+        """Provider for AUTOMATIC/scheduled LLM work (author, judge, index scoring). xAI is reserved for
+        ON-DEMAND use unless XAI_SCHEDULED_ENABLED=1, so the unattended crons default to OpenRouter ":free"
+        ($0) — preserving the small xAI credit. Order: xAI (only when opted in) → OpenRouter → None
+        (deterministic template). Centralizes the choice in one place."""
+        if self.xai_api_key and self.xai_scheduled_enabled:
             return "xai"
         if self.openrouter_api_key:
             return "openrouter"
@@ -295,7 +302,14 @@ class Settings(BaseSettings):
 
     @property
     def llm_api_key(self) -> str | None:
-        return self.xai_api_key or self.openrouter_api_key
+        """The key that MATCHES llm_provider (kept consistent so the router hits the right base URL — never an
+        xAI key paired with the OpenRouter URL or vice-versa). None → deterministic template authoring."""
+        provider = self.llm_provider
+        if provider == "xai":
+            return self.xai_api_key
+        if provider == "openrouter":
+            return self.openrouter_api_key
+        return None
 
     @property
     def sqlite_path(self) -> Path:

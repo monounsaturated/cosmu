@@ -317,10 +317,13 @@ def run_research_pass(
     (authored/gated/survivors/graveyard) without re-running — not CLI-only."""
     if tool_bus is None:
         # Build the bus with server-side keys so the xAI live_search tool can run (key-gated; offline → fixture).
+        # xAI live_search is RESERVED for ON-DEMAND use — the SCHEDULED research pass only queries it when
+        # XAI_SCHEDULED_ENABLED=1 (preserve the small xAI credit); otherwise the bus degrades to the fixture ($0).
         try:
             from cosmu.config.settings import get_settings as _get_settings
             _s = _get_settings()
-            bus = research_tool_bus(xai_key=_s.xai_api_key)
+            _xai_key = _s.xai_api_key if getattr(_s, "xai_scheduled_enabled", False) else None
+            bus = research_tool_bus(xai_key=_xai_key)
         except Exception:  # noqa: BLE001 — settings unavailable offline → no-key bus (fixtures only)
             bus = research_tool_bus()
     else:

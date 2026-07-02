@@ -30,8 +30,8 @@ def _key_table() -> list[tuple[str, str, str, str, str, str, bool]]:
         # cannot observe Vercel's env, so their presence is left honestly unverified (see _settings_key_rows).
         ("API_BASE_URL", "Engine URL (web→Vercel)", "The engine URL the web's server proxy forwards to. Set on Vercel.", "required", "free", "vercel", False),
         ("NEXT_PUBLIC_API_BASE_URL", "Engine URL (public)", "Public engine URL the web reads to show connected vs offline. Set on Vercel.", "required", "free", "vercel", False),
-        ("XAI_API_KEY", "xAI (Grok)", "LLM strategy authoring (preferred). Research still runs offline without it.", "optional", "paid", "railway", bool(settings.xai_api_key)),
-        ("OPENROUTER_API_KEY", "OpenRouter", "LLM authoring fallback when xAI is not set.", "optional", "paid", "railway", bool(settings.openrouter_api_key)),
+        ("XAI_API_KEY", "xAI (Grok)", "On-demand tweet ingestion + live-search. Scheduled crons do NOT auto-spend it unless XAI_SCHEDULED_ENABLED=1.", "optional", "paid", "railway", bool(settings.xai_api_key)),
+        ("OPENROUTER_API_KEY", "OpenRouter", "Default LLM provider for scheduled authoring/scoring (\":free\" models, $0).", "optional", "paid", "railway", bool(settings.openrouter_api_key)),
         ("LUNARCRUSH_API_KEY", "LunarCrush", "Social-sentiment scores + a real (non-synthetic) edge-gate verdict.", "optional", "paid", "railway", bool(settings.lunarcrush_api_key)),
         ("FRED_API_KEY", "FRED", "Macro-regime cross-asset source (free key).", "optional", "free", "railway", bool(settings.fred_api_key)),
         ("POLYMARKET_TOKEN", "Polymarket", "Prediction-market risk-on cross-asset source (a market token id, not a secret).", "optional", "free", "railway", bool(settings.polymarket_token)),
