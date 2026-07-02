@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 
 # Type alias for the injectable HTTP poster: (url: str, payload: bytes) -> None
 _HttpPost = Callable[[str, bytes], None]
+
+# Aviation two-tier severity. 'log' = master-CAUTION (routine high-signal notices → slack_webhook_url).
+# 'page' = master-WARNING (the few "wake me up" events → slack_webhook_url_page, falling back to
+# slack_webhook_url when the page bus is unset). SlackNotifier.tiered(settings, severity) picks the URL.
+Severity = Literal["page", "log"]
 
 
 def _live_post(url: str, payload: bytes) -> None:
@@ -44,6 +49,22 @@ class SlackNotifier:
         url = getattr(settings, "slack_webhook_url", None) or os.environ.get("SLACK_WEBHOOK_URL")
         return cls(url, _post=_post)
 
+    @classmethod
+    def tiered(cls, settings: Any, severity: Severity, *, _post: _HttpPost | None = None) -> "SlackNotifier":
+        """Aviation two-tier routing. 'page' → slack_webhook_url_page if set, else slack_webhook_url (a
+        single-channel operator keeps one channel); 'log' → slack_webhook_url. Falls back to the SLACK_WEBHOOK_URL
+        / SLACK_WEBHOOK_URL_PAGE env vars when a field is absent (Modal secret injection). Graceful no-op when the
+        chosen bus is unset — the never-raise/never-block invariant is unchanged (see send())."""
+        log_url = getattr(settings, "slack_webhook_url", None) or os.environ.get("SLACK_WEBHOOK_URL")
+        if severity == "page":
+            page_url = (
+                getattr(settings, "slack_webhook_url_page", None)
+                or os.environ.get("SLACK_WEBHOOK_URL_PAGE")
+                or log_url  # single-channel fallback: the page tier rides the log bus when no page bus is set
+            )
+            return cls(page_url, _post=_post)
+        return cls(log_url, _post=_post)
+
     def send(self, text: str) -> None:
         """Best-effort POST to the webhook.  Silently swallows ALL errors — never raises."""
         if not self._url:
@@ -56,7 +77,26 @@ class SlackNotifier:
 
 
 # ---------------------------------------------------------------------------
-# High-level helpers — three high-signal events only
+# Watchdog self-pulse — the dead-man's heartbeat-of-the-heartbeat
+# ---------------------------------------------------------------------------
+
+
+def record_watchdog_pulse(store: Any) -> None:
+    """Append an event kind='watchdog_pulse' meaning "the heartbeat cron ran AND found the fleet healthy".
+    The ABSENCE of a fresh watchdog_pulse is what tells the external prober the heartbeat CRON ITSELF died —
+    the SPOF the on-Modal heartbeat can't report on (it can't page about its own non-execution). Called by
+    ops.heartbeat.run() after a HEALTHY check. Best-effort: swallows ALL errors so it can never crash the
+    heartbeat (a store hiccup must not turn a healthy run red). No-op-safe on a None store."""
+    if store is None:
+        return
+    try:
+        store.append_event(actor="ops", kind="watchdog_pulse", ref_type="heartbeat", ref_id="fleet", payload={})
+    except Exception:  # noqa: BLE001 — never let the self-pulse crash the heartbeat
+        pass
+
+
+# ---------------------------------------------------------------------------
+# High-level helpers — high-signal events only
 # ---------------------------------------------------------------------------
 
 

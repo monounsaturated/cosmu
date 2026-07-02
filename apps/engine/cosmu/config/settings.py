@@ -256,6 +256,13 @@ class Settings(BaseSettings):
     api_secret_key: str | None = Field(default=None, repr=False)
     railway_api_token: str | None = Field(default=None, repr=False)
     slack_webhook_url: str | None = Field(default=None, repr=False)
+    # Aviation two-tier alerting: slack_webhook_url is the master-CAUTION / LOG bus (routine, high-signal
+    # notices — gate verdicts, budget info/warn, stride pings). slack_webhook_url_page is the OPTIONAL
+    # master-WARNING / PAGE bus (a second, louder channel for the few "wake me up" events — total-silence fleet
+    # death, account EXHAUSTED, budget 100% crossed). UNSET → the page tier falls back to slack_webhook_url, so a
+    # single-channel operator keeps one channel and loses nothing; set it (SLACK_WEBHOOK_URL_PAGE) to split the
+    # buses. Never enters prompts/DB/frontend (repr=False, same isolation as every secret above).
+    slack_webhook_url_page: str | None = Field(default=None, repr=False)
     # --- alt-data storage tier (hot/cold) ---------------------------------------------------------------
     # "pg" (default, unchanged): alt_data rows live in Postgres (hot, transactional, the live-gate read path).
     # "parquet": the COLD tier — alt-data is an append-only Parquet lake read via DuckDB (columnar, ~5-15x

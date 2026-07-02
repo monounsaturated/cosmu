@@ -1,0 +1,96 @@
+name: fleet-watchdog
+
+# The OFF-Modal external dead-man's switch. The on-engine heartbeat (cosmu/ops/heartbeat.py) watches the fleet
+# from INSIDE the same Modal app it monitors — so nothing watches the heartbeat itself (share-fate: if Modal /
+# the engine goes fully dark, the watcher dies with the watched). This job is that missing watcher, in a
+# SEPARATE failure domain (a GitHub-hosted runner, not Modal). It curls the Railway engine's public
+# GET /health/fleet and PAGES — POSTing DIRECTLY to the Slack page webhook FROM THE RUNNER, never via the
+# engine — when the fleet is unreachable, 5xx, reporting stale:true, or its heartbeat self-pulse
+# (watchdog_pulse) is older than ~2h. This is the true dead-man: it alerts on ABSENCE, observed from outside,
+# so a page fires even when Modal/Railway is completely down.
+#
+# OPERATOR SETUP (repo secrets, Settings → Secrets and variables → Actions):
+#   FLEET_HEALTH_URL      — the public https URL of the Railway engine's /health/fleet (e.g.
+#                           https://cosmu-engine.up.railway.app/health/fleet). Auth-exempt, so no key needed.
+#   SLACK_WEBHOOK_URL_PAGE — the Slack incoming-webhook for the PAGE tier (falls back to the log webhook for a
+#                           single-channel operator; set it to the same value to keep one channel).
+# Missing FLEET_HEALTH_URL → the job self-skips (soft no-op, never a false red) until the operator wires it.
+
+on:
+  schedule:
+    - cron: "15 * * * *"   # hourly at :15 — 2x the engine heartbeat cadence, so one missed run won't page
+  workflow_dispatch:        # press-to-test: run it by hand from the Actions tab to prove the page path fires
+
+concurrency:
+  group: fleet-watchdog
+  cancel-in-progress: true
+
+permissions:
+  contents: read            # least-privilege: this job only reads a URL and posts to Slack
+
+jobs:
+  probe:
+    name: probe fleet freshness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe /health/fleet and page on absence/staleness
+        env:
+          FLEET_HEALTH_URL: ${{ secrets.FLEET_HEALTH_URL }}
+          SLACK_WEBHOOK_URL_PAGE: ${{ secrets.SLACK_WEBHOOK_URL_PAGE }}
+          MAX_PULSE_AGE_H: "2"   # page if the heartbeat's own watchdog_pulse is older than this
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          if [ -z "${FLEET_HEALTH_URL}" ]; then
+            echo "::warning::FLEET_HEALTH_URL secret not set — skipping (operator must wire the prober)."
+            exit 0
+          fi
+
+          page() {
+            # Fire the page DIRECTLY from the runner (NOT via the engine) so it works even when the engine is
+            # fully dark. Best-effort: never fail the step ON the Slack post itself — the job's own red status
+            # is the second signal. No webhook set → the runner log is the record.
+            local reason="$1"
+            echo "::error::fleet-watchdog PAGE — ${reason}"
+            if [ -n "${SLACK_WEBHOOK_URL_PAGE}" ]; then
+              local text=":red_circle: *Cosmu fleet DEAD-MAN — external prober* (GitHub runner, off-Modal)\n${reason}\nProbed: ${FLEET_HEALTH_URL}\nRun: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              curl -sS -m 10 -X POST -H 'Content-Type: application/json' \
+                --data "$(printf '{"text":"%s"}' "${text}")" \
+                "${SLACK_WEBHOOK_URL_PAGE}" || echo "::warning::Slack page POST failed (runner emitted the error above)."
+            else
+              echo "::warning::SLACK_WEBHOOK_URL_PAGE not set — page recorded in the run log only."
+            fi
+            exit 1
+          }
+
+          # Curl with a hard timeout. -w captures the HTTP status; the body goes to a file. A connection refusal
+          # / DNS failure / timeout leaves curl non-zero and status empty → "engine down".
+          http_status="$(curl -sS -m 15 -o body.json -w '%{http_code}' "${FLEET_HEALTH_URL}")" || http_status="000"
+          echo "HTTP ${http_status}"
+          body="$(cat body.json 2>/dev/null || echo '')"
+          echo "Body: ${body}"
+
+          # ENGINE DOWN — unreachable (000) or any 5xx. The engine can't even answer → total darkness.
+          if [ "${http_status}" = "000" ] || [ "${http_status}" -ge 500 ] 2>/dev/null; then
+            page "Engine unreachable or 5xx (HTTP ${http_status}) — Railway/engine appears DOWN."
+          fi
+          if [ "${http_status}" -ne 200 ] 2>/dev/null; then
+            page "Unexpected HTTP ${http_status} from /health/fleet."
+          fi
+
+          # ENGINE UP BUT FLEET STALE — 200 + stale:true (a job stopped writing; the engine still answers).
+          stale="$(printf '%s' "${body}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(str(d.get("stale", True)).lower())' 2>/dev/null || echo 'true')"
+          if [ "${stale}" = "true" ]; then
+            page "Fleet reports stale:true (a cron stopped writing). Body: ${body}"
+          fi
+
+          # HEARTBEAT CRON ITSELF DEAD — the watchdog_pulse age exceeds the ceiling (the beacon went silent).
+          pulse_age="$(printf '%s' "${body}" | python3 -c 'import json,sys; d=json.load(sys.stdin); v=d.get("watchdog_pulse_age_h"); print("-1" if v is None else v)' 2>/dev/null || echo '-1')"
+          # -1 = the pulse never fired / unparseable → treat as dead. Otherwise compare against MAX_PULSE_AGE_H.
+          over="$(python3 -c "v=${pulse_age}; m=${MAX_PULSE_AGE_H}; print('yes' if (v < 0 or v > m) else 'no')" 2>/dev/null || echo 'yes')"
+          if [ "${over}" = "yes" ]; then
+            page "Heartbeat self-pulse stale (watchdog_pulse_age_h=${pulse_age} > ${MAX_PULSE_AGE_H}h) — the heartbeat cron itself may be dead."
+          fi
+
+          echo "fleet-watchdog OK — engine up, fleet fresh, heartbeat pulse ${pulse_age}h old."

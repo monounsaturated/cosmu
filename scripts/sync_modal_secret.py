@@ -53,6 +53,17 @@ WANTED = (
     # x-api-key the provider presents to the (authed) /market/bars route. Absent → unchanged (keyless Binance).
     "COSMU_BARS_URL",
     "API_SECRET_KEY",
+    # ALERTING FABRIC — the root fix that flips every notifier from no-op → live on the Modal fleet. Every
+    # SlackNotifier (heartbeat page, budget/account-exhaustion, ingest-degraded, tick-error) reads
+    # SLACK_WEBHOOK_URL and is a SILENT no-op when it is unset — which it was, because it was never in this
+    # WANTED tuple, so the Modal jobs ran with the field None ("alerting you cannot prove fires is alerting you
+    # do not have"). SLACK_WEBHOOK_URL_PAGE is the OPTIONAL second bus — the aviation master-WARNING (page) tier
+    # (config.settings.slack_webhook_url_page); unset → the page tier transparently falls back to the single
+    # SLACK_WEBHOOK_URL channel, so a one-channel operator keeps exactly one channel. Both ride the `if env.get(k)`
+    # filter below: absent from .env.local → omitted from the secret → the notifiers stay a no-op, ZERO behavior
+    # change. Set SLACK_WEBHOOK_URL in .env.local and re-run this script to make the fleet actually page.
+    "SLACK_WEBHOOK_URL",
+    "SLACK_WEBHOOK_URL_PAGE",
 )
 
 
