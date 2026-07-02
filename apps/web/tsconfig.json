@@ -12,6 +12,11 @@
     },
     "allowJs": false,
     "noEmit": true,
+    // Lets the dependency-free unit tests (lib/*.test.ts) import sibling modules with an explicit `.ts`
+    // extension so the SAME files run under `node --test --experimental-strip-types` (which requires the
+    // extension) AND typecheck here. Safe with noEmit — tsc never rewrites the path; Next/Turbopack ignore
+    // *.test.ts, so this affects only the type-check + the standalone test run, never the shipped bundle.
+    "allowImportingTsExtensions": true,
     "incremental": true,
     "plugins": [{ "name": "next" }]
   },

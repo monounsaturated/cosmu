@@ -24,6 +24,21 @@ def _guard_production_auth(s) -> None:
             "API_SECRET_KEY is required in production — refusing to start the control plane unauthenticated. "
             "Set API_SECRET_KEY on the engine service (and ensure the Vercel proxy forwards x-api-key)."
         )
+    # SECOND-TIER fail-closed — DARK-LAUNCHED behind operator_auth_enforced (default False → this assert is a
+    # NO-OP, so boot behavior is unchanged and flipping nothing can refuse the boot). ONLY when the operator has
+    # turned enforcement ON must OPERATOR_SECRET_KEY be present: otherwise the two-tier middleware would reject
+    # EVERY money route (fail-closed), silently bricking the money control plane after a deploy — so we surface
+    # it loudly at boot instead. Scoped to API startup (Modal cron / CLI never run this lifespan).
+    if (
+        getattr(s, "environment", None) == "production"
+        and getattr(s, "operator_auth_enforced", False)
+        and not getattr(s, "operator_secret_key", None)
+    ):
+        raise RuntimeError(
+            "OPERATOR_AUTH_ENFORCED is on but OPERATOR_SECRET_KEY is unset — refusing to start: the two-tier "
+            "gate would reject every money route. Set OPERATOR_SECRET_KEY on the engine (and the matching "
+            "OPERATOR_SESSION_SECRET / OPERATOR_PASSPHRASE_HASH on Vercel), or unset OPERATOR_AUTH_ENFORCED."
+        )
 
 
 @asynccontextmanager
