@@ -17,6 +17,7 @@ from cosmu.config.settings import PAPER_MIN_FORWARD_DSR, PAPER_MIN_FORWARD_OBS
 from cosmu.knowledge.store import Store, tracks_has_cell_columns
 from cosmu.master.paper_maturity import PaperMaturity, maturity
 from cosmu.master.scorer import probabilistic_sharpe, sample_moments
+from cosmu.master.track_equity import real_track_rows, track_starting_capital
 from cosmu.ml.regime import Regime, current_regime, regime_eligible
 
 
@@ -208,6 +209,12 @@ def forward_daily_returns(store: Store, version_id: str, *, limit: int = 4000, s
             (ref, limit),
         )
         if rows:
+            # Drop the funder's seed-collapse rows BEFORE resampling: a mark-less funder tick that landed last in a
+            # day would otherwise pin that day's equity to the seed (day-last-wins), manufacturing a phantom
+            # round-trip in the daily-return series and corrupting the forward Sharpe this HARD gate reads. A
+            # funder-only day (no real price at all) is simply not a forward observation, so we drop it rather than
+            # carry it (see master/track_equity).
+            rows = real_track_rows(rows, track_starting_capital(store, ref))
             break
     if not rows:
         return []

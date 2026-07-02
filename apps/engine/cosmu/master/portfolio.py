@@ -340,10 +340,24 @@ class Portfolio:
 
         unrealized_by_track: dict[str, Decimal] = {}
         open_value_by_track: dict[str, Decimal] = {}
+        # ROOT FIX for the seed-collapse sawtooth: track, per cell key, whether it has any OPEN leg and whether ANY
+        # of those legs got a REAL price this call (its instrument_id is in `marks`). A caller that carries no mark
+        # for a held cell — the FUNDER re-marking an already-held track (its marks-dict holds only the freshly-funded
+        # cells), or the paper clock when a price fetch fails — would otherwise fall every leg back to cost basis
+        # (marks.get(id, avg_price)), make unrealized exactly 0, and write equity = starting_capital + 0 = the SEED
+        # to the cent. That snapshot is a stale re-mark, not a fresh price, so we SKIP its per-track write below and
+        # leave the last real mark as the track's latest — exactly what mark_tracks' "a missing mark leaves that
+        # position at its last basis" intends. A fully-CLOSED cell (realized only, no open leg) still writes: its
+        # equity = seed + realized is real information, not a collapse.
+        open_keys: set[str] = set()
+        real_marked_keys: set[str] = set()
         for p in positions:
             key = _cell_key(p)
             if key is None:
                 continue
+            open_keys.add(key)
+            if p.instrument_id in marks:
+                real_marked_keys.add(key)
             mark = marks.get(p.instrument_id, p.avg_price)
             unrealized_by_track[key] = unrealized_by_track.get(key, Decimal("0")) + (mark - p.avg_price) * p.qty
             open_value_by_track[key] = open_value_by_track.get(key, Decimal("0")) + mark * p.qty
@@ -379,6 +393,10 @@ class Portfolio:
             if vid in by_track:
                 by_track[vid] += fund
         for key, value in by_track.items():
+            if key in open_keys and key not in real_marked_keys:
+                # Held cell with NO fresh price for any open leg → this equity is a cost-basis collapse to the seed,
+                # not a mark. Skip the write; the track keeps its last real snapshot as its latest (root fix).
+                continue
             self.store.insert(
                 "portfolio_snapshots",
                 {

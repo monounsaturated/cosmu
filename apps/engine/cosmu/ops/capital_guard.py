@@ -97,7 +97,11 @@ class _FundedHolding:
 
 def _latest_track_equity(store: Store, ref_id: str) -> Decimal | None:
     """The most recent marked equity for a cell's scope='track' snapshot series, or None if it has never marked.
-    `ref_id` is the cell key (version:symbol:venue) or the legacy version-only key."""
+    `ref_id` is the cell key (version:symbol:venue) or the legacy version-only key. Reads the RAW latest on purpose:
+    a real mark that genuinely lands back on the seed (a break-even track) IS the current equity, so it must NOT be
+    filtered here (that would hide a real giveback and fail to protect). The funder's phantom collapse-to-seed rows
+    are removed at the ROOT — the writer no longer emits them (master/portfolio.mark_to_market) and the historical
+    ones are backfilled out — so the raw latest is a real mark, and reads conservative (phantom-low) if any linger."""
     row = store.row(
         "SELECT equity FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ? ORDER BY ts DESC LIMIT 1",
         (ref_id,),
@@ -112,7 +116,9 @@ def _latest_track_equity(store: Store, ref_id: str) -> Decimal | None:
 
 def _peak_track_equity(store: Store, ref_id: str, *, floor: Decimal) -> Decimal:
     """The high-water mark of a cell's marked-equity series (>= floor so a brand-new track with one snapshot has
-    a sane peak). The profit-lock guard measures giveback from THIS."""
+    a sane peak). The profit-lock guard measures giveback from THIS. Raw MAX by design (see _latest_track_equity):
+    a genuine break-even mark equal to the seed is real equity, and a phantom seed row is <= a real peak so it never
+    inflates the high-water — the root writer fix + backfill remove the phantoms rather than filter them here."""
     row = store.row(
         "SELECT MAX(CAST(equity AS REAL)) AS hw FROM portfolio_snapshots WHERE scope = 'track' AND ref_id = ?",
         (ref_id,),

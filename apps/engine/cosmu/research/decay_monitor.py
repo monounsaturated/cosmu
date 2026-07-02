@@ -29,6 +29,7 @@ from cosmu.config.settings import PAPER_MIN_FORWARD_DSR, PAPER_MIN_FORWARD_OBS
 from cosmu.master.drift import fit_edge_decay, rolling_edge
 from cosmu.master.risk_metrics import annualized_return, calmar_ratio, max_drawdown
 from cosmu.master.scorer import probabilistic_sharpe, sample_moments
+from cosmu.master.track_equity import real_track_rows, track_starting_capital
 
 # --- policy constants (named, never inline magic; the forward floor is the SAME one the live arming gate uses) ---
 
@@ -387,9 +388,16 @@ def load_tracks_from_store(store, *, limit: int = 500, discovery_frac: float = 0
     )
     from collections import defaultdict
 
-    by_ref: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    # Group the raw snapshot rows per ref, THEN drop the funder's seed-collapse rows before deriving returns: an
+    # interleaved re-mark to the seed would inject a phantom down/up round-trip that corrupts the fitted edge
+    # half-life τ this study estimates (see master/track_equity).
+    raw_by_ref: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
-        by_ref[r["ref_id"]].append((str(r["ts"]), float(r["equity"])))
+        raw_by_ref[r["ref_id"]].append(r)
+    by_ref: dict[str, list[tuple[str, float]]] = {}
+    for ref, raw in raw_by_ref.items():
+        kept = real_track_rows(raw, track_starting_capital(store, ref))
+        by_ref[ref] = [(str(r["ts"]), float(r["equity"])) for r in kept]
     out: list[TrackSeries] = []
     for ref, series in by_ref.items():
         series = series[-(limit + 1) :]

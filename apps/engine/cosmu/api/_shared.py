@@ -11,6 +11,7 @@ from cosmu.config.settings import get_settings
 from cosmu.evolution.loop import CohortSummary
 from cosmu.knowledge.store import Store, utcnow
 from cosmu.master.portfolio import Portfolio
+from cosmu.master.track_equity import is_seed_equity
 
 ORIGIN_TO_LANE = {"seed": "seed", "mutation": "exploit", "wildcard": "explore", "pine": "pine", "agent": "exploit"}
 
@@ -152,14 +153,14 @@ def honest_track_equity_series(
         except (TypeError, ValueError, KeyError):
             continue
         ts = r["ts"]
-        is_collapse = (
-            seed is not None and abs(eq - seed) < 0.005 and last_real is not None
-        )  # seed-to-the-cent AND we already have a real mark to hold → funder collapse
+        # seed-to-the-cent AND we already have a real mark to hold → funder collapse (shared fingerprint,
+        # master/track_equity.is_seed_equity — the statistical readers DROP this row; the display CARRIES it).
+        is_collapse = is_seed_equity(eq, seed) and last_real is not None
         if is_collapse:
             out.append((ts, last_real))  # hold the last real mark
         else:
             out.append((ts, eq))
-            if not (seed is not None and abs(eq - seed) < 0.005):
+            if not is_seed_equity(eq, seed):
                 last_real = eq  # a genuine (non-seed) mark becomes the carry value
     return out
 
