@@ -46,6 +46,23 @@ def _env_int(name: str, default: int) -> int:
 _EVOLVE_MAX_PARENTS = _env_int("COSMU_EVOLVE_MAX_PARENTS", 6)
 _EVOLVE_MAX_SPECS = _env_int("COSMU_EVOLVE_MAX_SPECS", 24)
 
+# HEAVY-slot cadence: run the differentiated funding/microstructure cohorts once every HEAVY_EVERY ticks. At the 4h
+# tick cadence, 6 ≈ once/day — cheap enough to ride the existing tick() Modal slot (no 6th schedule; Modal Free caps
+# at 5). Env-tunable for a cheaper/wider run. These are the ON-DEMAND cohorts (funding-crowding + social-signal),
+# now SCHEDULED so their differentiated data axes get searched autonomously, not just on a manual `modal run`.
+_HEAVY_EVERY = _env_int("COSMU_HEAVY_COHORT_EVERY", 6)
+
+
+def _epoch_hour_seed() -> int:
+    """A TIME-VARIED cohort seed derived from the wall-clock epoch-hour, so each 4h tick mutates from a DIFFERENT
+    blind-walk origin instead of re-searching the near-identical noise a hardcoded seed=7 reproduced every cycle.
+    Bounded to a positive 31-bit int (random.Random accepts any int; this keeps it small + human-readable in the
+    audit ledger). Deterministic within an hour — a re-run inside the same hour repeats, which is the reproducibility
+    we want at the tick granularity; the NEXT tick (≥4h later) lands in a different hour → a different seed."""
+    import time
+
+    return int(time.time() // 3600) % (2**31 - 1)
+
 
 @dataclass
 class TickSummary:
@@ -224,6 +241,64 @@ def _run_evolution(
     return evolved
 
 
+def _run_heavy_cohorts(store: Store, *, cycle_count: int, every: int = _HEAVY_EVERY) -> list[str]:
+    """The HEAVY-slot rider: on every `every`-th tick, SCHEDULE the differentiated funding/microstructure cohorts
+    (funding-crowding + social-signal) that until now only ran on a manual `modal run`. Each cohort builds its OWN
+    funding/social + market inputs per its `_main` (their signatures ≠ FarmLoop.run_cohort) and is run BEST-EFFORT
+    in isolation: a cohort raising, an empty data cache, or an absent table can NEVER break the tick the Gate drives.
+    Returns the names of the cohorts that ran (empty on a non-heavy cycle) — audited by the caller.
+
+    Gated on `cycle_count % every == 0` so it fires ≈once/day at the 4h tick cadence (Modal Free caps schedules at
+    5; this rides the existing tick() slot rather than adding a 6th). No new money-path, no Gate change — each cohort
+    routes through its OWN existing deterministic scorer + BH-FDR (persist=True records the durable verdict)."""
+    if every <= 0 or (cycle_count % every) != 0:
+        return []
+    ran: list[str] = []
+
+    # 1) FUNDING-CROWDING cohort — funding-as-positioning specs through the scorer + BH-FDR on real Binance bars +
+    #    real funding. Mirrors funding_crowding_cohort._main: real market clipped to the funding window + the cached
+    #    funding provider. Offline-safe: an empty funding cache returns INSUFFICIENT-DATA (never raises).
+    try:
+        from cosmu.data.market import default_crypto_reference
+        from cosmu.data.altdata import CachedFundingRateProvider
+        from cosmu.research.carry_ablation import _clip_to_funding_window, _real_market
+        from cosmu.research import funding_crowding_cohort as fcc
+
+        funding = CachedFundingRateProvider()
+        market = _clip_to_funding_window(_real_market(default_crypto_reference()), funding)
+        report = fcc.run_cohort(fcc.load_specs(), market, funding, store, persist=True)
+        store.append_event(
+            actor="master", kind="heavy_cohort_ran", ref_type="autonomy", ref_id="global",
+            payload={"cohort": "funding_crowding", "verdict": report.verdict, "cycle": cycle_count},
+        )
+        ran.append("funding_crowding")
+    except Exception as exc:  # noqa: BLE001 — a heavy cohort is best-effort; never aborts an already-gated tick
+        store.append_event(actor="master", kind="heavy_cohort_failed", ref_type="autonomy",
+                           payload={"cohort": "funding_crowding", "error": type(exc).__name__})
+
+    # 2) SOCIAL-SIGNAL cohort — LunarCrush social-signal specs through the scorer + BH-FDR. Mirrors
+    #    social_signal_cohort._main: read the real social history from the resolved alt-data store (respects
+    #    ALT_DATA_BACKEND), clip the market to the social window. Offline-safe: an empty social cache → INSUFFICIENT-DATA.
+    try:
+        from cosmu.data.alt_join import resolve_alt_store
+        from cosmu.data.market import default_crypto_reference
+        from cosmu.research import social_signal_cohort as ssc
+
+        provider = ssc.StoreBackedAltProvider(resolve_alt_store(store.settings, store))
+        market = ssc._clip_to_social_window(ssc._real_market(default_crypto_reference()), provider)
+        report = ssc.run_cohort(ssc.load_specs(), market, provider, store, persist=True)
+        store.append_event(
+            actor="master", kind="heavy_cohort_ran", ref_type="autonomy", ref_id="global",
+            payload={"cohort": "social_signal", "verdict": report.verdict, "cycle": cycle_count},
+        )
+        ran.append("social_signal")
+    except Exception as exc:  # noqa: BLE001 — a heavy cohort is best-effort; never aborts an already-gated tick
+        store.append_event(actor="master", kind="heavy_cohort_failed", ref_type="autonomy",
+                           payload={"cohort": "social_signal", "error": type(exc).__name__})
+
+    return ran
+
+
 def run_tick(
     store: Store,
     *,
@@ -316,6 +391,18 @@ def run_tick(
         store.append_event(actor="master", kind="autonomy_funding_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
         notify_tick_error(notifier, kind="autonomy_funding_failed", error=type(exc).__name__)
 
+    # 4a) HEAVY-slot rider — SCHEDULE the differentiated funding/microstructure cohorts ≈once/day (every _HEAVY_EVERY
+    # ticks). They search DISTINCT data axes (funding-as-crowding, LunarCrush social) the 4h FarmLoop never touches,
+    # so the autonomous search stops being confined to the crypto-price feature space. cycle_count is the number of
+    # COMPLETED ticks so far (this tick hasn't recorded completion yet) → cycle 0 is the first tick, so the heavy
+    # slot fires on the very first tick and then every _HEAVY_EVERY. Best-effort (each cohort isolated inside
+    # _run_heavy_cohorts): a cohort raising can never abort this already-gated tick.
+    heavy_ran: list[str] = []
+    try:
+        heavy_ran = _run_heavy_cohorts(store, cycle_count=_cycles_run(store))
+    except Exception as exc:  # noqa: BLE001 — the whole heavy rider is best-effort; never aborts an already-gated tick
+        store.append_event(actor="master", kind="heavy_cohort_failed", ref_type="autonomy", payload={"error": type(exc).__name__})
+
     # 4b) REJECTS WATCH-LIST Type-II readout — OBSERVE-ONLY. The gate is correctly strict (we NEVER loosen it),
     # but a strict gate has a Type-II / false-negative rate we never measured. The finder banded gate-rejected-
     # but-CLOSE candidates into rejects_watch and zero-capital paper-tracked them; here we compute the EMPIRICAL
@@ -370,6 +457,7 @@ def run_tick(
             "ingested": ingested,
             "survivors": survivor_names,
             "evolved": evolved,  # gate-passed survivors the replication flywheel produced from this tick's winners
+            "heavy_cohorts": heavy_ran,  # the differentiated funding/microstructure cohorts this tick scheduled (heavy slot)
             "live_enabled": live,  # audited every tick: the tick never moves real money
             "llm": "on" if (settings.llm_api_key or chat is not None) else "off",
         },
@@ -457,20 +545,25 @@ def _main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Run ONE bounded autonomous master tick (cron-able, sim-only, never arms live).")
     parser.add_argument("--n", type=int, default=4, help="candidates to author this tick (default 4)")
-    parser.add_argument("--seed", type=int, default=7, help="cohort seed (default 7)")
+    # DEFAULT None → a TIME-VARIED epoch-hour seed (each 4h tick mutates from a fresh origin instead of re-searching
+    # the near-identical noise the old hardcoded seed=7 reproduced every cycle). An explicit --seed is HONORED
+    # verbatim (tests/repro can pin the cohort). This restores nothing about the Gate — only the search's start point.
+    parser.add_argument("--seed", type=int, default=None, help="cohort seed (default: time-varied from the epoch-hour; pass to pin for repro)")
     parser.add_argument("--offline", action="store_true", help="self-contained demo: temp sqlite + edge-bearing fixture, no network/keys (NOT for prod)")
     args = parser.parse_args(argv)
+    seed = args.seed if args.seed is not None else _epoch_hour_seed()
 
     if args.offline:
         tmp = tempfile.mkdtemp(prefix="cosmu-tick-")
         store = Store(Settings(database_url=f"sqlite:///{tmp}/tick.sqlite3", openrouter_api_key=None))
-        report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=True, ingest=lambda _s: {})
+        report = run_tick(store, n=max(1, args.n), seed=seed, edge_market=True, ingest=lambda _s: {})
     else:
         # PRODUCTION: real store (DATABASE_URL from env), real free-data ingest, real Binance bars (edge_market=False).
         store = Store(Settings())
-        report = run_tick(store, n=max(1, args.n), seed=args.seed, edge_market=False)
+        report = run_tick(store, n=max(1, args.n), seed=seed, edge_market=False)
     s = report.summary
     print("AUTONOMOUS MASTER TICK — one bounded cycle complete (sim-only, live off)")
+    print(f"  seed={seed}{' (time-varied)' if args.seed is None else ' (pinned)'}")
     print(f"  authored={s.authored} gated_passed={s.gated_passed} evolved={report.evolved} funded={s.funded} recommendations={s.recommendations}")
     print(f"  survivors: {', '.join(report.survivors) or '-'}")
     print(f"  live_enabled={report.live_enabled} (the tick never arms live)")
