@@ -35,6 +35,17 @@ class FeatureDefinition(BaseModel):
     # that can never win). Deliberately EXCLUDED from registry_version()'s hashed surface (below) so adding
     # this metadata field leaves a promoted survivor's frozen registry hash byte-unchanged.
     is_control: bool = False
+    # LEAKAGE-AUDIT VERDICT (PR: wire leakage tripwire fail-closed upstream of the Gate). audit_passed=True means
+    # this feature has cleared cosmu.research.leakage_tripwire.audit_feature (available_at + shuffle-null +
+    # forward-shift disconfirmers) OR is a grandfathered incumbent / price feature (see gate_eligible_names()).
+    # audit_passed=False is the DEFAULT — a feature registered LATER (a new alt source) is NOT gate-eligible until
+    # its audit passes, so a leaked source can never reach the Gate as an eligible feature (fail-closed). The
+    # verdict is PROPOSE-ONLY metadata: it gates STATIC-CHECK eligibility, never a Gate threshold/statistic.
+    # audit_report_hash pins the TripwireReport the verdict came from (traceability). BOTH are deliberately
+    # EXCLUDED from registry_version()'s hashed surface (same discipline as is_control) so adding this metadata
+    # leaves a promoted survivor's frozen registry hash byte-unchanged.
+    audit_passed: bool = False
+    audit_report_hash: str | None = None
 
 
 FEATURE_REGISTRY: tuple[FeatureDefinition, ...] = (
@@ -740,6 +751,75 @@ def discovery_feature_names() -> set[str]:
     """The ENABLED NON-control features — the honest hypothesis surface the autonomous brief author draws from.
     Equals feature_names() minus control_feature_names() (see the invariant there)."""
     return {feature.name for feature in FEATURE_REGISTRY if feature.enabled and not feature.is_control}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# LEAKAGE-AUDIT GATE-ELIGIBILITY (PR: wire leakage tripwire fail-closed upstream of the Gate).
+#
+# A feature is GATE-ELIGIBLE (may be referenced by a spec that static_check accepts) iff it is ENABLED AND one of:
+#   (a) it is a PRICE / bar-computed feature (source == parquet_bars) — structurally leakage-free (no store join,
+#       no available_at, computed on the bar itself), so there is nothing for the tripwire to audit; OR
+#   (b) it is a GRANDFATHERED INCUMBENT — a feature that already existed in this registry BEFORE the tripwire was
+#       wired in. These predate the audit gate and every current spec/test references only these, so grandfathering
+#       them ALL guarantees the wiring regresses ZERO existing spec (the critical non-regression invariant); OR
+#   (c) audit_passed is True — a feature registered LATER that has since CLEARED leakage_tripwire.audit_feature.
+#
+# The frozen sets below are LITERAL snapshots (NOT computed from FEATURE_REGISTRY) on purpose: a feature ADDED to
+# the tuple in a future PR is deliberately NOT in _GRANDFATHERED_INCUMBENTS, so it defaults audit_passed=False and
+# is INELIGIBLE until its tripwire audit passes — fail-closed. Editing the registry tuple alone can never sneak an
+# un-audited alt source onto the Gate path; the author must set audit_passed=True (via ingest.audit_registry).
+#
+# _PRICE_FEATURE_NAMES mirrors every source=="parquet_bars" feature; a CI assertion (test) keeps them in lock-step.
+_PRICE_FEATURE_NAMES: frozenset[str] = frozenset(
+    {"ret_Nd", "xsec_momentum_rank", "atr", "rsi", "adx", "bb_z", "bb_width", "range_position", "vol_realized", "odds", "odds_velocity"}
+)
+
+# The alt/store-joined features that already existed when the tripwire was wired in (grandfathered). Includes the
+# enabled non-causal CONTROLS (weather/astro/usgs/noaa) — they are in feature_names() today, so a spec could
+# reference one and must not regress. Registered LATER? Not here → audit_passed=False → ineligible until audited.
+_GRANDFATHERED_INCUMBENTS: frozenset[str] = frozenset(
+    {
+        "funding_rate", "fear_greed", "news_sentiment", "pm_risk_on", "macro_regime", "vix_level", "fed_funds_rate",
+        "defi_tvl", "open_interest", "perp_spot_basis", "hl_crowding_extreme_z", "hl_long_liq_density_norm",
+        "putcall_ratio", "osint_air_activity", "dxy", "yield_curve_2s10s", "credit_spread", "insider_buy_ratio",
+        "jet_colocation", "reddit_sentiment", "social_volume", "social_sentiment", "galaxy_score", "alt_rank",
+        "market_cap_usd", "volume_24h_usd", "price_usd", "social_dominance", "market_dominance",
+        "contributors_active", "posts_active", "spam", "social_volume_accel", "social_attention_z",
+        "social_excess_attention_z", "galaxy_score_z", "btc_social_accel", "twitter_sentiment", "news_event_score",
+        "reg_risk_crypto", "risk_on_off", "gold_xau", "silver_xag", "wti_crude", "spx_index", "ndx_index",
+        "eurusd", "usdjpy", "authority_weighted_claim_signal", "author_authority", "pm_implied_prob",
+        "pm_prob_velocity", "pm_book_depth", "gdelt_tone", "dvol", "nfci", "initial_claims", "wiki_pageviews",
+        "wiki_pageviews_log", "wiki_pageviews_zscore", "reddit_post_volume", "reddit_comment_volume",
+        "cryptopanic_bullish_votes", "cryptopanic_bearish_votes", "rss_news_count", "opensky_daily_flights",
+        "weather_hub_stress", "astro_lunar_phase", "astro_sun_longitude", "astro_jupiter_longitude",
+        "astro_saturn_longitude", "astro_sun_jupiter_aspect", "usgs_earthquake_count", "usgs_max_magnitude",
+        "noaa_kp_index", "stablecoin_mcap", "cg_market_cap", "cg_total_volume", "cg_btc_dominance", "btc_hashrate",
+        "btc_tx_count", "btc_mempool_size", "btc_active_addresses", "gdelt_news_volume", "fed_balance_sheet_usd",
+        "net_liquidity_usd", "stablecoin_net_flow_usd", "stablecoin_eth_share",
+    }
+)
+
+# The full leakage-audit exemption set: price features + grandfathered incumbents. A member is gate-eligible the
+# moment it is enabled (no per-feature audit needed); anything OUTSIDE it must earn audit_passed=True.
+_AUDIT_EXEMPT_NAMES: frozenset[str] = _PRICE_FEATURE_NAMES | _GRANDFATHERED_INCUMBENTS
+
+
+def gate_eligible_names() -> set[str]:
+    """The features a spec may reference and still clear static_check — the LEAKAGE-AUDIT choke point.
+
+    A feature is gate-eligible iff it is ENABLED AND (it is audit-exempt (a price/bar-computed feature or a
+    grandfathered incumbent) OR audit_passed is True). A NEW alt source registered after the tripwire was wired
+    defaults audit_passed=False and is NOT audit-exempt → it is INELIGIBLE until cosmu.research.leakage_tripwire
+    clears it (fail-closed: a leaked source can never reach the Gate as an eligible feature).
+
+    INVARIANT (asserted in tests): gate_eligible_names() ⊇ every feature any current spec references — grandfathering
+    ALL incumbents means the tripwire wiring regresses ZERO existing spec. This gates STATIC-CHECK eligibility only;
+    it reads/writes NO Gate threshold or statistic."""
+    return {
+        f.name
+        for f in FEATURE_REGISTRY
+        if f.enabled and (f.name in _AUDIT_EXEMPT_NAMES or f.audit_passed)
+    }
 
 
 def registry_version() -> str:

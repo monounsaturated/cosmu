@@ -18,7 +18,7 @@ from cosmu.data.backtest import (
     metrics_for_run,
     run_strategy_backtest_detailed,
 )
-from cosmu.data.market import MarketDataProvider, UniversalOHLCVProvider
+from cosmu.data.market import Bar, MarketDataProvider, UniversalOHLCVProvider
 from cosmu.data.price_cells import alt_ingest_symbol, build_crypto_cells
 from cosmu.data.universe import PERP_UNIVERSE, perp_universe
 from cosmu.evolution import mutator
@@ -148,6 +148,13 @@ class CohortSummary:
     # A duplicate is NOT a new trial — skipping it protects the multiple-testing budget. 0 when the
     # registry tables are absent (pre-migration prod) — the loop then behaves exactly as before.
     duplicates: int = 0
+    # PLACEBO RIDER (leakage self-validation, best-effort): the continuous placebo-vs-real inflation ratio
+    # (genomic-λ style; higher = the placebo null is riding toward the Gate floor = an upstream leak bleeding in)
+    # and whether ANY placebo cleared the Gate (leak_caught). None when the rider was skipped/failed (never breaks
+    # the cohort). PROPOSE-ONLY: this VALIDATES the Gate, it moves no money and reads no Gate constant.
+    placebo_inflation: float | None = None
+    placebo_any_cleared: bool = False
+    leak_caught: bool = False
 
 
 def fit_params(spec: StrategySpec) -> dict[str, float]:
@@ -523,6 +530,12 @@ class FarmLoop:
         # judged (the scorer/Gate remain the sole authority over what survives).
         self._record_flywheel(evaluated, specs_by_vid)
 
+        # PLACEBO RIDER — the leakage self-validation instrument runs AFTER the cohort commits (never inside the
+        # write tx), fully isolated: measure where the negative-control ("placebo") arm lands on the SAME finder→
+        # Gate BRUT path, record the continuous inflation + the did-any-clear verdict, and — if a placebo CLEARED —
+        # PROPOSE-ONLY quarantine the CARRIER SOURCE (never the edge). A rider failure NEVER breaks the cohort.
+        placebo_inflation, placebo_cleared, leak_caught = self._run_placebo_rider(cohort_id, seed)
+
         return CohortSummary(
             cohort_id=cohort_id,
             seed=seed,
@@ -537,6 +550,9 @@ class FarmLoop:
             graveyard=graveyard[:16],
             pine_notes=pine_notes[:12],
             duplicates=duplicates,
+            placebo_inflation=placebo_inflation,
+            placebo_any_cleared=placebo_cleared,
+            leak_caught=leak_caught,
         )
 
     def _record_flywheel(self, evaluated: list[Evaluated], specs_by_vid: dict[str, StrategySpec]) -> None:
@@ -573,6 +589,84 @@ class FarmLoop:
                     freeze_promotion(self.store, ev.version_id)
         except Exception:  # noqa: BLE001 — freeze is durable bookkeeping, never blocks a gated cohort
             pass
+
+    def _placebo_market(self, seed: int) -> dict[str, list[Bar]] | None:
+        """The tape the placebo rider scores its negative controls on. Best-effort: try the SAME real crypto cells
+        the screen priced against (so the placebo null is measured on the same market the survivors were found on),
+        using a bare seed spec to derive the cell panel. If that is unavailable (no venue enabled / no bars / any
+        error) fall back to the keyless offline permutation-null market — the strictest control (no edge anywhere,
+        so the ONLY way a placebo clears is a leak). Returns None only if BOTH paths yield nothing to score."""
+        try:
+            enabled_venues, enabled_classes = self._enabled()
+            seed_specs = seed_population()
+            if seed_specs:
+                market, _cell_meta = self._crypto_cells(seed_specs[0], enabled_venues, enabled_classes)
+                if market and any(len(b) >= 60 for b in market.values()):
+                    return market
+        except Exception:  # noqa: BLE001 — a market-build hiccup falls through to the offline control, never raises
+            pass
+        try:
+            from cosmu.research.fixtures import permutation_null_market
+
+            return permutation_null_market(correlated=False, n=400, seed=seed)
+        except Exception:  # noqa: BLE001 — the rider is additive; no market ⇒ skip, never break the cohort
+            return None
+
+    def _run_placebo_rider(self, cohort_id: str, seed: int) -> tuple[float | None, bool, bool]:
+        """The leakage self-validation rider (best-effort, POST-commit, fully isolated). Run the negative-control
+        placebo panel on the cohort's tape via the EXACT finder→Gate BRUT path, then:
+          * record `placebo_inflation` — the CONTINUOUS genomic-λ-style placebo-vs-real ratio (not just binary),
+          * record `any_cleared` — the critical check,
+          * on a placebo CLEARING the Gate, set `leak_caught` and PROPOSE-ONLY quarantine the CARRIER SOURCE that
+            injected the placebo values (never the edge/strategy) — a caught upstream leak, reported LOUDLY.
+        Everything is wrapped so a rider failure returns (None, False, False) and NEVER breaks the cohort the
+        deterministic Gate already judged. Reads/writes NO Gate constant; moves no money."""
+        try:
+            from cosmu.research.placebo_panel import (
+                _CARRIER_FEATURE,
+                placebo_inflation,
+                run_placebo_panel,
+            )
+
+            market = self._placebo_market(seed)
+            if not market:
+                return None, False, False
+            panel = run_placebo_panel(market=market, gates=self.settings.gates, seed=seed)
+            inflation = placebo_inflation(panel)
+            any_cleared = panel.any_cleared
+            leak_caught = any_cleared  # a placebo clearing the Gate IS a caught upstream leak
+
+            # Record the rider verdict as a cohort event (observe-only). LOUD when a leak is caught.
+            try:
+                with self.store.batch() as b:
+                    b.append_event(
+                        actor="master",
+                        kind=("placebo_leak_caught" if leak_caught else "placebo_rider"),
+                        ref_type="cohort",
+                        ref_id=cohort_id,
+                        payload={
+                            "placebo_inflation": inflation,
+                            "any_cleared": any_cleared,
+                            "leak_caught": leak_caught,
+                            "gate_dsr_floor": panel.gate_dsr_floor,
+                            "null_dsr_p50": panel.dsr_p50,
+                            "null_dsr_max": panel.dsr_max,
+                            "n_placebo_cells": panel.n_cells,
+                            # PROPOSE-ONLY quarantine target: the CARRIER SOURCE the placebo values rode in on —
+                            # never a strategy/edge. Surfaced for a human to disable/re-audit that source; the
+                            # rider mutates nothing (the same propose-only discipline as apply_audit_verdict).
+                            "quarantine_carrier_source": (_CARRIER_FEATURE if leak_caught else None),
+                            "cleared_cells": [
+                                {"spec": c.spec_name, "symbol": c.symbol, "dsr": c.dsr, "trades": c.trades}
+                                for c in panel.cleared_cells
+                            ],
+                        },
+                    )
+            except Exception:  # noqa: BLE001 — event logging is bookkeeping; a write hiccup never breaks the rider
+                pass
+            return inflation, any_cleared, leak_caught
+        except Exception:  # noqa: BLE001 — the placebo rider is additive self-validation; it NEVER breaks a cohort
+            return None, False, False
 
     # ------------------------------------------------------------------ internals
 

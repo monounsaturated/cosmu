@@ -167,6 +167,16 @@ def placebo_specs(*, n_per_family: int = _N_PER_FAMILY) -> list[PlaceboSpec]:
     return specs
 
 
+def control_arm_specs(*, n_per_family: int = _N_PER_FAMILY) -> list[StrategySpec]:
+    """Pure, no-DB helper the cohort placebo RIDER uses: the bare StrategySpec list of the negative-control
+    ("placebo") arm — the same specs placebo_specs() carries, without the family/params/turnover envelope. These
+    are the control arms the rider runs alongside every cohort: a real edge is only credible if these known-false
+    controls do NOT clear the same Gate. Deterministic + side-effect-free (no store, no network, no LLM) so it is
+    safe to call inside the best-effort rider. Distinct from control_feature_names() (which names the non-causal
+    astro/weather FEATURES) — this returns the placebo STRATEGY specs."""
+    return [ps.spec for ps in placebo_specs(n_per_family=n_per_family)]
+
+
 # --------------------------------------------------------------------------- placebo signal injection (PIT, seeded)
 
 
@@ -396,6 +406,23 @@ def run_placebo_panel(
     )
 
 
+def placebo_inflation(panel: PlaceboPanel) -> float:
+    """A CONTINUOUS genomic-inflation-factor-style read of how far the placebo null is inflated TOWARD the Gate —
+    NOT the binary any_cleared flag. Under a well-calibrated Gate the placebo DSRs should cluster FAR BELOW the
+    locked floor; the closer the null's central mass creeps to the floor, the more an upstream leak is bleeding
+    into the finder→Gate path (the GWAS λ-inflation intuition: observed test statistics that ride HIGHER than the
+    null expects).
+
+    Defined as the median placebo DSR divided by the Gate DSR floor: λ = p50(placebo DSR) / gate_dsr_floor.
+      * λ ≈ (a small fraction) — healthy: placebos sit well below the floor, the null is calibrated.
+      * λ → 1 — the placebo mass is riding UP to the floor: an upstream leak inflating the null.
+      * λ ≥ 1 — the median placebo already clears the floor: a gross leak (any_cleared is almost surely True too).
+    Monotone in injected leak strength (a stronger baked-in leak lifts every placebo DSR → the median rises). Pure
+    + dependency-free; reads only the panel (never a Gate constant). 0.0 for an empty panel."""
+    floor = panel.gate_dsr_floor or 1.0
+    return round(panel.dsr_p50 / floor, 6) if panel.n_cells else 0.0
+
+
 # --------------------------------------------------------------------------- survivor-vs-null comparison
 
 
@@ -452,7 +479,9 @@ __all__ = [
     "PlaceboSpec",
     "SurvivorVsNull",
     "compare_survivor_to_null",
+    "control_arm_specs",
     "inject_random_entry",
+    "placebo_inflation",
     "inject_time_shuffled",
     "placebo_specs",
     "run_placebo_panel",

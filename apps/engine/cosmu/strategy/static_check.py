@@ -4,17 +4,38 @@ from __future__ import annotations
 
 import ast
 
-from cosmu.config.feature_registry import feature_names
+from cosmu.config.feature_registry import feature_names, gate_eligible_names
 from cosmu.strategy.spec import ParamRef, StrategySpec
 
 SAFE_IMPORTS = {"math", "statistics", "decimal", "typing"}
 BLOCKED_NAMES = {"eval", "exec", "open", "__import__", "compile", "globals", "locals"}
 
 
+def _feature_issue(name: str, known: set[str], eligible: set[str]) -> str | None:
+    """The LEAKAGE-AUDIT choke point for a referenced feature. A spec may only reference a GATE-ELIGIBLE feature
+    (enabled AND leakage-audited or grandfathered/price — see feature_registry.gate_eligible_names). Three cases:
+      * eligible                       -> None (accepted, as before for every incumbent spec).
+      * enabled but NOT eligible       -> "feature_not_leakage_audited:<name>" — a registered-but-un-audited alt
+                                          source (or a disabled/quarantined one). It must clear the leakage
+                                          tripwire (cosmu.research.leakage_tripwire) before the Gate may see it —
+                                          fail-closed. Distinct message so the author fixes the RIGHT surface.
+      * not in the registry at all     -> "unknown_feature:<name>" (the pre-existing typo/unknown message)."""
+    if name in eligible:
+        return None
+    if name in known:
+        return f"feature_not_leakage_audited:{name}"
+    return f"unknown_feature:{name}"
+
+
 def validate_spec(spec: StrategySpec) -> list[str]:
     issues: list[str] = []
     params = set(spec.param_space)
+    # LEAKAGE-AUDIT choke point: gate_eligible_names() is the set a spec may reference (enabled ∧ audited-or-
+    # grandfathered-or-price). feature_names() (the full enabled set) is kept only to tell an un-audited feature
+    # apart from an unknown one, for a clear message. Today gate_eligible == feature_names (all incumbents
+    # grandfathered) so NO existing spec regresses; a NEW un-audited source is the only thing that now fails.
     features = feature_names()
+    eligible = gate_eligible_names()
     refs = [condition.threshold.param for condition in spec.entry]
     refs.extend([spec.exit.stop_loss.param, spec.exit.take_profit.param])
     if spec.exit.time_stop_days:
@@ -25,19 +46,24 @@ def validate_spec(spec: StrategySpec) -> list[str]:
         if ref not in params:
             issues.append(f"unknown_param:{ref}")
     for condition in [*spec.entry, *spec.exit.signal_exits]:
-        if condition.feature.name not in features:
-            issues.append(f"unknown_feature:{condition.feature.name}")
+        issue = _feature_issue(condition.feature.name, features, eligible)
+        if issue is not None:
+            issues.append(issue)
         if not isinstance(condition.threshold, ParamRef):
             issues.append("literal_threshold")
-    # A perp funding leg must name a real PIT feature — same registry guard as entry/exit features.
-    if spec.funding_feature is not None and spec.funding_feature not in features:
-        issues.append(f"unknown_feature:{spec.funding_feature}")
-    # Every meta-label feature must be a real registry feature (same guard); the secondary model can only read
-    # features the backtest actually computes/joins. The prob_threshold ParamRef is checked via the refs loop.
+    # A perp funding leg must name a real, gate-eligible PIT feature — same leakage-audit guard as entry/exit.
+    if spec.funding_feature is not None:
+        issue = _feature_issue(spec.funding_feature, features, eligible)
+        if issue is not None:
+            issues.append(issue)
+    # Every meta-label feature must be a real, gate-eligible registry feature (same guard); the secondary model can
+    # only read features the backtest computes/joins AND that cleared the leakage audit. The prob_threshold ParamRef
+    # is checked via the refs loop.
     if spec.meta_label is not None:
         for ref in spec.meta_label.features:
-            if ref.name not in features:
-                issues.append(f"unknown_feature:{ref.name}")
+            issue = _feature_issue(ref.name, features, eligible)
+            if issue is not None:
+                issues.append(issue)
     if spec.universe.min_instruments < 5:
         issues.append("universe_too_small")
     if spec.horizon.min_hold_days < 1 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
