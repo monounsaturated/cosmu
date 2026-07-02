@@ -6,7 +6,7 @@ import math
 
 from fastapi import APIRouter
 
-from cosmu.api._shared import _json, _metric, annualized_return as _annualized_return, count_total_combos, count_total_strategies, oos_window_days as _oos_window_days, store
+from cosmu.api._shared import _json, _metric, annualized_return as _annualized_return, count_total_combos, count_total_strategies, honest_track_equity_series, oos_window_days as _oos_window_days, store
 from cosmu.api.models import LeaderboardResponse, LeaderboardRow
 from cosmu.knowledge.store import backtest_symbols_has_oos_window, tracks_has_cell_columns
 from cosmu.master.divergence import divergence as forward_divergence
@@ -79,6 +79,16 @@ def _paper_return_pct(tr_equity: object, starting_capital: object) -> float | No
     if not (math.isfinite(start) and math.isfinite(equity)) or start <= 0:
         return None
     return (equity / start - 1.0) * 100.0
+
+
+def _downsample(values: list[float], k: int = 24) -> list[float]:
+    """Compact a per-track equity series to at most k evenly-spaced points (first + last always kept), each rounded
+    to the cent — a lean payload for the row sparkline. A series of <= k points passes through unchanged."""
+    n = len(values)
+    if n <= k:
+        return [round(float(v), 2) for v in values]
+    step = (n - 1) / (k - 1)
+    return [round(float(values[round(i * step)]), 2) for i in range(k)]
 
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
@@ -164,6 +174,30 @@ def leaderboard() -> LeaderboardResponse:
     )
     if not rows:
         return LeaderboardResponse(rows=[], total_strategies=count_total_strategies(store), total_combos=count_total_combos(store))
+    # Row sparklines (DISPLAY-ONLY): for the PAPER rows (small N) fetch each version's track-snapshot series in ONE
+    # batched read, carry the last real mark over funder seed-collapse ticks (honest_track_equity_series — the SAME
+    # rule the sheet + hero use), then downsample to a compact array. Non-paper rows carry no spark (honest null).
+    # Keyed on ref_id = version_id (the key the `ps` CTE above reads the latest mark from). Best-effort: any hiccup
+    # leaves the sparks empty rather than 500-ing the whole floor.
+    spark_by_version: dict[str, list[float]] = {}
+    paper_starts = {r["id"]: r["starting_capital"] for r in rows if r.get("has_paper_fills")}
+    if paper_starts:
+        try:
+            from itertools import groupby
+
+            placeholders = ", ".join(["?"] * len(paper_starts))
+            snap_rows = store.rows(
+                f"SELECT ref_id, ts, equity FROM portfolio_snapshots WHERE scope = 'track' "
+                f"AND ref_id IN ({placeholders}) ORDER BY ref_id, ts ASC",
+                tuple(paper_starts.keys()),
+            )
+            for ref_id, grp in groupby(snap_rows, key=lambda s: s["ref_id"]):
+                vals = [v for _, v in honest_track_equity_series(list(grp), paper_starts.get(ref_id))]
+                if len(vals) >= 2:
+                    spark_by_version[ref_id] = _downsample(vals)
+        except Exception:  # noqa: BLE001 — a sparkline is decorative; never let it 500 the floor.
+            import logging
+            logging.getLogger(__name__).warning("leaderboard: sparkline batch failed", exc_info=True)
     out: list[LeaderboardRow] = []
     seen_versions: set[str] = set()  # one row per Version: a Version with >1 backtest fans out the LEFT JOIN
     for row in rows:
@@ -267,6 +301,7 @@ def leaderboard() -> LeaderboardResponse:
                 # Max drawdown from the strongest backtest (already selected via bt_max_dd). Surfaced so the
                 # Strategies table can show the worst-case drop alongside the OOS return. None when no backtest.
                 max_dd=_money_or_none(row["bt_max_dd"]),
+                spark=spark_by_version.get(row["id"]),
                 signal_family=facets.signal_family,
                 signal_family_label=facets.signal_family_label,
                 features=facets.features,

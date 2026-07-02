@@ -14,6 +14,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CellCurveResponse, ExplorerDetailResponse, LabSymbolRow } from "@cosmu/contracts-ts";
 import { engineGetJson } from "@/lib/engine";
+import { formatOosWindow } from "./strategy-sheet-utils";
 import { cn, formatUsd } from "@/lib/utils";
 
 // ── Two-line SVG chart: gross (faint, var(--muted)) + net (var(--up)/var(--down)) + optional drawdown band ──
@@ -544,6 +545,7 @@ function CellBacktestEquity({
         <StatRow label="Max drawdown" value={maxDdPct} tone={ddTone} />
         <StatRow label="Trades" value={trades} />
         <StatRow label="Sharpe" value={sharpe} />
+        <StatRow label="OOS window" value={formatOosWindow(cell.oos_window_days) ?? "—"} />
       </div>
     </>
   );
