@@ -104,6 +104,15 @@ def execute_orders(
     # read once per batch and enforced in the gauntlet ONLY when live is armed — so the SIM/paper lane is never
     # constrained by a live cap (all None when live off → today's behavior exactly).
     op_global, op_daily, op_per_strategy = _operator_live_caps(store) if live_enabled else (None, None, None)
+    # WEIGHT-ON-WHEELS INTERLOCK (ops/breaker.py): a LATCHED circuit-breaker blocks any new LIVE ENTRY until a human
+    # re-arms. Read ONCE per batch, and ONLY when live is armed — the SIM/paper lane is never fed the latch (False →
+    # today's behaviour exactly), so a funded paper cohort can never be frozen by the live breaker. A reduce-only
+    # CLOSE is exempt in the gauntlet (returns before the breaker check), so an exit is never trapped by the latch.
+    breaker_latched = False
+    if live_enabled:
+        from cosmu.ops import breaker
+
+        breaker_latched = breaker.is_latched(store)
 
     for intent in intents:
         venue = catalog.venue(intent.venue_id)
@@ -169,6 +178,9 @@ def execute_orders(
             global_live_max_notional=op_global if live_enabled else None,
             strategy_live_open_notional=_live_open_notional(portfolio, strategy_version_id=intent.strategy_version_id) if live_enabled else Decimal("0"),
             per_strategy_live_max_notional=op_per_strategy if live_enabled else None,
+            # Weight-on-wheels: only ever True for a LIVE-ARMED order (breaker_latched read above under live_enabled);
+            # the gauntlet ignores it on a reduce-only close, so an exit is never blocked. SIM/paper stays False.
+            breaker_latched=breaker_latched,
         )
         decision = validate_order_full(order_intent, venue, instrument, risk, state)
         # SANDBOX per-combo KILL: this track's own wallet is spent. Audit it so the executor's exit logic can

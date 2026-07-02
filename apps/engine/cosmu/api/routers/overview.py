@@ -45,12 +45,22 @@ def overview() -> OverviewResponse:
         cost_rows = store.rows("SELECT category, SUM(CAST(amount AS REAL)) AS amount FROM costs GROUP BY category")
         costs = [CostSlice(category=r["category"], amount=float(r["amount"] or 0)) for r in cost_rows]
         live_row = store.row("SELECT enabled FROM live_toggle WHERE id = 'global'")
+        # LATCHING CIRCUIT-BREAKER state (read-only): is the machine safed? A latched breaker means a hard
+        # aggregate breach disarmed live + liquidated the book; the freeze-frame trigger explains why. Read inside
+        # the shared connection with the other overview rows so it costs no extra Postgres round-trip.
+        from cosmu.ops import breaker
+
+        breaker_latched = breaker.is_latched(store)
+        latch = breaker.latch_reason(store) if breaker_latched else None
+        breaker_reason = latch.get("trigger") if latch else None
     return OverviewResponse(
         equity_curve=curve,
         pnl_net=pnl_net,
         costs=costs,
         live_enabled=bool(live_row and live_row["enabled"]),
         opex_vs_alpha=round(sum(c.amount for c in costs) / equity, 6) if equity else 0.0,
+        breaker_latched=breaker_latched,
+        breaker_reason=breaker_reason,
     )
 
 

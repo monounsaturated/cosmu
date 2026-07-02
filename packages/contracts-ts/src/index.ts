@@ -163,6 +163,16 @@ export interface BrainSurvivor {
   version_id: string;
 }
 
+export interface BreakerRearmRequest {
+  confirm?: boolean;
+}
+
+export interface BreakerRearmResponse {
+  rearmed: boolean;
+  reason?: string | null;
+  was_latched?: boolean;
+}
+
 export interface CancelOrderResponse {
   canceled: boolean;
   order_id: string;
@@ -1141,6 +1151,8 @@ export interface NewsIntelResponse {
 }
 
 export interface OverviewResponse {
+  breaker_latched?: boolean;
+  breaker_reason?: string | null;
   costs: CostSlice[];
   equity_curve: Point[];
   live_enabled: boolean;
