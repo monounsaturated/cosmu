@@ -185,6 +185,24 @@ def paper_mark() -> int:
     return _run(["cosmu.orchestrator.loop"])
 
 
+# NO 6th SCHEDULE (Modal Free caps at 5 — ingest, heartbeat, tick, cold_tier_maintenance, daily_backup — all taken).
+# The Deribit forward options logger hoards WITHOUT its own cron: by DEFAULT it RIDES the hourly `ingest` cron, exactly
+# like the HL positioning hoard #479 (cosmu.research.loop._hoard_deribit_options → poll the keyless chain + best-effort
+# R2 mirror of the day-partition, so the forward hoard is durable in the ephemeral Modal container without a mounted
+# volume). This @app.function is the ad-hoc RUNNER only (`modal run remote/app.py::deribit_options_log`) — it has NO
+# `schedule=`, so it never consumes a schedule slot. To get a denser dedicated cadence the operator would free a slot
+# and add a `schedule=modal.Cron(...)` off Free tier; until then hourly-via-ingest already starts the hoard clock TODAY.
+# Keyless, propose-only — never an order. The SCANNER (campers.py) is deliberately NOT wired here; it stays on-demand
+# (`python -m cosmu.options scan`) only — memory: 0/495 crossable, so it never rides a cron or any money path.
+# See cosmu/options/README.md.
+@app.function(**_LIGHT)
+def deribit_options_log() -> int:
+    """One FORWARD poll of the Deribit public options API (BTC/ETH chains: top-of-book + mark_iv + greeks + DVOL,
+    long-tail order-book enrichment) appended to the append-only PIT sink. Keyless, no order. Ad-hoc runner — the
+    scheduled forward hoard rides the hourly `ingest` cron (research.loop._hoard_deribit_options), no 6th schedule."""
+    return _run(["cosmu.options", "poll"])
+
+
 @app.function(**_HEAVY)
 def arm_fleet() -> int:
     """Re-arm + advance the documented equity cohort (Faber/ADM/VAA/PAA/DAA/…) so the forward paper clock

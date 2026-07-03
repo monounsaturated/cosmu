@@ -120,6 +120,50 @@ def _hoard_hl_positioning(alt_store) -> None:  # noqa: ANN001
         logger.exception("hl positioning hoard step failed; ingest step (already persisted) is unaffected")
 
 
+def _hoard_deribit_options() -> None:
+    """Best-effort Deribit FORWARD OPTIONS hoard (#491), folded into the hourly ingest cron — the wiring that makes
+    the keyless options logger actually run in prod, so the append-only PIT chain (OUR-OWN top-of-book at the instant
+    we'd have acted) starts accumulating IMMEDIATELY. Deribit publishes no historical L2, so a forward hoard is the
+    ONLY honest substrate; the binding cost is TIME, so every hourly cron pass is an hour of depth the Gate can't get
+    any other way. ONE poll per pass across DEFAULT_CURRENCIES (BTC/ETH): index + DVOL + whole-chain book_summary +
+    a BOUNDED long-tail order-book enrichment → append to the local JSONL sink, then MIRROR each currency's UTC
+    day-partition to R2 so the hoard is DURABLE (the Modal _LIGHT container is ephemeral — no mounted volume — and R2
+    is the cold-tier's own bucket, reachable via the R2_* creds in the cosmu-engine secret). NO new Modal schedule:
+    this rides the SAME hourly `ingest` cron as the bar/odds/HL hoards above. DATA-GATHERING ONLY (no Gate change, no
+    money, no arming) and NEVER the scanner — campers.py stays on-demand. Append-only + PIT-immutable (capture_ts ==
+    the instant WE polled) + idempotent (re-poll is a NEW capture row, never an overwrite). The DB migration
+    (deribit_option_quotes) is NOT auto-applied — until the operator applies it the R2/local JSONL is the hoard, so
+    this rider needs no schema. WRAPPED so any failure (Deribit hiccup, R2 down, rate-limit) is logged + swallowed
+    and can NEVER abort the already-persisted ingest pass — same best-effort discipline as the hoards above."""
+    try:
+        import os
+        import tempfile
+
+        from cosmu.options.logger import DeribitOptionsLogger
+        from cosmu.options.sink import LocalJsonlSink, upload_day_to_r2
+
+        # The Modal container is ephemeral; the local JSONL is a staging buffer we mirror to durable R2 below.
+        root = os.environ.get("DERIBIT_OPTIONS_ROOT") or tempfile.mkdtemp(prefix="deribit_opts_")
+        dlogger = DeribitOptionsLogger(sink=LocalJsonlSink(root))
+        results = dlogger.poll_once()
+        settings = get_settings()
+        n_rows = 0
+        n_bytes = 0
+        for r in results:
+            n_rows += r.n_written
+            capture_date = r.snapshot.asof_iso[:10]
+            # Durable mirror (operator's R2 bucket); a 0 return means R2 not configured or the file is absent — a
+            # clean no-op, the local JSONL still holds the capture for a mounted-volume / operator upload.
+            n_bytes += upload_day_to_r2(settings, root, r.currency, capture_date)
+        logger.info(
+            "deribit options hoard: %s currencies polled, %s rows appended, %s bytes mirrored to R2 — "
+            "forward-hoarding the keyless options top-of-book axis.",
+            len(results), n_rows, n_bytes,
+        )
+    except Exception:  # noqa: BLE001 — the hoard is a free bonus; its failure must never touch the ingest result
+        logger.exception("deribit options hoard step failed; ingest step (already persisted) is unaffected")
+
+
 def _has_cross_asset_data(alt_store) -> bool:  # noqa: ANN001
     """True once the two cross-asset transfer series (prediction-market risk_on + FRED macro_regime) are
     ingested — exactly what arm (3) needs to differ from price-only. Same predicate the API uses."""
@@ -239,6 +283,13 @@ def auto_research_pass(
         # ~2-3 wks out. DATA-GATHERING ONLY + best-effort: an HL /info hiccup is a no-op and can NEVER abort the
         # already-persisted ingest pass. Writes raw snapshots + materializes the two derived registry features.
         _hoard_hl_positioning(alt_store)
+        # HOARD Deribit forward options top-of-book (#491): keyless index + DVOL + whole-chain book_summary +
+        # bounded long-tail order-book enrichment, appended to the append-only PIT sink and mirrored to R2 (durable
+        # in the ephemeral Modal container). Deribit publishes no historical L2, so the ONLY honest substrate is our
+        # own forward capture — rides THIS hourly cron (no 6th Modal schedule). DATA-GATHERING ONLY + best-effort:
+        # a Deribit/R2 hiccup is a no-op and can NEVER abort the already-persisted ingest pass. The inefficiency
+        # SCANNER (campers.py) is deliberately NOT run here — it stays on-demand only (0/495 crossable).
+        _hoard_deribit_options()
 
     if not cross_asset_gate:
         return None
