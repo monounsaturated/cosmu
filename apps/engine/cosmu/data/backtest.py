@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import statistics
@@ -70,6 +71,84 @@ def _liquidity_floor_bps(quote_volume_usd: float) -> float:
         return 0.0
     adv_m = quote_volume_usd / 1_000_000.0
     return min(LIQ_FLOOR_MAX_BPS, LIQ_FLOOR_K / math.sqrt(adv_m))
+
+
+@dataclass(frozen=True)
+class MakerFillModel:
+    """HONEST passive-fill realism for a maker execution mode — NOT a free-spread-capture cheat.
+
+    When a strategy posts a passive (maker) limit instead of crossing the spread, three real costs replace the
+    taker's guaranteed adverse-half-spread fill. This model charges all three, deterministically:
+
+      1. ADVERSE SELECTION + NO-FILL (the touch test): a resting order only fills when the market moves AGAINST
+         the entry side — a long's bid fills on a DIP, a short's ask on a RISE. The bar must move adversely by at
+         least `queue_position_frac × half_spread` for the order to be reachable at all. So a passive entry
+         systematically MISSES the immediate-reversion winners (price ran away from the resting order) and CATCHES
+         the adverse continuations — the structural reason reversion looks better on paper than it fills.
+      2. QUEUE POSITION (`queue_position_frac`): how deep in the book queue the order sits. Deeper (larger frac) →
+         the adverse move must be bigger to reach the order → fewer, more-adversely-selected fills.
+      3. RESIDUAL NO-FILL (`fill_rate`): even a touched order does not always fill (the queue ahead did not fully
+         clear in time). A deterministic fraction `1 − fill_rate` of otherwise-fillable entries are dropped.
+
+    On a fill there is NO spread credit (the "no-spread-credit floor": the fill is NEVER better than mid — a maker
+    can avoid PAYING the half-spread but is never CREDITED it as profit) and an adverse-selection penalty of
+    `adverse_selection_frac × half_spread` is charged on top (so the realized maker fill sits between mid and the
+    taker price — it saves part of the spread, never the whole of it). Market IMPACT is not charged on a maker
+    fill (a passive order PROVIDES liquidity, it does not consume it).
+
+    Defaults are CONSERVATIVE starting points (over-charge, never under-charge); the creation_playbook's
+    learning-loop scaffold is where paper/live outcomes later tighten them. All fields are pure scalars so the
+    backtest stays deterministic and reproducible."""
+
+    fill_rate: float = 0.5               # fraction of TOUCHED passive orders that actually fill (residual no-fill)
+    adverse_selection_frac: float = 0.5  # adverse-selection penalty as a fraction of the half-spread (≥0; no credit)
+    queue_position_frac: float = 1.0     # queue depth: required adverse move to reach the order = this × half_spread
+
+
+# The default passive-fill realism a maker-mode screen applies when the caller does not pass its own. Conservative
+# by construction (see MakerFillModel) — the floor the operator/learning-loop tightens, never loosens.
+DEFAULT_MAKER_FILL = MakerFillModel()
+
+
+def _maker_touch_fills(bar: Bar, idx: int, fill_rate: float) -> bool:
+    """Deterministic residual-no-fill draw for a TOUCHED passive order: True iff this order fills given a base
+    `fill_rate`. Keyed on the bar timestamp + bar index (NEVER a future bar), so it is reproducible and adds no
+    strategy look-ahead — it only thins the fills a resting order would otherwise get. fill_rate≥1 → always; ≤0 →
+    never."""
+    if fill_rate >= 1.0:
+        return True
+    if fill_rate <= 0.0:
+        return False
+    digest = hashlib.sha256(f"{bar.ts.isoformat()}:{idx}".encode()).hexdigest()
+    draw = int(digest[:8], 16) / 0xFFFFFFFF  # deterministic uniform in [0,1)
+    return draw < fill_rate
+
+
+def _maker_entry_fill(
+    open_px: float, d: int, base_slip: float, bar: Bar, model: MakerFillModel, idx: int
+) -> tuple[bool, float]:
+    """Resolve a PASSIVE (maker) entry against `bar`: returns (filled, fill_price).
+
+    See MakerFillModel for the economics. Deterministic — uses only this bar's OHLC (the same data stops/TPs read)
+    plus the bar index, never a future bar. A no-fill returns (False, 0.0) and the caller simply does not open the
+    position this bar (the honest missed entry). A fill returns the no-spread-credit, adverse-selected price (never
+    better than mid `open_px`, never charged market impact)."""
+    if open_px <= 0:
+        return False, 0.0
+    # 1) adverse-touch + queue depth: the bar must move AGAINST the entry side enough to reach the resting order.
+    if d == 1:
+        adverse_excursion = (open_px - float(bar.low)) / open_px      # a long's bid fills on a dip toward it
+    else:
+        adverse_excursion = (float(bar.high) - open_px) / open_px     # a short's ask fills on a rise toward it
+    queue_depth = max(0.0, model.queue_position_frac) * base_slip
+    if adverse_excursion < queue_depth:
+        return False, 0.0                                            # market never reached the resting order → miss
+    # 2) residual queue/timing no-fill (deterministic) — even a touched order does not always clear the queue.
+    if not _maker_touch_fills(bar, idx, model.fill_rate):
+        return False, 0.0
+    # 3) FILLED: no spread credit (floor at mid) + adverse-selection penalty, no market impact (we provide liquidity).
+    adverse = max(0.0, model.adverse_selection_frac) * base_slip
+    return True, open_px * (1 + d * adverse)
 
 
 @dataclass(frozen=True)
@@ -168,6 +247,9 @@ def run_strategy_backtest(
     asset_class_by_symbol: dict[str, str] | None = None,
     vol_target_sizing: bool = True,
     resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
+    maker_fee_bps: Decimal | None = None,
+    maker_fee_schedule: dict[str, Decimal] | None = None,
+    maker_fill: MakerFillModel | None = None,
 ) -> BacktestMetrics:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout. Thin
     wrapper over `run_strategy_backtest_detailed` for callers that only need the scoreable metrics."""
@@ -187,6 +269,9 @@ def run_strategy_backtest(
         asset_class_by_symbol=asset_class_by_symbol,
         vol_target_sizing=vol_target_sizing,
         resolution_by_symbol=resolution_by_symbol,
+        maker_fee_bps=maker_fee_bps,
+        maker_fee_schedule=maker_fee_schedule,
+        maker_fill=maker_fill,
     ).metrics
 
 
@@ -207,8 +292,20 @@ def run_strategy_backtest_detailed(
     asset_class_by_symbol: dict[str, str] | None = None,
     vol_target_sizing: bool = True,
     resolution_by_symbol: dict[str, tuple[datetime, float]] | None = None,
+    maker_fee_bps: Decimal | None = None,
+    maker_fee_schedule: dict[str, Decimal] | None = None,
+    maker_fill: MakerFillModel | None = None,
 ) -> BacktestResult:
     """Backtest a strategy over real bars, reserving the last fifth as a PURGED + EMBARGOED holdout.
+
+    EXECUTION MODE (`spec.execution_mode`): "taker" (default) and "both" cross the spread on entry — the
+    conservative always-fill floor, BYTE-IDENTICAL to before (the maker_* args are ignored). "maker" posts the
+    entry passively: the ENTRY leg pays the venue MAKER fee (`maker_fee_schedule[symbol]` → `maker_fee_bps` → the
+    per-symbol TAKER fee as a conservative fallback when neither is supplied) and is filled through the honest
+    passive-fill realism (`maker_fill` or DEFAULT_MAKER_FILL: no-fill + adverse selection + queue, no spread
+    credit). The urgent EXIT legs (stop / time-stop / forced liquidation / take-profit) always cross as a TAKER
+    even in maker mode — you cannot passively guarantee an urgent exit — so they keep the taker fee + half-spread.
+    The scorer / FDR / cohort math is untouched; maker mode only changes which fills happen and at what cost.
 
     `resolution_by_symbol` maps symbol → (resolution_ts, payout) for PREDICTION-market cells: the authoritative
     UMA/CTF settlement (payout ∈ {1.0, 0.0} in odds/price units) and the REAL resolution time. When the spec sets
@@ -266,6 +363,11 @@ def run_strategy_backtest_detailed(
     if not market:
         return BacktestResult(_empty_metrics(spec), [], [], {})
 
+    # EXECUTION MODE: only "maker" activates the passive-fill realism; "taker"/"both" keep the always-fill taker
+    # floor (byte-identical). The maker fill model is the caller's override or the conservative default.
+    maker_active = getattr(spec, "execution_mode", "taker") == "maker"
+    maker_model = (maker_fill or DEFAULT_MAKER_FILL) if maker_active else None
+
     validation_runs: list[SymbolRun] = []
     holdout_runs: list[SymbolRun] = []
     symbol_trades: dict[str, int] = {}
@@ -280,6 +382,17 @@ def run_strategy_backtest_detailed(
         # Per-venue fee: cross-asset backtests supply a fee_schedule (symbol → bps) so equity symbols are
         # charged IBKR's 0.5 bps and crypto symbols Binance's 10 bps — never a single blended rate.
         sym_fee = fee_schedule.get(symbol, fee_bps) if fee_schedule else fee_bps
+        # MAKER ENTRY FEE (only in maker mode): the per-symbol maker fee, resolved maker_fee_schedule →
+        # maker_fee_bps → the taker sym_fee as a CONSERVATIVE fallback (taker ≥ maker always, so an unwired caller
+        # over-charges, never under-charges). None in taker/both mode → the entry pays the taker fee, byte-identical.
+        sym_entry_fee: Decimal | None = None
+        if maker_active:
+            if maker_fee_schedule and symbol in maker_fee_schedule:
+                sym_entry_fee = maker_fee_schedule[symbol]
+            elif maker_fee_bps is not None:
+                sym_entry_fee = maker_fee_bps
+            else:
+                sym_entry_fee = sym_fee  # conservative fallback: charge the taker fee on the maker leg
         # Per-venue MARKET DEPTH (the slippage/impact half of trading cost): the same cross-asset backtest
         # supplies a depth_schedule (symbol → (slippage_bps, impact_bps)) so an equity leg pays IBKR's 2/25 and
         # an HL leg 6/60 — not the spec's primary-venue depth applied uniformly. A symbol absent from the map
@@ -308,7 +421,7 @@ def run_strategy_backtest_detailed(
         sym_resolution = (
             (resolution_by_symbol or {}).get(symbol) if spec.exit.settle_at_resolution else None
         )
-        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv, resolution=sym_resolution)
+        v_run = _run_symbol(spec, params, val_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv, resolution=sym_resolution, maker=maker_model, entry_fee_bps=sym_entry_fee)
         validation_runs.append(v_run)
         symbol_trades[symbol] = len(v_run.trades)
         # the SAME strategy's standalone validation result on THIS symbol (pre-pool) — un-collapses the metric.
@@ -325,7 +438,7 @@ def run_strategy_backtest_detailed(
         if holdout_bars and include_holdout:
             # The holdout's T1 anchor is the SAME validation-window vol (frozen at funding, never re-fit on the
             # exam) — mirroring the live track, whose target_vol is fixed from validation and never recomputed.
-            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv, resolution=sym_resolution)
+            h_run = _run_symbol(spec, params, holdout_bars, sym_fee, sym_slip, sym_impact, size_multiplier, alt, size_series, periods_per_year=ppy, target_vol=sym_tv, resolution=sym_resolution, maker=maker_model, entry_fee_bps=sym_entry_fee)
             holdout_runs.append(h_run)
             per_symbol_holdout_runs[symbol] = h_run  # this cell's OWN holdout (brut champion confirmation)
 
@@ -631,6 +744,8 @@ def _run_symbol(
     periods_per_year: float | None = None,
     target_vol: float | None = None,
     resolution: tuple[datetime, float] | None = None,
+    maker: MakerFillModel | None = None,
+    entry_fee_bps: Decimal | None = None,
 ) -> SymbolRun:
     # `periods_per_year` annualizes this symbol's Sharpe/Sortino on its OWN calendar (set by the caller from the
     # symbol's asset class). None → the 365-session crypto default for `bar_size`, so a direct caller (or any
@@ -658,6 +773,10 @@ def _run_symbol(
     funding = _funding_series(spec, bars, alt)
     regimes = _regime_labels(closes)
     fee = float(fee_bps) / 10000.0
+    # ENTRY fee — the MAKER fee on the passive entry leg in maker mode (`entry_fee_bps`), else the taker `fee`
+    # (taker/both mode, or maker mode with no maker fee supplied → conservative). EXIT legs always use `fee`
+    # (taker): an urgent exit crosses. When entry_fee_bps is None this equals `fee`, so taker mode is byte-identical.
+    entry_fee = float(entry_fee_bps) / 10000.0 if entry_fee_bps is not None else fee
     base_slip = float(slippage_bps) / 10000.0
     impact = float(impact_bps) / 10000.0
     cash = 100000.0
@@ -730,7 +849,9 @@ def _run_symbol(
         # byte-identical. The ENTRY fee stays charged either way (it was a real fill).
         ef = fee if exit_fee is None else exit_fee
         cash += d * exit_qty * exit_px * (1 - d * ef)
-        pnl_pct = d * (exit_px * (1 - d * ef) - entry_price * (1 + d * fee)) / entry_price
+        # The ENTRY-fee term uses `entry_fee` (the maker fee in maker mode), the EXIT term uses `ef` (taker / the
+        # settlement override). In taker mode entry_fee == fee, so this is byte-identical to the original.
+        pnl_pct = d * (exit_px * (1 - d * ef) - entry_price * (1 + d * entry_fee)) / entry_price
         trades.append(Trade(entry=entry_price, exit=exit_px, pnl_pct=pnl_pct, regime=regimes[entry_idx]))
         position -= exit_qty
 
@@ -856,39 +977,49 @@ def _run_symbol(
                 )
             notional = _notional_at(idx) * meta_mult if take else 0.0
             if take and notional > 0:
-                # Entry crosses the spread the adverse way: long buys up (1+slip), short sells down (1-slip).
-                fill = float(bar.open) * (1 + d * slip)
-                if d == 1:
-                    # Long (the EXACT original): the entry fee comes out of the bought qty —
-                    # qty = notional*(1-fee)/fill — and the full notional leaves cash.
-                    position = (notional * (1 - fee)) / fill
-                    cash -= notional
+                # FILL the entry. TAKER (default/both): cross the spread the adverse way — long buys up (1+slip),
+                # short sells down (1-slip), always fills. MAKER: post passively — the order only fills when the
+                # market moves against it (honest no-fill + adverse selection + queue, NO spread credit, NO impact);
+                # a no-fill simply skips the entry this bar (the missed passive entry). The maker leg pays
+                # `entry_fee` (the maker fee); exits stay taker.
+                if maker is not None:
+                    maker_filled, fill = _maker_entry_fill(float(bar.open), d, base_slip, bar, maker, idx)
                 else:
-                    # Short: we SELL `notional` worth — the liability is the FULL qty and the entry fee
-                    # comes out of the sale proceeds. The previous `d`-mirrored form (qty*(1-fee), full
-                    # proceeds) shrank the liability instead of the proceeds, booking the entry fee as a
-                    # GAIN — every short equity curve was near fee-free while pnl_pct charged fees, so
-                    # curve-derived gate metrics (return/Sharpe/DSR/folds) were gross-of-fee for shorts.
-                    position = notional / fill
-                    cash += notional * (1 - fee)
-                entry_qty = position
-                entry_price = fill
-                entry_idx = idx
-                # The initial stop DISTANCE (fraction of entry): `atr_mult × ATR` when the spec uses an
-                # ATR-multiple stop AND the ATR is available at the SIGNAL bar (idx-1, point-in-time — the same
-                # bar the entry decision reads), else the fixed `stop_pct`. ATR is already a fraction of price,
-                # so `atr_mult × atr` is directly a stop fraction. Warm-up / no ATR → fixed stop (never unprotected).
-                entry_stop_pct = stop_pct
-                if atr_mult is not None and atr_series is not None:
-                    atr_at = atr_series[idx - 1] if 0 <= idx - 1 < len(atr_series) else None
-                    if atr_at is not None and atr_at > 0:
-                        entry_stop_pct = atr_mult * float(atr_at)
-                # Stop sits the adverse side of entry: below for a long, above for a short.
-                stop_price = entry_price * (1 - d * entry_stop_pct)
-                tp1_filled = False
-                legs_filled = set()
-                extreme_since_entry = float(bar.high) if d == 1 else float(bar.low)
-                funding_accrued = 0.0
+                    maker_filled, fill = True, float(bar.open) * (1 + d * slip)
+                # A maker no-fill leaves ALL position state untouched (no trade opened this bar); the next bar
+                # re-attempts the passive post. Taker always fills (maker_filled is True), so this is byte-identical.
+                if maker_filled:
+                    if d == 1:
+                        # Long (the EXACT original, with the maker fee on the entry leg): the entry fee comes out of
+                        # the bought qty — qty = notional*(1-entry_fee)/fill — and the full notional leaves cash.
+                        position = (notional * (1 - entry_fee)) / fill
+                        cash -= notional
+                    else:
+                        # Short: we SELL `notional` worth — the liability is the FULL qty and the entry fee
+                        # comes out of the sale proceeds. The previous `d`-mirrored form (qty*(1-fee), full
+                        # proceeds) shrank the liability instead of the proceeds, booking the entry fee as a
+                        # GAIN — every short equity curve was near fee-free while pnl_pct charged fees, so
+                        # curve-derived gate metrics (return/Sharpe/DSR/folds) were gross-of-fee for shorts.
+                        position = notional / fill
+                        cash += notional * (1 - entry_fee)
+                    entry_qty = position
+                    entry_price = fill
+                    entry_idx = idx
+                    # The initial stop DISTANCE (fraction of entry): `atr_mult × ATR` when the spec uses an
+                    # ATR-multiple stop AND the ATR is available at the SIGNAL bar (idx-1, point-in-time — the same
+                    # bar the entry decision reads), else the fixed `stop_pct`. ATR is already a fraction of price,
+                    # so `atr_mult × atr` is directly a stop fraction. Warm-up / no ATR → fixed stop (never unprotected).
+                    entry_stop_pct = stop_pct
+                    if atr_mult is not None and atr_series is not None:
+                        atr_at = atr_series[idx - 1] if 0 <= idx - 1 < len(atr_series) else None
+                        if atr_at is not None and atr_at > 0:
+                            entry_stop_pct = atr_mult * float(atr_at)
+                    # Stop sits the adverse side of entry: below for a long, above for a short.
+                    stop_price = entry_price * (1 - d * entry_stop_pct)
+                    tp1_filled = False
+                    legs_filled = set()
+                    extreme_since_entry = float(bar.high) if d == 1 else float(bar.low)
+                    funding_accrued = 0.0
 
         # Mark-to-market. For a long this is the EXACT original `cash + position*close`. For a short, cash
         # already holds the sale proceeds (+notional) so the open leg is marked as a liability `-position*close`.

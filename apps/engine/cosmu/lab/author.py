@@ -257,6 +257,19 @@ def draft_from_brief(
 
     issues = validate_spec(spec)
 
+    # Creation playbook (pre-Gate authoring rules) — surfaced as ADVISORY notes alongside validate_spec, never
+    # folded into `issues`/`valid` (a loose brief rarely names a disconfirmer; that is a nudge, not a hard block at
+    # draft time — the inbox-lint + the create-strategy skill enforce). Pure + offline; a hiccup never breaks authoring.
+    try:
+        from cosmu.strategy.creation_playbook import run_playbook
+
+        playbook = run_playbook(spec)
+        if playbook.verdict != "pass":
+            notes.append(f"creation playbook {playbook.summary()}")
+            notes.extend(f"playbook · {f.rule}: {f.reason}" for f in [*playbook.fails(), *playbook.warns()])
+    except Exception as exc:  # noqa: BLE001 — the playbook is an advisory railing; never break the draft path
+        notes.append(f"creation playbook unavailable ({type(exc).__name__})")
+
     # Structural novelty — the "never try the same strategy twice" guard. The deterministic novelty_gate (offline,
     # keyless) rejects a candidate that is too close to a recently-killed dead-end or too complex. For the AGENT
     # batch author this is a HARD reject (so the master can fan out hundreds of briefs without flooding the Gate's

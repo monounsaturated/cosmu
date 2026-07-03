@@ -13,7 +13,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from cosmu.data.market import Bar, EquityOHLCVProvider, HyperliquidOHLCVProvider
-from cosmu.spine.asset_fees import ASSET_AWARE_VENUES, asset_taker_bps
+from cosmu.spine.asset_fees import ASSET_AWARE_VENUES, asset_maker_bps, asset_taker_bps
 from cosmu.spine.venue import Instrument, Venue, VenueCatalog
 from cosmu.strategy.spec import StrategySpec
 
@@ -103,6 +103,61 @@ def _asset_aware_fee(
     instrument = _instrument_for(catalog, symbol, venue.id)
     override = asset_taker_bps(venue, instrument, reference_price=_reference_price(bars))
     return override if override is not None else base_taker
+
+
+def _asset_aware_maker_fee(
+    venue: Venue, catalog: VenueCatalog, symbol: str, bars: list[Bar], base_maker: Decimal
+) -> Decimal:
+    """The effective MAKER bps for (symbol, venue): the per-asset/per-category maker model when the venue has one
+    (Polymarket → 0 floor; IBKR → per-share commission), else the venue's flat `base_maker` tier bps. The maker
+    twin of `_asset_aware_fee`."""
+    if venue.id not in ASSET_AWARE_VENUES:
+        return base_maker
+    instrument = _instrument_for(catalog, symbol, venue.id)
+    override = asset_maker_bps(venue, instrument, reference_price=_reference_price(bars))
+    return override if override is not None else base_maker
+
+
+def build_maker_fee_schedule(
+    spec: StrategySpec,
+    market: dict[str, list[Bar]],
+    catalog: VenueCatalog,
+    *,
+    crypto_cell_venues: dict[str, str] | None = None,
+) -> dict[str, Decimal]:
+    """The per-symbol MAKER fee schedule — the maker twin of `build_cost_context`'s `fee_schedule`, for a spec
+    screened in maker mode. Each symbol's maker bps comes from the SAME per-venue routing as the taker fee
+    (equity→IBKR, HL→Hyperliquid, cross-venue crypto cells→their own venue, else the spec's primary venue), but
+    reads the MAKER tier (`Venue.effective_fee()[0]`) and the per-asset MAKER override (Polymarket 0 / IBKR
+    per-share). Returns a full symbol→Decimal map (unlike build_cost_context's None fast-path) — the backtest only
+    consults it in maker mode, where an explicit per-symbol maker fee is always wanted. NEVER returns a negative
+    bps (no rebate is credited), so the maker leg can only ever be charged ≤ its taker fee."""
+    crypto_cell_venues = crypto_cell_venues or {}
+    primary = catalog.venue_for(spec.universe.venues)
+    p_maker, _p_taker = primary.effective_fee()
+    schedule: dict[str, Decimal] = {
+        s: _asset_aware_maker_fee(primary, catalog, s, market[s], p_maker) for s in market
+    }
+
+    def _apply(symbols: set[str], venue_id: str) -> None:
+        venue = catalog.venue(venue_id)
+        base_maker, _taker = venue.effective_fee()
+        for s in symbols:
+            schedule[s] = _asset_aware_maker_fee(venue, catalog, s, market[s], base_maker)
+
+    equity_syms = set(equity_symbols(spec)) & market.keys()
+    hl_syms = set(hyperliquid_symbols(spec)) & market.keys()
+    if equity_syms:
+        _apply(equity_syms, "ibkr")
+    if hl_syms:
+        _apply(hl_syms, "hyperliquid")
+    venues_seen: dict[str, set[str]] = {}
+    for cell_key, venue_id in crypto_cell_venues.items():
+        if cell_key in market and venue_id != primary.id:
+            venues_seen.setdefault(venue_id, set()).add(cell_key)
+    for venue_id, keys in venues_seen.items():
+        _apply(keys, venue_id)
+    return schedule
 
 
 def build_cost_context(
