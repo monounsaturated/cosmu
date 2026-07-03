@@ -279,9 +279,30 @@ class StrategySpec(BaseModel):
     # path) and to lane (gate/deploy/explore, the evaluator); status + lane are SHARED across both kinds. Enforced by
     # this Literal + a guard test, matching the repo's no-DB-CHECK convention (knowledge/lifecycle_status.py).
     kind: Literal["quant", "llm"] = "quant"
+    # REALISTIC EXECUTION MODE — declared at CREATION, the discriminator the backtest uses to charge the right
+    # fee + fill realism so a strategy is never scored on a fill it could not actually get. "taker" (DEFAULT) =
+    # the order CROSSES the spread to fill immediately — the conservative ALWAYS-FILL floor every existing spec
+    # uses (entry pays the half-spread + size-aware impact + the venue TAKER fee), byte-identical to before.
+    # "maker" = the order POSTS PASSIVELY: it pays the lower venue MAKER fee and avoids paying the half-spread,
+    # BUT the backtest applies HONEST passive-fill realism (a no-fill rate + adverse selection + queue position —
+    # a resting order only fills when the market moves AGAINST it, and not every touched order fills) and NEVER
+    # credits the spread (the "no-spread-credit floor"), so this is not a free spread-capture cheat. This is the
+    # mode that un-hides the reversion / fade / spread family (real at maker, dead at taker) and the future
+    # options scanner. "both" = the edge is feasible either way; it is screened TAKER (the conservative gate
+    # floor), with maker as an upside a later pass scores. Only "maker" activates the passive-fill realism; the
+    # urgent EXIT legs (stop / time-stop / forced liquidation) always cross as a TAKER even in maker mode — you
+    # cannot passively guarantee an urgent exit. See data/backtest.MakerFillModel + spine/asset_fees maker
+    # resolvers. The creation_playbook enforces maker/taker LOGIC coherence + venue feasibility BEFORE the Gate.
+    execution_mode: Literal["taker", "maker", "both"] = "taker"
     universe: UniverseSelector
     horizon: Horizon
     catalyst: str | None = None
+    # The NAMED DISCONFIRMER — the single observation that would prove this hypothesis WRONG (e.g. "no edge if the
+    # signal's IC is ≤ a shuffled-null control" / "kill if it loses to buy-and-hold net of fees on its own cell").
+    # Optional on the type so every existing spec stays valid, but the creation_playbook REQUIRES one (in this
+    # field or named in the rationale) before a NEW authored strategy may reach the Gate — a disconfirmable thesis
+    # is what the Gate is actually testing. None => fall back to scanning the rationale for a disconfirmer cue.
+    disconfirmer: str | None = None
     entry: list[Condition]
     exit: ExitRules
     risk: RiskRules

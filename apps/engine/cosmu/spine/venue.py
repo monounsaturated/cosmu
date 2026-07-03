@@ -35,6 +35,11 @@ class Venue(BaseModel):
     # Whether real-money execution is wired here at all. Data/paper/research venues stay False; they
     # still feed the lab, they just can't move money. (Distinct from the global live interlock.)
     live_enabled: bool = False
+    # PAPER-ONLY: this venue can NEVER place a real order — it is a data / simulated-paper account only (Alpaca's
+    # paper API), distinct from a real venue that simply is not live-wired YET (OKX / HL / Kraken Futures, whose
+    # `live_enabled` is False but which CAN place real maker/taker orders once wired). A strategy declaring a
+    # maker (or any live) execution mode on a paper-only venue is INFEASIBLE — the creation_playbook fails it.
+    paper_only: bool = False
     # ISO-3166 alpha-2 country codes where live trading is NOT legally/operationally available to us.
     # Empty = available everywhere we operate. This is why jurisdiction PICKS the live crypto venue.
     restricted_jurisdictions: list[str] = Field(default_factory=list)
@@ -76,6 +81,13 @@ class Venue(BaseModel):
     def live_legal_in(self, country_code: str) -> bool:
         """Can we run LIVE here from this jurisdiction? Needs live wiring AND no legal restriction."""
         return self.live_enabled and country_code.upper() not in {c.upper() for c in self.restricted_jurisdictions}
+
+    def supports_maker(self) -> bool:
+        """Whether a PASSIVE (maker) order is even possible at this venue. True for every real order-book venue
+        (crypto CLOB / prediction CLOB / equity broker); False ONLY for a paper-only data account (Alpaca) which
+        can place no real order at all. Note this is venue CAPABILITY, NOT live-armed state — an order-book venue
+        that is not yet `live_enabled` still SUPPORTS maker (it just is not wired to trade real money yet)."""
+        return not self.paper_only
 
 
 class Instrument(BaseModel):
@@ -233,6 +245,7 @@ def default_catalog() -> VenueCatalog:
                 live_enabled=False, restricted_jurisdictions=[],
                 slippage_bps=Decimal("3"), impact_bps=Decimal("35"),
                 region="US", legal_entity="Alpaca Securities LLC",
+                paper_only=True,  # data + simulated-paper account only — cannot place a real (maker or taker) order
             ),
             # Crypto — OKX: MiCA-compliant EU entity (OKX Europe Ltd, Malta). Spot + perp data source;
             # cheaper than Binance at high volume (spot: 8/10 bps retail, 2/3 bps at >$400M).

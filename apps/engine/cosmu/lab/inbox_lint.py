@@ -17,6 +17,7 @@ from pathlib import Path
 
 from cosmu.knowledge.memory import structural_distance
 from cosmu.lab.inbox import _INBOX_DIR, _spec_from_file
+from cosmu.strategy.creation_playbook import run_playbook
 from cosmu.strategy.spec import StrategySpec
 from cosmu.strategy.static_check import validate_spec
 from cosmu.strategy.taxonomy import derive_facets
@@ -56,6 +57,11 @@ class LintedSpec:
     horizon: str = "—"
     signal_family: str = "—"
     edge_type: str = "—"
+    execution_mode: str = "—"
+    # Creation-playbook verdict (pre-Gate authoring rules, distinct from validate_spec). `playbook` is the
+    # one-line verdict (PASS / WARN: rules / FAIL: rules); `playbook_issues` are the warn/fail reasons.
+    playbook: str = "—"
+    playbook_issues: list[str] = field(default_factory=list)
     # Cross-set dedup facts.
     nearest: str | None = None
     nearest_dist: float | None = None
@@ -156,6 +162,13 @@ def _lint_one(path: Path) -> tuple[LintedSpec, StrategySpec | None]:
     facets = derive_facets(spec.model_dump(mode="json"), origin="inbox")
     row.strategy_kind = getattr(spec, "strategy_kind", "indicator")
     row.lane = getattr(spec, "lane", "gate")
+    row.execution_mode = getattr(spec, "execution_mode", "taker")
+    # Creation playbook — the pre-Gate authoring rules (maker/taker coherence, venue feasibility, fee realism,
+    # named disconfirmer, no look-ahead). Surfaced ALONGSIDE validate_spec; advisory in the lint (it never flips a
+    # validate_spec PASS to FAIL), so the manifest shows both the hard structural verdict and the authoring verdict.
+    report = run_playbook(spec)
+    row.playbook = report.summary()
+    row.playbook_issues = [f"{f.rule}: {f.reason}" for f in report.findings if f.severity != "pass"]
     row.direction = {1: "long", -1: "short", 0: "signal"}.get(getattr(spec, "direction", 1), "—")
     row.entry_mechanism = _entry_mechanism(spec)
     row.exit_mechanism = _exit_mechanism(spec)
@@ -278,21 +291,21 @@ def render_table(report: LintReport) -> str:
         f"dup_clusters={len(report.dup_clusters)}"
     )
     lines.append("")
-    header = ["STATUS", "NAME", "KIND", "EDGE", "FAMILY", "FEATURES", "NEAREST", "CLUSTER"]
-    widths = [6, 30, 8, 13, 17, 26, 14, 7]
+    header = ["STATUS", "NAME", "KIND", "EXEC", "EDGE", "FAMILY", "PLAYBOOK", "NEAREST", "CLUSTER"]
+    widths = [6, 26, 8, 6, 12, 15, 18, 9, 7]
     lines.append("  " + "  ".join(h.ljust(w) for h, w in zip(header, widths)))
     lines.append("  " + "  ".join("-" * w for w in widths))
     for r in report.all_rows():
         nearest = "—" if r.nearest_dist is None else f"{r.nearest_dist:.2f}"
         cluster = "—" if r.cluster < 0 else f"#{r.cluster}"
-        feats = ",".join(r.features) if r.features else "—"
         cells = [
             r.status,
             _truncate(r.name, widths[1]),
             _truncate(r.kind, widths[2]),
-            _truncate(r.edge_type, widths[3]),
-            _truncate(r.signal_family, widths[4]),
-            _truncate(feats, widths[5]),
+            _truncate(r.execution_mode, widths[3]),
+            _truncate(r.edge_type, widths[4]),
+            _truncate(r.signal_family, widths[5]),
+            _truncate(r.playbook, widths[6]),
             nearest,
             cluster,
         ]
@@ -307,9 +320,18 @@ def render_table(report: LintReport) -> str:
     failed_with_issues = [r for r in report.failed if r.issues]
     if failed_with_issues:
         lines.append("")
-        lines.append("  FAIL REASONS:")
+        lines.append("  FAIL REASONS (validate_spec — hard structural gate):")
         for r in failed_with_issues:
             lines.append(f"    {r.filename}: {', '.join(r.issues)}")
+
+    playbook_flagged = [r for r in report.all_rows() if r.playbook_issues]
+    if playbook_flagged:
+        lines.append("")
+        lines.append("  CREATION-PLAYBOOK NOTES (pre-Gate authoring rules — advisory):")
+        for r in playbook_flagged:
+            lines.append(f"    {r.filename} [{r.playbook}]")
+            for issue in r.playbook_issues:
+                lines.append(f"      - {issue}")
     return "\n".join(lines)
 
 

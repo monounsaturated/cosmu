@@ -54,6 +54,16 @@ def polymarket_category_fee_rate(category: str | None) -> float:
     return POLYMARKET_CATEGORY_FEE_RATE.get(category.strip().lower(), POLYMARKET_DEFAULT_FEE_RATE)
 
 
+def polymarket_maker_bps(category: str | None, price: float, *, as_of: datetime | None = None) -> Decimal:
+    """Effective Polymarket MAKER fee in BPS of notional. The CLOB charges the maker NO fee and pays a rebate;
+    the rebate is the "no-spread-credit floor" — modelled here as 0 cost, NEVER credited (a negative fee in a
+    backtest would manufacture edge out of thin air, the exact maker cheat we refuse). So maker bps is a hard 0
+    at any price/category. `category`/`price`/`as_of` are accepted for signature parity with the taker resolver
+    and ignored (the floor is category-independent)."""
+    del category, price, as_of  # the maker floor is a flat 0 — no rebate credited, no per-category room term
+    return Decimal("0")
+
+
 def polymarket_taker_bps(category: str | None, price: float, *, as_of: datetime | None = None) -> Decimal:
     """Effective Polymarket taker fee in BPS of notional for a share priced at `price` (a probability in (0,1)).
 
@@ -230,3 +240,57 @@ def asset_taker_bps(
             return None  # no per-asset model → keep the venue's flat bps fallback
         return ibkr_taker_bps(instrument, reference_price, reference_notional=reference_notional)
     return None
+
+
+def asset_maker_bps(
+    venue: Venue,
+    instrument: Instrument | None,
+    *,
+    reference_price: float = 1.0,
+    as_of: datetime | None = None,
+    reference_notional: float = 10_000.0,
+) -> Decimal | None:
+    """The effective MAKER bps for (symbol,venue) when the venue's real fee is NOT a flat venue-level bps — the
+    maker analogue of `asset_taker_bps`.
+
+    Returns:
+      - Polymarket  → 0 (the no-spread-credit floor — the CLOB maker rebate is never credited).
+      - IBKR        → the SAME per-asset-class commission as taker (IBKR equity/future commission is per-share /
+                      per-contract regardless of whether the order added or removed liquidity — there is no
+                      maker/taker split on the commission), so maker == taker bps here.
+      - else        → None: the caller keeps the venue's flat MAKER tier bps (Venue.effective_fee()[0]).
+    """
+    if venue.id == "polymarket":
+        category = instrument.category if instrument is not None else None
+        return polymarket_maker_bps(category, reference_price, as_of=as_of)
+    if venue.id == "ibkr" and instrument is not None:
+        if _ibkr_asset_class(instrument) == "unknown":
+            return None
+        return ibkr_taker_bps(instrument, reference_price, reference_notional=reference_notional)
+    return None
+
+
+def effective_maker_bps(
+    venue: Venue,
+    instrument: Instrument | None,
+    *,
+    reference_price: float = 1.0,
+    as_of: datetime | None = None,
+    reference_notional: float = 10_000.0,
+) -> Decimal | None:
+    """The shared per-venue MAKER-fee resolver — the maker twin of `effective_taker_bps`. Returns the effective
+    maker bps when the venue has a per-asset / per-category model (Polymarket → 0 floor; IBKR → per-share), else
+    **None**: the signal to the caller to use the venue's own flat MAKER tier bps (Venue.effective_fee()[0]).
+
+    INVARIANT — this NEVER returns a NEGATIVE bps (no rebate is ever credited in a backtest; the most a maker can
+    save is paying ZERO), so it can only ever EQUAL-or-LOWER a fee vs the taker side honestly, and it NEVER
+    touches the Gate."""
+    if venue.id not in ASSET_AWARE_VENUES:
+        return None  # plain spot/perp venue → caller keeps its flat MAKER tier bps
+    return asset_maker_bps(
+        venue,
+        instrument,
+        reference_price=reference_price,
+        as_of=as_of,
+        reference_notional=reference_notional,
+    )
