@@ -10,7 +10,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { CosmuMark } from "@/components/brand/logo";
-import { SideNav, FootNav, type NavCounts } from "@/components/nav/app-nav";
+import { SideNav, type NavCounts } from "@/components/nav/app-nav";
 import { TipLayer } from "@/components/ui/tip-layer";
 import { ENGINE_CONFIGURED, engineFetch } from "@/lib/engine";
 import { cn, isPaperRow } from "@/lib/utils";
@@ -161,7 +161,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         <SideNav counts={counts} />
 
         <div className="sb-footer">
-          <FootNav />
           <div className="sb-dot-wrap" data-tip={tip}>
             <span className={cn("sb-dot", dot === "off" && "off", dot === "warn" && "warn")} />
           </div>

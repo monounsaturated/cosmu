@@ -83,20 +83,18 @@ const ICONS: Record<string, ReactNode> = {
 // The primary surfaces — the entire app, in canonical sidebar order. "Bots" labels the /strategies route
 // (route unchanged so deep links survive); "Social" labels the /mind social-authority route. The Indexes
 // entry was removed (the Index strategy type was scrapped — /indexes now redirects to /strategies).
-// Costs is NO LONGER a primary surface — it's operational housekeeping, not a daily money-machine view —
-// so it lives in the sidebar footer (see <FootNav/>), not this list. Its /costs route is unchanged.
+// Costs is a primary surface — a normal sidebar row after Social, ahead of the utility surfaces
+// (Keys/Commands). Its /costs route is unchanged.
 export const navItems: NavItem[] = [
   { href: "/strategies", key: "strategies", label: "Bots", icon: ICONS.strategies },
   { href: "/paper", key: "paper", label: "Paper", icon: ICONS.paper },
   { href: "/live", key: "live", label: "Live", icon: ICONS.live },
   { href: "/trades", key: "trades", label: "Trades", icon: ICONS.trades },
   { href: "/mind", key: "mind", label: "Social", icon: ICONS.mind },
+  { href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs },
   { href: "/keys", key: "keys", label: "Keys", icon: ICONS.keys },
   { href: "/commands", key: "commands", label: "Commands", icon: ICONS.commands }
 ];
-
-// Secondary / housekeeping surfaces — rendered small in the sidebar footer, off the primary rail.
-const footItems: NavItem[] = [{ href: "/costs", key: "costs", label: "Costs", icon: ICONS.costs }];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/strategies") return pathname.startsWith("/strategies") || pathname.startsWith("/strategy");
@@ -125,33 +123,6 @@ export function SideNav({ counts }: { counts?: NavCounts }) {
             {/* Compact "k" format past 999 (48545 → "48.5k") so a fat count never overflows the pill; small
                 counts stay exact. See formatCount. */}
             {typeof count === "number" ? <span className="nav-count" title={count.toLocaleString("en-US")}>{formatCount(count)}</span> : null}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
-// Footer nav — secondary/housekeeping surfaces (Costs), rendered small below the primary rail and above
-// the engine-health dot. Off the primary sidebar so the daily money-machine views stay uncluttered.
-export function FootNav() {
-  const pathname = usePathname();
-  return (
-    <nav className="sb-foot-nav" aria-label="Secondary navigation">
-      {footItems.map((item) => {
-        const active = isActive(pathname, item.href);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            id={`nav-${item.key}`}
-            aria-current={active ? "page" : undefined}
-            className={cn("nav-item", "nav-foot", active && "active")}
-          >
-            <span className="nav-left">
-              {item.icon}
-              {item.label}
-            </span>
           </Link>
         );
       })}
