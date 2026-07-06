@@ -225,10 +225,6 @@ class Settings(BaseSettings):
     # DB signals all go stale (= total Modal death the on-Modal heartbeat can't see itself). Detection only — no
     # failover/takeover. When off, nothing changes (the on-Modal heartbeat remains the sole watcher).
     modal_watch_enabled: bool = False
-    # Ops toggles (match the existing Railway variable names): the in-process scheduler/autonomy loop
-    # and the deterministic risk guardian. Default on; flip to false to freeze the machine.
-    scheduler_enabled: bool = True
-    guardian_enabled: bool = True
     # The Mind's LLM-as-judge committee is OPT-IN: off (default) → the analyst panel is fully deterministic and
     # offline ($0, fast). On + an LLM key → each pillar WITH data is rubric-scored by the model, while the
     # consensus stays deterministic math and the gate alone disposes. Flip with MIND_JUDGE_ENABLED.

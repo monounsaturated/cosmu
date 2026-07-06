@@ -125,10 +125,6 @@ body{
 }
 .nav-item.active .nav-count{background:var(--iris-mid);color:var(--iris-s)}
 .sb-footer{padding:7px;border-top:1px solid var(--hairline);flex-shrink:0}
-.sb-foot-nav{display:flex;flex-direction:column;gap:1px;margin-bottom:4px}
-.sb-foot-nav .nav-foot{font-size:11.5px;opacity:.72}
-.sb-foot-nav .nav-foot:hover{opacity:1}
-.sb-foot-nav .nav-foot.active{opacity:1}
 .sb-settings{
   display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:var(--r-xs);
   color:var(--quiet);font-size:11.5px;cursor:pointer;transition:color var(--tr),background var(--tr);
