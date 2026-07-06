@@ -1,0 +1,47 @@
+{
+  "name": "HH breakout 12 — opening-range breakout with trend filter (1h)",
+  "rationale": "MECHANISM: same opening-range/auction-imbalance edge — the first burst of directional flow after a session anchor sets the tone and latecomers/stops chase it — but on a 1h clock and gated by adx ABOVE a floor so the ORB break is only taken when a trend is actually present (filtering the dead-session ORB pokes that immediately revert, the defining ORB failure mode in chop). Uses the OpeningRangeBreakout module (setup.orb): range_bars and buffer are fitted ParamRefs. The 1h clock defines a wider opening-range window and rides the resolved move for hours rather than minutes — a distinct frequency/hold cell from the 15m ORB variant. Counterparty: Asia-session range-traders and passive LPs swept by the Western open. DISCONFIRMER: KILL if the ORB break at the anchor beats a random-hour placebo by nothing (the anchor is arbitrary in 24/7 crypto), OR if the adx trend gate is decorative (removing it leaves the edge intact), OR if a placebo anchor at 00:00 UTC performs identically, OR if the edge is BTC/ETH-only per-symbol.",
+  "catalyst": "opening-range break confirmed by an active trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "gt", "threshold": {"param": "vr_floor"}}
+  ],
+  "setup": {
+    "orb": {
+      "range_bars": {"param": "orb_bars"},
+      "buffer": {"param": "orb_buffer"},
+      "anchor": "rolling"
+    }
+  },
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "orb_bars": {"kind": "int", "lo": 4, "hi": 20, "step": 1},
+    "orb_buffer": {"kind": "float", "lo": 0.001, "hi": 0.02},
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 32},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "vr_floor": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 4}
+  }
+}

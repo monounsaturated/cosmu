@@ -1,0 +1,33 @@
+{
+  "name": "Greed-extreme continuation gated by low realized vol (orderly herding, ride)",
+  "rationale": "MECHANISM: variant of greed-continuation that swaps the trend gauge — instead of adx, it requires strong positive momentum (ret_Nd) plus LOW realized volatility (vol_realized below a fitted ceiling). The thesis is that greed inside an ORDERLY, low-vol advance is sustainable herding (the crowd calmly bids), whereas greed inside a high-vol blowoff is a distribution top; conditioning on calm vol keeps us in the reinforcing phase and out of the parabolic exhaustion. Long continuation; exit when momentum fades or vol spikes through a fitted level, or stop/TP/time. DISCONFIRMER: compare to the adx-gated continuation — if the low-vol gate selects the same trades, it is redundant; keep only if the vol condition improves OOS DSR by dodging blowoff tops. Kill if it underperforms plain momentum without the greed gate (sentiment adds nothing).",
+  "catalyst": "extreme greed in an orderly low-volatility uptrend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "cross_up", "threshold": { "param": "vol_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "greed_ceiling": { "kind": "float", "lo": 65.0, "hi": 85.0 },
+    "mom_lb":        { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "mom_floor":     { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "vol_lb":        { "kind": "int",   "lo": 10,   "hi": 30, "step": 1 },
+    "vol_ceiling":   { "kind": "float", "lo": 0.30, "hi": 0.70 },
+    "vol_exit":      { "kind": "float", "lo": 0.70, "hi": 1.20 },
+    "stop":          { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":            { "kind": "float", "lo": 0.10, "hi": 0.40 },
+    "time_stop":     { "kind": "int",   "lo": 6,    "hi": 25, "step": 1 }
+  },
+  "direction": 1
+}

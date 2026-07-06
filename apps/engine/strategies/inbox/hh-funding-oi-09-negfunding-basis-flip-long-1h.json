@@ -1,0 +1,39 @@
+{
+  "name": "Negative-funding capitulation long — perp-discount flip trigger (funding + basis cross-up, 1h)",
+  "rationale": "MECHANISM: the fastest expression of the negative-funding squeeze thesis, event-triggered on a 1h clock. We wait for deeply negative funding_rate (crowded shorts paying longs) and then enter the SPOT long (direction +1) when perp_spot_basis crosses UP through a fitted floor — the moment the perp discount to spot starts closing is the first tick of the short-squeeze as shorts begin to cover. This is distinct from variants 07/08: it uses a cross_up EVENT on basis as the ignition trigger (timing the turn) rather than a static oversold level, and holds only ~0.25-0.5d for the fast covering leg. The long collects the negative-funding carry (funding_feature) into the squeeze. DISCONFIRMER 1: kill if the basis cross-up trigger fires too rarely alongside negative funding to clear effective-N. DISCONFIRMER 2: kill if the fast squeeze does not beat a plain basis-cross-up long without the negative-funding gate. DISCONFIRMER 3: kill if net-of-fee edge dies once real 6bps taker fees hit the 1h turnover.",
+  "catalyst": "deeply negative funding then perp basis crosses up off its discount — shorts begin covering, a spot long rides the squeeze.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "neg_funding_floor"}},
+    {"feature": {"name": "perp_spot_basis"}, "op": "cross_up", "threshold": {"param": "basis_flip"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "perp_spot_basis"}, "op": "gt", "threshold": {"param": "basis_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "neg_funding_floor": {"kind": "float", "lo": -0.0015, "hi": -0.0002},
+    "basis_flip": {"kind": "float", "lo": -0.003, "hi": -0.0003},
+    "basis_exit": {"kind": "float", "lo": 0.0, "hi": 0.002},
+    "stop": {"kind": "float", "lo": 0.015, "hi": 0.06},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.09},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 0.5}
+  }
+}

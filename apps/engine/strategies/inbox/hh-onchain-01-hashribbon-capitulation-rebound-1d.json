@@ -1,0 +1,39 @@
+{
+  "name": "Hash-ribbon miner-capitulation rebound long (BTC, 1d)",
+  "rationale": "ECONOMIC MECHANISM: miners are structurally forced sellers. When price falls below the all-in cost of high-cost rigs, those rigs power off and network hashrate rolls over; a low current hashrate reading (below a fitted floor) marks the supply-side exhaustion of the marginal forced seller. Buying here takes the other side of capitulating miners liquidating balance sheets and gets paid over weeks as the distressed flow clears. VanEck/CoinMetrics 2025: negative hashrate-growth episodes preceded positive 180d BTC returns ~77% of the time. Persists because miner cost curves are physical (energy + hardware ROI now >1000 days), not arbitraged away by a published signal. Entry: btc_hashrate below a fitted floor (miners capitulating) AND price washed out (bb_z below a fitted floor). Exit: RSI recovers through a fitted ceiling (rebound underway) or stop/TP/time. DISCONFIRMER 1: if a plain bb_z washout dip-buy on price alone matches the deflated Sharpe, the hashrate feature adds nothing and this dies. DISCONFIRMER 2: the 77% stat is halving-cycle survivorship — kill if the edge collapses post-2023. DISCONFIRMER 3: median hold >30d makes it a slow TAA sleeve not a snipe. Must clear DSR>=0.95, maxDD<=25%, net of fees.",
+  "catalyst": "miner hashrate capitulation into a washed-out BTC price",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 60
+  },
+  "entry": [
+    { "feature": { "name": "btc_hashrate" }, "op": "lt", "threshold": { "param": "hashrate_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi" }, "op": "cross_up", "threshold": { "param": "rsi_recover_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "hashrate_floor":     { "kind": "float", "lo": 200, "hi": 800 },
+    "bb_lb":              { "kind": "int",   "lo": 20,  "hi": 60, "step": 1 },
+    "bb_floor":           { "kind": "float", "lo": -3.0, "hi": -1.5 },
+    "rsi_recover_exit":   { "kind": "float", "lo": 45,  "hi": 60 },
+    "stop":               { "kind": "float", "lo": 0.08, "hi": 0.22 },
+    "tp":                 { "kind": "float", "lo": 0.12, "hi": 0.5 },
+    "time_stop":          { "kind": "int",   "lo": 20,  "hi": 60, "step": 1 }
+  },
+  "direction": 1
+}

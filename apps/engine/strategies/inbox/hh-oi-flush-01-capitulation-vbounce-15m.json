@@ -1,0 +1,137 @@
+{
+  "name": "OI-flush capitulation V-bounce (15m spot long the exhausted cascade)",
+  "rationale": "MECHANISM: a sharp OI collapse WHILE price is falling is the fingerprint of forced deleveraging \u2014 margin calls close over-levered longs en masse (Oct-2025: 70% of $19B liquidated in 40 min). Once the clustered liquidation ladder is consumed, the marginal FORCED seller is gone and price snaps back V-shaped within hours. The counterparty is a liquidation engine / market-maker dumping into thin books at any price \u2014 a structurally price-INSENSITIVE, non-economic seller you buy from at a forced discount, so the edge persists (the flush is self-terminating, not an arbable level). SPOT long on 15m to catch the exhaustion instant with no perp/funding leg. Entry: open_interest cross_down through a fitted normalized floor (the flush) AND ret_Nd below a negative floor (price is FALLING, disambiguating capitulation from a deleverage-rally) AND rsi below an oversold floor (washout, not orderly bleed) AND vol_realized above a floor (the violent regime where cascades actually exhaust). DISCONFIRMER: drop the open_interest arm and keep only rsi-oversold + ret_Nd-down \u2014 if the deflated Sharpe is matched, OI adds nothing and this is generic oversold-bounce; second, flip ret_Nd-down to ret_Nd-UP \u2014 if the long still profits, OI is a pure price-proxy and the sign is incoherent. Must clear ~20bps Binance-spot round-trip net.",
+  "catalyst": "OI cross_down flush while price falls into an oversold washout \u2014 a forced-seller exhaustion V",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "ret_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_flush_floor": {
+      "kind": "float",
+      "lo": -3.5,
+      "hi": -1.0
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    },
+    "ret_down_floor": {
+      "kind": "float",
+      "lo": -0.09,
+      "hi": -0.02
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 32
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 2.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 48,
+      "hi": 62
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.1
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 1.0
+    }
+  },
+  "direction": 1
+}

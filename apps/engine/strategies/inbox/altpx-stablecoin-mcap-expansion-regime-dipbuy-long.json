@@ -1,0 +1,100 @@
+{
+  "name": "Stablecoin market-cap expansion regime + RSI dip \u2014 buy dips with dry powder present (spot long)",
+  "rationale": "MECHANISM (why the stablecoin float leads the dip-buy): total stablecoin market cap is crypto's standing dry powder \u2014 a large float is fiat parked and ready to deploy on weakness. In a high-float regime, dips get absorbed by sidelined capital rotating in, so an RSI dip is a buying opportunity rather than the start of an exodus. The float is a slow, structural liquidity backdrop that conditions how dips resolve. We require stablecoin_mcap above a fitted floor (ample powder) AND an RSI dip (timing); exit on RSI reverting up. This uses the LEVEL (standing powder) where the sister spec uses the FLOW (fresh minting). DISCONFIRMER 1: if a plain RSI-dip buy without the mcap gate matches the deflated Sharpe, the float adds nothing. DISCONFIRMER 2 (CRITICAL \u2014 non-stationarity): stablecoin mcap grew near-monotonically (~$5B\u2192$160B), so a fitted absolute floor is almost certainly always-true and the 'regime' is fake; the Gate's deflated Sharpe MUST kill it unless the level genuinely partitions dip outcomes. Data knowable T+1. tier1, low-confidence until OOS.",
+  "catalyst": "stablecoin_mcap is above a fitted floor (large stablecoin float = ample dry powder) while RSI has dipped.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "stablecoin_mcap"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mcap_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_dip"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "mcap_floor": {
+      "kind": "float",
+      "lo": 100000000000,
+      "hi": 180000000000
+    },
+    "rsi_dip": {
+      "kind": "float",
+      "lo": 35,
+      "hi": 50
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 75
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "HH regime-switch 09 — Fear-extreme capitulation, band-z washout confirm (daily)",
+  "rationale": "MECHANISM (distinct from variant 08: it reads over-extension via bb_z — a statistical distance-from-mean gauge — rather than trailing return, and confirms with rsi oversold, so it demands the price be genuinely stretched not merely down, and it caps hold tighter to keep drawdown inside the Gate): fear_greed<20 is the capitulation trigger; requiring bb_z deeply negative AND rsi oversold ensures we buy a bar that is statistically washed out (2-3 sigma below the band mean), which is where the forced-seller/patient-buyer imbalance is sharpest. This distinguishes a true capitulation dislocation from a slow grind lower where fear is high but price is not stretched. Exit: bb_z recovers to the mean (dislocation closed) or fear_greed relieves, or stop/TP/time. DISCONFIRMER: on fear_greed<20 AND bb_z-washed entries, forward net-of-fee return must be >0 at holds keeping maxDD<=25%; if adding the bb_z+rsi washout to the bare fear signal does not improve net return or reduce the tail (ablation <= 0), the sentiment extreme alone is doing the work and this is variant 08 re-labeled. Kill if it needs the 147-day/>25%-DD hold to be profitable.",
+  "catalyst": "Fear extreme co-confirmed by a statistical price washout — the sharpest capitulation dislocation",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_extreme_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "bb_mean_exit" } },
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_extreme_floor": { "kind": "float", "lo": 10, "hi": 25 },
+    "fear_relief_exit": { "kind": "float", "lo": 30, "hi": 55 },
+    "bb_lb": { "kind": "int", "lo": 14, "hi": 40, "step": 1 },
+    "bb_floor": { "kind": "float", "lo": -3.0, "hi": -1.4 },
+    "rsi_lb": { "kind": "int", "lo": 7, "hi": 21, "step": 1 },
+    "rsi_floor": { "kind": "float", "lo": 18, "hi": 35 },
+    "bb_mean_exit": { "kind": "float", "lo": -0.3, "hi": 0.4 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.16 },
+    "tp": { "kind": "float", "lo": 0.06, "hi": 0.22 },
+    "time_stop": { "kind": "int", "lo": 3, "hi": 10, "step": 1 }
+  }
+}

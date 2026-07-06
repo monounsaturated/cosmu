@@ -102,15 +102,15 @@ class UniverseSelector(BaseModel):
 
 
 class Horizon(BaseModel):
-    bar_size: Literal["1h", "4h", "1d"]
-    min_hold_days: int
-    max_hold_days: int
+    bar_size: Literal["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+    min_hold_days: float
+    max_hold_days: float
     # TIMEFRAME AS A 4th SCREEN AXIS (LOT C), OPT-IN. When None (DEFAULT) the single `bar_size` is the only timeframe
     # — so `timeframes()` returns [bar_size] and EVERY existing spec screens exactly once on its single bar_size, byte-
     # identical. When an author sets this list, the finder/loop screen the spec ONCE PER TIMEFRAME (model_copy'ing
     # bar_size per tf), making each (variant × symbol × venue × tf) its OWN brut cell. `bar_size` stays the canonical
     # single-tf value (the fallback + serialization anchor); `bar_sizes` only WIDENS the screen, never replaces it.
-    bar_sizes: list[Literal["1h", "4h", "1d"]] | None = None
+    bar_sizes: list[Literal["1m", "5m", "15m", "30m", "1h", "4h", "1d"]] | None = None
 
     def timeframes(self) -> list[str]:
         """The timeframe(s) to screen this spec on: `bar_sizes` when set (multi-tf opt-in), else just [bar_size] (the

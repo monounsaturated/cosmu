@@ -1,0 +1,32 @@
+{
+  "name": "Bearish-over-bullish vote imbalance with bb_z holding (vote-ratio divergence, long)",
+  "rationale": "MECHANISM: sharper divergence variant that pits the TWO cryptopanic tallies against each other AND against price. When bearish votes spike (loud pessimism) while bullish votes are NOT collapsing to zero (some crowd still constructive) AND bb_z is NOT deeply washed out (price refuses to break), the pessimism is emotional noise the tape rejects. Using both vote series captures the CROWD IMBALANCE more faithfully than one tally, and bb_z (a volatility-normalized price gauge, orthogonal to range_position used in hh-12) is the price-refuses-to-confirm leg. Long the rejection of pessimism; exit on vote relief or stop/TP/time. DISCONFIRMER: verify per-symbol coverage of BOTH vote series — if either is sparse, effective-N dies at the Gate. If the two-vote imbalance predicts nothing beyond the single bearish-vote count, drop bullish_votes (over-engineered). If it fires identically regardless of bb_z, the divergence is fake — kill.",
+  "catalyst": "bearish votes spike but bullish votes hold and price does not break",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "cryptopanic_bearish_votes" }, "op": "gt", "threshold": { "param": "bear_spike" } },
+    { "feature": { "name": "cryptopanic_bullish_votes" }, "op": "gt", "threshold": { "param": "bull_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "gt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "cryptopanic_bearish_votes" }, "op": "cross_down", "threshold": { "param": "bear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bear_spike":       { "kind": "float", "lo": 20.0, "hi": 80.0 },
+    "bull_floor":       { "kind": "float", "lo": 3.0,  "hi": 20.0 },
+    "bear_relief_exit": { "kind": "float", "lo": 5.0,  "hi": 25.0 },
+    "bb_lb":            { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "bb_floor":         { "kind": "float", "lo": -1.0, "hi": 0.5 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":        { "kind": "int",   "lo": 3,    "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

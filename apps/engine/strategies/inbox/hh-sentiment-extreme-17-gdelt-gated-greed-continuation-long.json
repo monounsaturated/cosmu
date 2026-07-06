@@ -1,0 +1,32 @@
+{
+  "name": "GDELT-tone macro regime gates greed continuation-long (calm-macro herding)",
+  "rationale": "MECHANISM: the other leg of the gdelt_tone regime switch. When broad tone is NEUTRAL/POSITIVE (macro risk-on) AND crypto greed is extreme AND momentum is up (ret_Nd>0), continuation works — the herding is happening in a supportive macro backdrop that lets the FOMO trend persist rather than get cut short by a macro shock. This resolves the family's central tension by using the SAME slow macro-tone series to pick continuation (here) vs contrarian (hh-16), avoiding the whipsaw of applying one rule in both regimes. Long; exit when momentum fades or tone turns negative, or stop/TP/time. DISCONFIRMER: run the continuation leg UNGATED vs tone-GATED — if the macro-positive gate does not improve OOS DSR over ungated greed continuation, gdelt_tone adds no regime information; kill. Also verify gdelt_tone actually leads the regime turn at the daily horizon or it cannot gate in time.",
+  "catalyst": "positive macro tone AND extreme crypto greed with up-momentum",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "gdelt_tone" }, "op": "gt", "threshold": { "param": "tone_floor" } },
+    { "feature": { "name": "fear_greed" }, "op": "gt", "threshold": { "param": "greed_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "gdelt_tone" }, "op": "cross_down", "threshold": { "param": "tone_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tone_floor":    { "kind": "float", "lo": -1.0, "hi": 2.0 },
+    "tone_exit":     { "kind": "float", "lo": -4.0, "hi": -1.0 },
+    "greed_ceiling": { "kind": "float", "lo": 65.0, "hi": 85.0 },
+    "mom_lb":        { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "mom_floor":     { "kind": "float", "lo": 0.0,  "hi": 0.08 },
+    "stop":          { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":            { "kind": "float", "lo": 0.10, "hi": 0.40 },
+    "time_stop":     { "kind": "int",   "lo": 6,    "hi": 25, "step": 1 }
+  },
+  "direction": 1
+}

@@ -1,0 +1,31 @@
+{
+  "name": "Galaxy-score-z REGIME veto on accel long, vol-health double guard (1d)",
+  "rationale": "MECHANISM: hardens the galaxy-as-veto overlay by pairing the crowd-health TAG (galaxy_score_z not deteriorating) with a realized-vol ceiling on the attention-onset long (social_volume_accel spike). The economics: onset attention leads price, but manipulated/unhealthy spikes cluster in blown-out vol and low crowd-health; requiring healthy rank AND contained vol targets clean ignition. galaxy_score_z is never a trigger, only a filter (rejected standalone on priors). DISCONFIRMER: ablate BOTH guards — the full spec must beat the bare accel spec out of sample; if neither the galaxy veto nor the vol ceiling lifts net-of-fee OOS Sharpe, drop them rather than let them manufacture a winner by cutting trades. The external warning that galaxy_score and vol are redundant means the two guards may be the same information — if so, keep only the one that adds OOS Sharpe. Shuffle the attention series; the accel core must collapse.",
+  "catalyst": "clean attention ignition — healthy crowd rank and contained volatility",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 7 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } },
+    { "feature": { "name": "galaxy_score_z" }, "op": "gt", "threshold": { "param": "galaxy_floor" } },
+    { "feature": { "name": "vol_realized" }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_floor":  { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "accel_exit":   { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "galaxy_floor": { "kind": "float", "lo": -0.5, "hi": 1.0 },
+    "vol_ceiling":  { "kind": "float", "lo": 0.02, "hi": 0.10 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.24 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 7, "step": 1 }
+  },
+  "direction": 1
+}

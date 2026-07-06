@@ -1,0 +1,31 @@
+{
+  "name": "Calm-VIX ADX breakout — 4h crypto trend entries permitted only in a low-vol macro regime",
+  "rationale": "MECHANISM: same 'calm macro lets trends run' thesis, but the crypto side is a faster ADX-confirmed breakout on a 4h bar (an established directional trend, not a raw return) and the calm gate is VIX-only — testing whether equity-vol calm alone conditions crypto trend persistence without the credit leg. In a low-VIX regime there is no cross-asset VaR shock to unwind trends, so an ADX-confirmed breakout is more likely to follow through. Distinct from hh-macro-17 by bar (4h vs daily), crypto gauge (adx breakout vs ret_Nd), and macro gate (VIX-only vs VIX+credit). DISCONFIRMER: VIX is a daily read that a 4h bar cannot refresh intraday — the calm gate persists stale across the day, so the 4h frequency may only add fees over the daily version. Kill unless the ADX-breakout-in-calm spec beats an identical ADX breakout with NO VIX gate on OOS net-of-fee Sharpe; the calm filter must add lift, not just trim. Curve-fit risk is high (calm and trending overlap).",
+  "catalyst": "low-VIX regime with a confirmed crypto ADX breakout",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_ceiling" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_ceiling": { "kind": "float", "lo": 14,   "hi": 22 },
+    "adx_floor":   { "kind": "float", "lo": 20,   "hi": 35 },
+    "adx_exit":    { "kind": "float", "lo": 12,   "hi": 20 },
+    "rp_lb":       { "kind": "int",   "lo": 20,   "hi": 60,   "step": 1 },
+    "rp_floor":    { "kind": "float", "lo": 0.5,  "hi": 0.7 },
+    "stop":        { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":          { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop":   { "kind": "int",   "lo": 3,    "hi": 12,   "step": 1 }
+  }
+}

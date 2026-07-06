@@ -1,0 +1,42 @@
+{
+  "name": "HH breakout 14 — expansion-continuation pullback entry (1h)",
+  "rationale": "MECHANISM: separates the SIGNAL (a confirmed vol expansion / trend birth) from the ENTRY (a low-cost pullback), addressing the fact that chasing the breakout bar itself is where fakeouts and slippage eat you. Once bb_width has EXPANDED above a floor (from a compressed base) AND adx is in trend territory, a real directional regime is established — the squeeze has already RESOLVED. Rather than enter on the extended break bar, we wait for range_position to PULL BACK toward mid-range (below a fitted ceiling) within the now-trending regime and enter long in the trend direction, buying from the late fakeout-faders shorting the pullback into a real trend. Lower entry cost and better R:R than the raw break. Economically distinct from the squeeze-break variants (01/03) because the entry is a mid-range pullback, not the extreme. bar_size 1h. DISCONFIRMER: KILL if pullbacks after a confirmed expansion revert to the FULL prior range as often as they resume the trend (no 'trend holds the pullback' effect net of fees), OR if the two-stage pullback entry does not beat the one-stage break entry on holdout (the wait just misses the move), OR if the adx-cross condition leaks (adx smoothing peeks forward) — verify PIT on adx.",
+  "catalyst": "pullback within a confirmed post-expansion uptrend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "gt", "threshold": {"param": "bbw_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_pullback"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbw_floor": {"kind": "float", "lo": 0.03, "hi": 0.09},
+    "adx_floor": {"kind": "float", "lo": 22, "hi": 34},
+    "rp_pullback": {"kind": "float", "lo": 0.45, "hi": 0.7},
+    "rp_floor": {"kind": "float", "lo": 0.2, "hi": 0.4},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 4}
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "Post-drawdown stablecoin-inflow long (1h, ATR-washout gate + volatility exit)",
+  "rationale": "MECHANISM: same surviving lead effect (inflows arrive AFTER downturns and predict positive returns) but read at 1h with a VOLATILITY-normalised washout gate instead of a raw return floor. A big stablecoin_net_flow_usd inflow while price sits near the low of an elevated-ATR flush marks staggered dip-buying capital arriving on-venue before the bounce. Distinct from variant 04 (4h, ret-based selloff filter): here the selloff is read via atr + range_position, capturing the flush intensity, and the hold is shorter. Other side = forced sellers into the volatility spike. DISCONFIRMER: drop the flow condition and keep only range_position-near-lows + high atr; if that matches net of fees, the flow feature is inert. Kill if the edge needs a per-symbol-tuned ATR window to appear (curve-fit, not a real flush-then-inflow effect).",
+  "catalyst": "stablecoin inflow near the low of a high-volatility 1h flush",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1h", "min_hold_days": 0.08, "max_hold_days": 2 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "gt", "threshold": { "param": "flow_spike_floor" } },
+    { "feature": { "name": "range_position" }, "op": "lt", "threshold": { "param": "range_floor" } },
+    { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "gt", "threshold": { "param": "atr_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "range_position" }, "op": "gt", "threshold": { "param": "range_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_lb":          { "kind": "int",   "lo": 4,    "hi": 24,  "step": 1 },
+    "flow_spike_floor": { "kind": "float", "lo": 0.5,   "hi": 2.5 },
+    "range_floor":      { "kind": "float", "lo": 0.05,  "hi": 0.30 },
+    "atr_lb":           { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "atr_floor":        { "kind": "float", "lo": 0.01,  "hi": 0.05 },
+    "range_exit":       { "kind": "float", "lo": 0.55,  "hi": 0.85 },
+    "stop":             { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":               { "kind": "float", "lo": 0.03, "hi": 0.13 },
+    "time_stop":        { "kind": "int",   "lo": 1,    "hi": 2,   "step": 1 }
+  },
+  "direction": 1
+}

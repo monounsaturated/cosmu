@@ -1,0 +1,29 @@
+{
+  "name": "Credit-spread widening at the range floor — buy the credit-driven crypto flush (credit-led, no VIX)",
+  "rationale": "MECHANISM: isolates the CREDIT leg of the deleverage-reversion thesis, without the equity-vol (VIX) gate, to see whether the funding-stress channel alone carries the edge. Widening credit_spread signals tightening dollar funding / rising default risk premium — the plumbing stress that forces levered players to raise cash by dumping the most liquid collateral (crypto). When credit is blowing out AND crypto is pinned at its range floor (range_position near zero), that is the forced-seller capitulation to fade. Counterparty = margin/funding desks raising cash indiscriminately. DISCONFIRMER: credit_spread is a slow, revision-prone daily FRED series; the flush may already be over by the PIT bar. Kill if it fires only after the crypto low is in, or if it is economically identical to the VIX-gated variant (hh-macro-05/06) — if credit and VIX co-move so tightly the credit-only spec adds no distinct information, keep only one. Also kill if a bare range-floor dip-buy matches it without the credit gate.",
+  "catalyst": "credit-spread blowout with crypto pinned at its range floor",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "credit_spread" }, "op": "cross_up", "threshold": { "param": "cs_trigger" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "lt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "cross_up", "threshold": { "param": "rp_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "cs_trigger": { "kind": "float", "lo": 1.2,  "hi": 3.0 },
+    "rp_lb":      { "kind": "int",   "lo": 20,   "hi": 60,   "step": 1 },
+    "rp_floor":   { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "rp_exit":    { "kind": "float", "lo": 0.4,  "hi": 0.6 },
+    "stop":       { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":  { "kind": "int",   "lo": 3,    "hi": 14,   "step": 1 }
+  }
+}

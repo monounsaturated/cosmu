@@ -1,0 +1,128 @@
+{
+  "name": "Failed-flush continuation short (15m short, ADX confirms the down-trend is real)",
+  "rationale": "MECHANISM (H6 with an ADX arm replacing the funding-room read): a failed flush that keeps bleeding is a genuine down-trend, not chop \u2014 a rising ADX confirms the directional force is real, distinguishing 'the ladder is still being consumed' from a noisy wiggle at the lows. OI falls, price makes new lows, no bounce, and ADX is elevated. Counterparty: the next tranche of margin-called longs liquidated lower. Run as a perp SHORT. Entry: open_interest cross_down (deleveraging) AND range_position below a very low floor (new lows) AND rsi below an oversold floor (still down) AND adx above a floor (the down-move is a real trend, not chop). DISCONFIRMER: must be time-disjoint from H1 \u2014 shared profitable bars mean the OI read is noise; range_position is the separator, so its removal must collapse the spec; and drop the ADX arm \u2014 if no degradation, the trend-confirmation was cosmetic. HIGHEST curve-fit risk of the family \u2014 kill unless a clean low-overlap OOS window clears fees.",
+  "catalyst": "OI cross_down + new low + no bounce + rising ADX \u2014 a real down-trend still consuming the ladder",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.75
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "range_position"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rangepos_newlow_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "range_position"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rangepos_bounce_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_flush_floor": {
+      "kind": "float",
+      "lo": -3.5,
+      "hi": -0.8
+    },
+    "rangepos_newlow_floor": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.18
+    },
+    "rsi_down_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 38
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 35
+    },
+    "rangepos_bounce_exit": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 0.5
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.1
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 0.75
+    }
+  },
+  "direction": -1
+}

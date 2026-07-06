@@ -1,0 +1,44 @@
+{
+  "name": "HH breakout 03 — squeeze-expansion ATR-normalized break (4h)",
+  "rationale": "MECHANISM: same volatility-clustering forecast (a compressed coil forecasts expansion), but measured on a SLOWER 4h clock so the coil is a multi-week compression and the resolved trend can run for days — a genuinely different holding regime from the 1h variants, not just a re-parametrization. Gate on bb_width compressed AND vol_realized compressed, enter long on a range_position up-break, and add an atr FLOOR so we only take breaks where the true-range has begun to widen (the expansion is actually underway, not a single-bar poke into a dead coil). adx confirms the trend. The 4h clock means fees are paid only on real regime changes. Counterparty: the same short-gamma vol-sellers who must hedge the expansion, plus slow range-faders shorting the multi-week high. DISCONFIRMER: KILL if the atr floor is decorative (removing it does not degrade the edge → we are just buying breakouts, not expansions), or if the post-break distribution is symmetric with mean within a fee-round-trip of zero net of fees, or if the 4h edge is a pre-2024 artifact that the 2025 holdout does not reproduce.",
+  "catalyst": "multi-week coil breaks UP with true-range already widening",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.5,
+    "max_hold_days": 10
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_ceiling"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vr_ceiling"}},
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_break"}},
+    {"feature": {"name": "atr"}, "op": "gt", "threshold": {"param": "atr_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbw_ceiling": {"kind": "float", "lo": 0.02, "hi": 0.06},
+    "vr_ceiling": {"kind": "float", "lo": 0.01, "hi": 0.04},
+    "rp_break": {"kind": "float", "lo": 0.9, "hi": 0.99},
+    "atr_floor": {"kind": "float", "lo": 0.005, "hi": 0.03},
+    "adx_floor": {"kind": "float", "lo": 18, "hi": 30},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "tp": {"kind": "float", "lo": 0.04, "hi": 0.2},
+    "time_stop": {"kind": "float", "lo": 1, "hi": 12}
+  }
+}

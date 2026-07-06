@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: RSI capitulation bounce, liquid majors (30m)",
+  "rationale": "MECHANISM: identical RSI seller-exhaustion bounce on liquid majors as the 15m variant — an oversold print marks the marginal panic seller being done and the bid ladder lifting price back to VWAP — but on the 30m bar, where the larger absolute bounce more comfortably clears the fixed round-trip cost, at the price of fewer events. The timeframe axis tests whether capitulation-bounce is a genuine multi-timescale behavioral effect or a fast-bar microstructure blip. Entry: rsi deeply oversold AND bb_z confirming. Long-only spot; exit as rsi recovers. DISCONFIRMER: if the 30m net Sharpe after fees is indistinguishable from the 15m variant, the timeframe adds nothing — keep one. Run the SAME rule on the alt basket: if majors are positive but alts negative, it is a fee-arb not a signal. If it cannot beat buy-and-hold on majors, the bounce is smaller than the interrupted trend — kill.",
+  "catalyst": "RSI capitulation bounce on majors, slower 30m clock for cost headroom",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1.0
+  },
+  "entry": [
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rsi_floor": {"kind": "float", "lo": 12, "hi": 20},
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "rsi_exit": {"kind": "float", "lo": 45, "hi": 60},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "time_stop": {"kind": "float", "lo": 0.2, "hi": 1.0}
+  },
+  "direction": 1
+}

@@ -1,0 +1,109 @@
+{
+  "name": "S&P 500 regime reclaim + crypto momentum \u2014 equity-beta continuation (spot long)",
+  "rationale": "MECHANISM (why equities lead crypto): the S&P 500 is the global risk-on benchmark and crypto carries a positive beta to broad equities. When the SPX reclaims a level (crosses UP through a fitted regime line), the macro risk-on switch has flipped, and high-beta crypto tends to follow and amplify the move. Equities, being the deeper, faster-repricing market, lead the regime turn that crypto then rides. We trigger on spx_index cross_up (a discrete regime reclaim \u2014 used deliberately because the raw index level is non-stationary) AND positive crypto ret_Nd (own-beta confirming), and exit when SPX crosses back down (regime lost). DISCONFIRMER 1: if crypto momentum alone matches the deflated Sharpe, the SPX gate adds nothing. DISCONFIRMER 2 (PIT): the daily index close is knowable next-day \u2014 if the edge needs same-session SPX it is look-ahead. DISCONFIRMER 3: in stress, crypto's beta to SPX spikes toward 1 and the 'lead' collapses to coincident \u2014 the regime filter must add timing beyond that. tier0 macro; low-confidence until validated OOS.",
+  "catalyst": "spx_index crosses UP through a fitted regime level (equities reclaiming risk-on) while crypto momentum is positive.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 2,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "spx_index"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "spx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "spx_index"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "spx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "spx_floor": {
+      "kind": "float",
+      "lo": 4000,
+      "hi": 6200
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "spx_exit": {
+      "kind": "float",
+      "lo": 3800,
+      "hi": 6000
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

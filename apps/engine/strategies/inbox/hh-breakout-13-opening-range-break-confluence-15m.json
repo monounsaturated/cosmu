@@ -1,0 +1,47 @@
+{
+  "name": "HH breakout 13 — opening-range break with range-position confluence (15m)",
+  "rationale": "MECHANISM: the opening-range auction edge, but with an added CONFLUENCE requirement that range_position is ALSO at a genuine extreme when the ORB module fires — the distinct claim being that an opening-range break only pays when it coincides with a broader range high (a real structural extreme), not when the opening-range high sits in the middle of a wider trading range (a low-quality poke). Uses setup.orb (range_bars, buffer as fitted ParamRefs) AND a range_position floor entry condition, so both the session anchor and the structural extreme must align. atr is carried for context. bar_size 15m to catch the intraday break tightly. Distinct from variants 11/12 because the load-bearing extra filter is structural range confluence rather than participation or trend. DISCONFIRMER: KILL if the confluence adds nothing over the plain ORB (the range_position floor never binds because the ORB high is already the range high), OR if the anchor beats a random-hour placebo by nothing, OR if it survives only on illiquid alts where the 15m fills are fictional (spread wider than the move), OR if a 00:00 UTC placebo anchor matches it.",
+  "catalyst": "opening-range break coinciding with a broader range extreme",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_floor"}},
+    {"feature": {"name": "atr"}, "op": "gt", "threshold": {"param": "atr_floor"}}
+  ],
+  "setup": {
+    "orb": {
+      "range_bars": {"param": "orb_bars"},
+      "buffer": {"param": "orb_buffer"},
+      "anchor": "rolling"
+    }
+  },
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "orb_bars": {"kind": "int", "lo": 4, "hi": 24, "step": 1},
+    "orb_buffer": {"kind": "float", "lo": 0.001, "hi": 0.015},
+    "rp_floor": {"kind": "float", "lo": 0.7, "hi": 0.95},
+    "atr_floor": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "rp_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.08},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1.5}
+  }
+}

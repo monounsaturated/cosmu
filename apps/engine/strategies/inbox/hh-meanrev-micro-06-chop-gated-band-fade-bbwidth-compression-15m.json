@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: chop-gated band fade, Bollinger-width compression gate (15m)",
+  "rationale": "MECHANISM: same ranging-regime band fade, but the regime is read through bb_width (Bollinger band WIDTH) rather than realized vol — a NARROW band is the direct structural signature of a compressed, mechanically-oscillating range where grid/MM bots re-quote around a stable mid. A wide band means the range has already broken and the fade would be knife-catching a trend. Using band width as the gate is economically distinct from vol_realized: it measures the dispersion the maker is quoting AROUND, not the raw return variance, so it captures range-boundness even when a single vol spike would otherwise veto a still-mechanical market. Entry: bb_z below a fitted floor AND bb_width below a fitted compression ceiling. Long-only spot; exit on bb_z reversion. DISCONFIRMER: if the bb_width gate produces the same trades and net Sharpe as the vol_realized gate, the two are collinear here and this is a duplicate — keep one. If the edge only survives when bb_width is at one knife-edge cutoff (flips sign 10-20% either side), it is a fitted artifact — kill.",
+  "catalyst": "band extreme faded only inside a compressed (narrow-band) mechanical range",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbwidth_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "bbwidth_ceiling": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 0.5}
+  },
+  "direction": 1
+}

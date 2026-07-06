@@ -1,0 +1,27 @@
+{
+  "name": "Excess-attention continuation — chatter loud relative to dollars (1d)",
+  "rationale": "MECHANISM: social_excess_attention_z is the within-asset z of ln(social_volume) - ln(dollar_volume). When chatter is loud RELATIVE to money actually changing hands, real flow has NOT yet arrived, so price continues UP over ~a week as talk converts to trades. Counterparty is momentum-chasers who wait for volume confirmation. This is the strongest documented internal finding (k=7 decile spread +1.8%, t=+5.77) and is orthogonal to raw volume (coincident/beta). LunarCrush is daily next-day, so this is a SWING horizon on 1d, not intraday. DISCONFIRMER: neutralize against realized vol and dollar-volume (the external AUC-0.564-vs-0.78 warning: social is often redundant with 14d vol) — if a vol/volume control absorbs the spread, KILL. Must beat buy-and-hold net of fees at ~7d holds and survive the FDR/DSR gate on the native daily universe, not a hand-picked coin set.",
+  "catalyst": "attention loud relative to realized dollar volume — flow not yet arrived",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "social_excess_attention_z" }, "op": "gt", "threshold": { "param": "excess_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_excess_attention_z" }, "op": "lt", "threshold": { "param": "excess_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "excess_floor": { "kind": "float", "lo": 1.0,  "hi": 2.5 },
+    "excess_exit":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "stop":         { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.30 },
+    "time_stop":    { "kind": "int",   "lo": 4,    "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

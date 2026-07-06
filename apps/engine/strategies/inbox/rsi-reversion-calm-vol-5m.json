@@ -1,0 +1,37 @@
+{
+  "name": "RSI reversion, calm-volatility gated (5m)",
+  "rationale": "An oversold 5m RSI is only faded when realized volatility is BELOW a ceiling — a calm tape where dislocations are noise that snaps back, not the start of a volatility-driven trend. The gate is the key differentiator from the ADX-gated variant: vol_realized filters on the size of moves, not their directionality. The other side is the noise seller in a quiet book. Edge persists because low-vol regimes are where reversion dominates and momentum is weak. Disconfirmer: exits when RSI recovers above the exit level, or the stop fires if a vol expansion turned the dip into a breakdown.",
+  "catalyst": "oversold RSI inside a low realized-volatility regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rsi_floor": {"kind": "float", "lo": 15, "hi": 32},
+    "rsi_exit": {"kind": "float", "lo": 45, "hi": 60},
+    "vol_ceiling": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "time_stop": {"kind": "float", "lo": 0.05, "hi": 0.5}
+  }
+}

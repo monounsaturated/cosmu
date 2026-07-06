@@ -1,0 +1,38 @@
+{
+  "name": "Intraday time-series momentum — first-window sign continues into the close window (1h)",
+  "rationale": "MECHANISM: the Gao/Bogousslavsky intraday-momentum result ported to crypto (Birmingham/Reading papers): the sign of the early intraday window return positively predicts the last window's return within the same session, driven by late-informed traders and end-of-window rebalancing/hedging demand that pushes price in the established direction; early liquidity providers who under-react are the counterparty. Expressed as a rolling continuation: a strong positive signed trailing return (ret_Nd over the session window) gated by adx>floor (trend-not-chop) enters on continuation. DISCONFIRMER: kill if the net edge is < 3x round-trip taker cost (per-trade move is small at 1h so fees dominate), if the adx gate does nothing (edge identical gate on vs off), or if the signed early-window return has no monotonic link to the close-window return in a purged/embargoed OOS split (in-sample fit, not a persistent lead-lag).",
+  "catalyst": "early-session momentum persisting into the close window",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1
+  },
+  "entry": [
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mom_lb":    { "kind": "int",   "lo": 3,  "hi": 12, "step": 1 },
+    "mom_floor": { "kind": "float", "lo": 0.002, "hi": 0.02 },
+    "mom_exit":  { "kind": "float", "lo": -0.01, "hi": 0.0 },
+    "adx_floor": { "kind": "float", "lo": 18, "hi": 34 },
+    "stop":      { "kind": "float", "lo": 0.012, "hi": 0.05 },
+    "tp":        { "kind": "float", "lo": 0.02, "hi": 0.1 },
+    "time_stop": { "kind": "float", "lo": 0.25, "hi": 1.0 }
+  }
+}

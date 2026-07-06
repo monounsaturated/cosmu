@@ -1,0 +1,100 @@
+{
+  "name": "Open-interest flush + oversold rebound \u2014 buy the forced-deleverage capitulation (spot long)",
+  "rationale": "MECHANISM (why the derivative leads price): a sharp DROP in open_interest is the fingerprint of forced deleveraging \u2014 margin calls and liquidations closing leveraged positions en masse. That flush IS the capitulation: once the over-levered longs are gone, the marginal seller is exhausted and price snaps back. OI (a perp-derived read) turns at the liquidation event slightly before spot price finishes bottoming, so open_interest cross_down through a fitted (normalized) floor is an early bottom tag. We require a price confirmation \u2014 RSI oversold \u2014 so we buy a genuine washout, not a slow orderly bleed, and take it on SPOT (no perp-short needed). Exit on RSI reverting up (bounce played out) or stop/TP/time. DISCONFIRMER 1: the edge must be the OI FLUSH, not generic oversold \u2014 if dropping the open_interest arm and keeping only RSI-oversold matches the deflated Sharpe, OI adds nothing. DISCONFIRMER 2: OI falls mechanically as price falls; if replacing the RSI-oversold arm with an RSI-strong arm flips the sign, OI is just a price proxy, not a deleverage signal. Net of ~20bps round-trip the bounce must still pay.",
+  "catalyst": "open_interest crashes DOWN through a fitted floor (leverage flushed / longs liquidated) while RSI is oversold \u2014 a washed-out bottom.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_floor": {
+      "kind": "float",
+      "lo": -2.5,
+      "hi": -0.3
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 32
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 72
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

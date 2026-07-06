@@ -1,0 +1,39 @@
+{
+  "name": "Basis-regime spike reversion — perp-premium blowout fade (short, 1h)",
+  "rationale": "MECHANISM: perp_spot_basis (perp minus spot) blowing out to an extreme POSITIVE spike means perp buyers are so aggressive they overpay vs spot — a transient dislocation the funding mechanism is DESIGNED to pull back toward zero (funding is the restoring force). Basis/arb desks have finite intraday capacity, so the spike over-shoots before they close it. We fade the perp premium SHORT (direction -1) and receive the positive funding carry (funding_feature) while the basis mechanically converges. funding_rate confirming (high) rules out a stale/noisy basis print. Distinct from harvesting steady carry (arbed to ~0): this is the transient over-shoot, not the level. Hold ~0.25-0.5d. DISCONFIRMER 1: kill if the mean basis is compressed near zero in 2025-2026 (institutions arbed it) so 'extreme' spikes are just noise inside bid-ask + fees and net-of-fee edge dies. DISCONFIRMER 2: kill if it is inseparable from the high-funding-fade (basis and funding near-collinear) — keep only the stronger. DISCONFIRMER 3: kill if convergence is slower than the hold and gets swamped by trend.",
+  "catalyst": "perp basis spikes to an extreme premium with high funding — a mechanical over-shoot to fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "perp_spot_basis"}, "op": "gt", "threshold": {"param": "basis_ceiling"}},
+    {"feature": {"name": "funding_rate"}, "op": "gt", "threshold": {"param": "funding_confirm"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "perp_spot_basis"}, "op": "lt", "threshold": {"param": "basis_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "basis_ceiling": {"kind": "float", "lo": 0.001, "hi": 0.006},
+    "funding_confirm": {"kind": "float", "lo": 0.0002, "hi": 0.001},
+    "basis_exit": {"kind": "float", "lo": 0.0, "hi": 0.0015},
+    "stop": {"kind": "float", "lo": 0.012, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 0.5}
+  }
+}

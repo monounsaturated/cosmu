@@ -1,0 +1,30 @@
+{
+  "name": "Fear-extreme contrarian gated on RSI oversold (capitulation confluence, long)",
+  "rationale": "MECHANISM: same forced-seller-vs-patient-capital thesis as the bb_z variant, but reads the washout with a DIFFERENT gauge — RSI oversold — to test whether the confluence edge is robust to the technical filter used, not an artifact of one indicator. Extreme fear supplies the emotional forced flow; RSI below a fitted oversold floor confirms the tape is genuinely stretched (not mid-range fear that stays down). Long spot into the discount; exit on RSI recovering through a fitted level or stop/TP/time. DISCONFIRMER: if RSI-gated and bb_z-gated versions give identical trades/returns, the gauge is irrelevant and only fear+generic-oversold matters — collapse to one. If net-of-fee return does not beat buy-and-hold on the same oversold days, it is redundant with RSI mean-reversion and news adds nothing — kill.",
+  "catalyst": "extreme fear into an RSI-oversold tape",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_floor": { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "rsi_lb":     { "kind": "int",   "lo": 7,    "hi": 21, "step": 1 },
+    "rsi_floor":  { "kind": "float", "lo": 20.0, "hi": 35.0 },
+    "rsi_exit":   { "kind": "float", "lo": 45.0, "hi": 60.0 },
+    "stop":       { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":  { "kind": "int",   "lo": 3,    "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

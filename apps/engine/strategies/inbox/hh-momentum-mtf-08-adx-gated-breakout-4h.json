@@ -1,0 +1,38 @@
+{
+  "name": "ADX-gated breakout continuation — Donchian ceiling break only in a trend (4h)",
+  "rationale": "MECHANISM: raw breakout entries bleed on fees in choppy regimes because most breaks fail; the economic edge is CONDITIONAL — breakouts pay only when a directional regime already exists. ADX separates trend from chop, so entering when range_position is near the ceiling (a Donchian-style break) ONLY when adx is high harvests the minority of breaks that continue while skipping the fee-churning majority. The counterparty is breakout-faders and mean-reversion grid bots who are right most of the time but pay in the tail. The 4h bar keeps trade count (and fee drag) low — fewer, higher-conviction trades. DISCONFIRMER: kill if the adx gate gives no incremental net lift over the ungated breakout — run the identical spec with the adx condition removed; if CSCV-PBO / DSR is not materially worse without it, the gate is a free parameter the optimizer tuned, not a regime signal, and the strategy dies.",
+  "catalyst": "range-ceiling breakout inside a confirmed trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 5
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "adx_floor": { "kind": "float", "lo": 20, "hi": 36 },
+    "adx_exit":  { "kind": "float", "lo": 12, "hi": 20 },
+    "rp_lb":     { "kind": "int",   "lo": 10, "hi": 48, "step": 1 },
+    "rp_floor":  { "kind": "float", "lo": 0.7, "hi": 0.95 },
+    "stop":      { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":        { "kind": "float", "lo": 0.04, "hi": 0.2 },
+    "time_stop": { "kind": "float", "lo": 1.0, "hi": 5.0 }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "DeFi TVL momentum beyond price -> real-deposit-demand long (ETH, de-beta'd)",
+  "rationale": "ECONOMIC MECHANISM: raw defi_tvl correlates with ETH price mechanically because TVL is partly denominated in ETH — so naive 'TVL predicts price' is disguised beta and must be neutralized. The honest edge is TVL growth NET OF price growth: genuine new capital being LOCKED (stablecoin deposits, RWA inflows hitting $17B in 2025) BEYOND what price appreciation explains signals real protocol demand leading ETH. The counterparty is passive holders who have not yet repriced the deposit growth. Entry demands BOTH defi_tvl rising AND price momentum NOT already stretched (ret_Nd below a ceiling) — approximating the residual: TVL climbing while price has not yet run isolates the de-beta'd deposit signal. Long ETH; exit on TVL rolling over or stop/TP/time. DISCONFIRMER 1 (most likely outcome): if residual TVL growth has near-zero forward power on ETH, the whole thesis is just beta and dies immediately. DISCONFIRMER 2: DefiLlama methodology recounts/revisions can inject look-ahead -> KILL if the edge relies on revised TVL not PIT TVL. DISCONFIRMER 3: if a plain price-momentum long matches it, TVL adds nothing. Treat raw-TVL correlation as a leakage trap. Net of fees, DSR>=0.95.",
+  "catalyst": "TVL deposits rising faster than price (de-beta'd deposit demand)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "defi_tvl" }, "op": "gt", "threshold": { "param": "tvl_growth" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "defi_tvl" }, "op": "cross_down", "threshold": { "param": "tvl_stall" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tvl_growth":  { "kind": "float", "lo": 0.5, "hi": 2.0 },
+    "tvl_stall":   { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "mom_lb":      { "kind": "int",   "lo": 10, "hi": 40, "step": 1 },
+    "mom_ceiling": { "kind": "float", "lo": 0.0, "hi": 0.06 },
+    "stop":        { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":          { "kind": "float", "lo": 0.1, "hi": 0.35 },
+    "time_stop":   { "kind": "int",   "lo": 8, "hi": 20, "step": 1 }
+  },
+  "direction": 1
+}

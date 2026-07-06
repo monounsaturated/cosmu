@@ -1,0 +1,29 @@
+{
+  "name": "Fresh-fiat surge rotating to ETH -> targeted ETH long (net-flow + ETH-share)",
+  "rationale": "ECONOMIC MECHANISM (distinct from both the aggregate net-flow long and the bare ETH-share rotation: this REQUIRES fresh dry powder AND that it is landing on ETH rails, i.e. it conditions the dry-powder-deployment thesis on the ROTATION being toward ETH specifically — capturing the case where new fiat is not just entering the perimeter but choosing Ethereum, a sharper directional ETH nowcast than either leg alone): a positive stablecoin_net_flow_usd surge is fresh fiat that must deploy; stablecoin_eth_share rising says it is concentrating on ETH. Together they point new demand at ETH before it hits ETH spot. Long ETH; exit on flow fade or stop/TP/time. DISCONFIRMER 1: the two legs may be mechanically correlated (a big ETH mint raises both) -> if they never disagree they are one signal; require the combo to beat each single leg's deflated Sharpe. DISCONFIRMER 2: flow/price correlation <0.3 at short horizons (Kaiko/Glassnode) is the base death risk; require positive lead coefficient after BH-FDR. DISCONFIRMER 3: eth_share short/revised history -> verify PIT. Net of fees, DSR>=0.95.",
+  "catalyst": "fresh stablecoin fiat rotating onto ETH rails",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd" }, "op": "gt", "threshold": { "param": "flow_surge" } },
+    { "feature": { "name": "stablecoin_eth_share" }, "op": "gt", "threshold": { "param": "share_mom" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "stablecoin_net_flow_usd" }, "op": "cross_down", "threshold": { "param": "flow_fade" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_surge": { "kind": "float", "lo": 0.5, "hi": 2.5 },
+    "flow_fade":  { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "share_mom":  { "kind": "float", "lo": 0.0, "hi": 1.0 },
+    "stop":       { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":  { "kind": "int",   "lo": 3, "hi": 12, "step": 1 }
+  },
+  "direction": 1
+}

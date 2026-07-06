@@ -1,0 +1,43 @@
+{
+  "name": "Session-handoff ORB — 1h break, low-churn wide-hold variant (session-anchored)",
+  "rationale": "MECHANISM: identical session-handoff economics (overnight range re-priced at the US open by hedging/marking flow, faded by overnight range-traders until the flow wins) but on a 1h bar with a multi-day max hold. The literature's survival condition is that per-trade edge exceeds ~3x round-trip taker cost; the coarser bar and longer hold cut trade count sharply so each captured handoff move is large relative to fees. Entry: session-anchored opening-range breakout (setup.orb anchor='session') gated by adx (directional regime) and a positive ret_Nd handoff confirmation. Exit lets the trend run (wide time stop) with an adx-collapse signal exit. DISCONFIRMER: kill if anchor='rolling' nets the same (session timing curve-fit), or if the lower trade count masks a handful of lucky trades — must clear DSR 0.95 and BH-FDR net of fees, not just show a high raw mean.",
+  "catalyst": "US session open range break held into the session trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 3
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "setup": {
+    "orb": { "range_bars": { "param": "orb_bars" }, "buffer": { "param": "orb_buffer" }, "anchor": "session" }
+  },
+  "param_space": {
+    "adx_floor":  { "kind": "float", "lo": 18, "hi": 32 },
+    "adx_exit":   { "kind": "float", "lo": 10, "hi": 18 },
+    "mom_lb":     { "kind": "int",   "lo": 6,  "hi": 24, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0, "hi": 0.03 },
+    "orb_bars":   { "kind": "int",   "lo": 2,  "hi": 8,  "step": 1 },
+    "orb_buffer": { "kind": "float", "lo": 0.001, "hi": 0.006 },
+    "stop":       { "kind": "float", "lo": 0.02, "hi": 0.07 },
+    "tp":         { "kind": "float", "lo": 0.03, "hi": 0.15 },
+    "time_stop":  { "kind": "float", "lo": 1.0, "hi": 3.0 }
+  }
+}

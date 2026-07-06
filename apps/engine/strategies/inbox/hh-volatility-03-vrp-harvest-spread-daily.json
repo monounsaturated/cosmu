@@ -1,0 +1,43 @@
+{
+  "name": "VRP harvest — IV>RV spread calm long (1d)",
+  "rationale": "ECONOMIC MECHANISM (the daily-bar variant of the VRP harvest — slower, one decision per day, so fee drag is trivial and the 30d-implied vs realized comparison is on its natural horizon): a wide IV-over-RV gap means the crypto options market is charging a fat variance risk premium; dealers are structurally short gamma to retail that overpays for convexity/hedges (Deribit 2025). We cannot sell options, so we harvest the proxy: implied>>realized forecasts realized UNDERSHOOTS implied, so the coming days are calmer-than-priced -> a spot long held into the calm. Entry: dvol clears a fitted floor (premium present) AND vol_realized sits below a fitted ceiling on a multi-day window (already calm) AND bb_width sits below a fitted ceiling (bands compressed, an independent compression confirmation). The counterparty is the option BUYER overpaying for tail insurance; we sell that fear. Exit: bb_width crosses up through a fitted expansion level (the calm regime is ending) or stop/TP/time. DISCONFIRMER 1: substitute dvol ALONE — if the level gate alone matches the deflated Sharpe, the spread carries no extra information and this is a dvol-spike re-skin. DISCONFIRMER 2: if an unconditional daily calm-window long (drop the dvol leg) matches it, the VRP adds nothing over plain low-vol dip. HARD CAVEAT: ~148 DVOL points on the daily grid is thin -> paper-only, non-fundable until the series deepens.",
+  "catalyst": "implied vol above realized with compressed bands — a variance premium into a calm day-scale window",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 12
+  },
+  "entry": [
+    { "feature": { "name": "dvol" }, "op": "gt", "threshold": { "param": "dvol_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "lt", "threshold": { "param": "bbw_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "cross_up", "threshold": { "param": "bbw_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dvol_floor":  { "kind": "float", "lo": 45.0, "hi": 85.0 },
+    "rv_lb":       { "kind": "int",   "lo": 7,    "hi": 30,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.35, "hi": 0.70 },
+    "bbw_lb":      { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bbw_ceiling": { "kind": "float", "lo": 0.04, "hi": 0.12 },
+    "bbw_exit":    { "kind": "float", "lo": 0.12, "hi": 0.25 },
+    "stop":        { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":   { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 }
+  },
+  "lane": "explore",
+  "direction": 1
+}

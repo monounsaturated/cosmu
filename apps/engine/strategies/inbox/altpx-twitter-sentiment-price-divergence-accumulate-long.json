@@ -1,0 +1,109 @@
+{
+  "name": "Twitter/X bearish but price holding \u2014 sentiment/price divergence accumulation (spot long)",
+  "rationale": "MECHANISM (why the divergence leads): when the X crowd is loudly BEARISH but price refuses to fall (ret_Nd holding up or rising), buyers are quietly absorbing all the negative sentiment \u2014 a wall of worry that resolves UP. The tell is the DIVERGENCE between mood and tape: persistent bearish social sentiment that price ignores signals informed accumulation the crowd has not recognized, so it leads the eventual re-rating higher. Distinct from the sentiment-washout REVERSION (which needs an RSI oversold price too): here price is NOT weak \u2014 it is the resilience against bad mood that is the signal. Exit when sentiment flips positive (the crowd capitulates to the uptrend \u2014 thesis realized). DISCONFIRMER 1: if a plain 'price holding up' momentum filter matches the deflated Sharpe, the bearish-sentiment arm adds nothing. DISCONFIRMER 2: sentiment often just LAGS price \u2014 if replacing bearish-sentiment with bullish-sentiment does as well, there is no divergence edge, only momentum. Requires XAI_API_KEY; tier1, low-confidence until validated OOS.",
+  "catalyst": "twitter_sentiment is negative (X crowd bearish) yet price is holding/rising (ret_Nd non-negative) \u2014 a bullish divergence.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "twitter_sentiment"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "tw_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "div_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "twitter_sentiment"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "tw_exit_up"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tw_floor": {
+      "kind": "float",
+      "lo": -0.7,
+      "hi": -0.05
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "div_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": 0.04
+    },
+    "tw_exit_up": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.35
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

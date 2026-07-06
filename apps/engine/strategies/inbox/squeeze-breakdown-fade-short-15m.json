@@ -1,0 +1,40 @@
+{
+  "name": "Squeeze breakdown fade (short, 15m)",
+  "rationale": "A 15m bandwidth squeeze that breaks DOWN — low bb_width, price at the range FLOOR, and a strengthening ADX — is a coiled range releasing to the downside. We short it (direction -1) to ride the downside expansion as the compression resolves lower and sell-stops cascade. The other side is the dip-buyer who assumes the quiet range floor holds and is run over by the breakdown. Edge persists because squeeze resolutions are directional volatility events and downside resolutions in leveraged crypto are self-reinforcing. Distinct from the upside squeeze breakout by side and by using the range floor rather than the ceiling. Disconfirmer: exits when ADX falls under the exit floor (breakdown stalled) or the stop (above entry) fires if the floor holds and price reverts up.",
+  "catalyst": "volatility squeeze releasing to the downside",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_floor"}},
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "param_space": {
+    "bbw_floor": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "rp_floor": {"kind": "float", "lo": 0.05, "hi": 0.3},
+    "adx_floor": {"kind": "float", "lo": 18, "hi": 30},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 18},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

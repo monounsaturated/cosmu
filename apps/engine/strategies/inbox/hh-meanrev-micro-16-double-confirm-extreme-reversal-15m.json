@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: double-confirm extreme reversal, vol veto (15m)",
+  "rationale": "MECHANISM: require TWO independent overextension reads to AGREE — a statistical extreme (bb_z, distance-from-mean) AND a momentum-exhaustion extreme (rsi) — to filter the false-positive fades that single-signal reversion suffers (a low bb_z alone is common on a strong trend day and gets run over). The conjunction is rarer and selects moments where BOTH the price-level and the rate-of-change say the move is spent, better isolating genuine forced-flow overshoot from ordinary trend. The other side is the crowd that piled into the last leg of a fast move. vol_realized is used only as a CAPACITY veto (skip when vol is so high the spread blows out), not as a trigger. Entry: bb_z below a fitted floor AND rsi below a fitted floor simultaneously AND vol_realized below a fitted ceiling. Long-only spot; exit on bb_z reversion. DISCONFIRMER: ablate — if the double-confirm net result is NOT better than the better of the two single signals alone, the conjunction is redundant (the features are collinear at extremes) — prefer the single signal or kill. Second: if the rarer signal fires mostly during the same handful of cascade days, effective-N collapses and the DSR/FDR gate will (correctly) reject it — treat low effective-N as a kill, not a tuning target.",
+  "catalyst": "simultaneous band and momentum extremes agree on a spent move",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_veto"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "rsi_floor": {"kind": "float", "lo": 15, "hi": 25},
+    "vol_veto": {"kind": "float", "lo": 0.5, "hi": 2.0},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 0.5}
+  },
+  "direction": 1
+}

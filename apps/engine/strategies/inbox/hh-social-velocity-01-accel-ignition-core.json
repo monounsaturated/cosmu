@@ -1,0 +1,29 @@
+{
+  "name": "Attention-velocity ignition — accel z-spike long on small/mid-caps (4h)",
+  "rationale": "MECHANISM: a fresh day-over-day jump in social attention (social_volume_accel = ln(v_t/v_{t-1})) precedes price on small floats because a few thousand new eyeballs convert to real inflow BEFORE the crowd is fully positioned. The other side is slow retail/aggregators who only react once a coin trends on their dashboards 24-48h later; giants ignore small floats (no capacity) and the signal is the CHANGE (onset), which is priced later than the LEVEL. Trade LONG on an accel spike confirmed by author breadth (contributors_active), exit on accel decay. DISCONFIRMER: time-shuffle the attention series (recompute accel on shuffled attention, same price) — if forward return survives the shuffle it is price autocorrelation, KILL. Lead-lag must be strong at +1 bar and ~0 at -1 bar (symmetric = coincident, KILL). Must clear small-cap round-trip fees at 4h cadence.",
+  "catalyst": "fresh social attention acceleration with author breadth on a small/mid-cap",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 3 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } },
+    { "feature": { "name": "contributors_active" }, "op": "gt", "threshold": { "param": "breadth_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_floor":   { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "accel_exit":    { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "breadth_floor": { "kind": "float", "lo": 5,    "hi": 50 },
+    "stop":          { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":     { "kind": "int",   "lo": 1,    "hi": 3, "step": 1 }
+  },
+  "direction": 1
+}

@@ -1,0 +1,39 @@
+{
+  "name": "Dual-horizon momentum persistence (15m)",
+  "rationale": "Requiring BOTH a fast and a slower 15m return to be positive demands that momentum agrees across two horizons, screening out one-bar noise spikes that a single-lookback filter would chase. The alignment marks a genuinely persistent drift the trend-follower crowd is still feeding. The other side is the short-horizon fader repeatedly wrong-footed by continuation. Edge persists because multi-scale agreement is a stronger prior on drift than any single window. Distinct from single-return trend specs by construction. Disconfirmer: exits when the fast return flips negative (the shorter horizon rolled over) before the stop.",
+  "catalyst": "momentum aligned across two return horizons",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "fast_lb"}}, "op": "gt", "threshold": {"param": "fast_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "slow_lb"}}, "op": "gt", "threshold": {"param": "slow_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "fast_lb"}}, "op": "lt", "threshold": {"param": "fast_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "fast_lb": {"kind": "int", "lo": 3, "hi": 10, "step": 1},
+    "slow_lb": {"kind": "int", "lo": 16, "hi": 48, "step": 1},
+    "fast_floor": {"kind": "float", "lo": 0.0, "hi": 0.02},
+    "slow_floor": {"kind": "float", "lo": 0.0, "hi": 0.04},
+    "fast_exit": {"kind": "float", "lo": -0.02, "hi": 0.0},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

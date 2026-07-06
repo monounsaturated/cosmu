@@ -1,0 +1,29 @@
+{
+  "name": "Read-time-honest sentiment velocity — blended social sentiment cross, spam-guarded (4h)",
+  "rationale": "MECHANISM: same read-time-honest thesis at a slightly slower, cheaper cadence — a bullish swing in the blended social_sentiment precedes the move as fresh narrative converts to flow, but 4h halves the fee drag versus 1h while still front-running dashboard-lagged retail. The blended sentiment is only PIT-honest where its components are read-time; the 4h bar gives more sampling headroom, reducing stale-repeat risk. Crucially, gate on spam (a low spam reading) so a coordinated bot burst does not masquerade as genuine narrative. Counterparty is thread-reading discretionary traders. DISCONFIRMER: if the effect is symmetric in lead-lag (equal at -1 and +1) the sentiment is coincident, not predictive, KILL. If dropping the spam gate does not degrade OOS Sharpe the spam screen is inert (fine) but a spike with high spam and no breadth must be excluded. Must clear 4h round-trip fees.",
+  "catalyst": "a bullish blended-sentiment swing that is not spam-driven",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.08, "max_hold_days": 2 },
+  "entry": [
+    { "feature": { "name": "social_sentiment" }, "op": "cross_up", "threshold": { "param": "bull_floor" } },
+    { "feature": { "name": "spam" }, "op": "lt", "threshold": { "param": "spam_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_sentiment" }, "op": "lt", "threshold": { "param": "sent_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bull_floor":   { "kind": "float", "lo": 0.05, "hi": 0.5 },
+    "sent_exit":    { "kind": "float", "lo": -0.2, "hi": 0.1 },
+    "spam_ceiling": { "kind": "float", "lo": 0.1,  "hi": 0.6 },
+    "stop":         { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":           { "kind": "float", "lo": 0.03, "hi": 0.14 },
+    "time_stop":    { "kind": "float", "lo": 0.5,  "hi": 2.0 }
+  },
+  "direction": 1
+}

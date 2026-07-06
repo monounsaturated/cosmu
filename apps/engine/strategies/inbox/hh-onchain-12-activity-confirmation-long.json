@@ -1,0 +1,32 @@
+{
+  "name": "On-chain activity CONFIRMS breakout -> participation-backed long (BTC)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the two bearish-divergence fades: this is the POSITIVE-confirmation mirror — it only goes LONG a breakout when on-chain participation is RISING with price, avoiding the unconfirmed thin rallies the fades short): a price breakout backed by rising btc_active_addresses AND rising btc_tx_count is organic, participation-driven demand — real new users and settlement flowing in behind the move, the opposite of the ETF-only thin rally. Buying only confirmed breakouts should sidestep the false pushes. Entry: price near range highs AND active addresses above a floor AND tx_count above a floor. Long; exit on activity rolling over or stop/TP/time. DISCONFIRMER 1 (confound): activity is structurally decaying via L2 leakage -> the 'rising activity' condition may almost never fire, starving the strategy of trades; KILL if effective-N is too thin to gate. DISCONFIRMER 2: if a plain range-breakout long matches the deflated Sharpe, the activity confirmation adds nothing. DISCONFIRMER 3: activity can lag price -> KILL if the confirmation only fires after the move is spent. Net of fees, DSR>=0.95.",
+  "catalyst": "breakout confirmed by rising on-chain participation and throughput",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "gt", "threshold": { "param": "range_break" } },
+    { "feature": { "name": "btc_active_addresses" }, "op": "gt", "threshold": { "param": "addr_floor" } },
+    { "feature": { "name": "btc_tx_count" }, "op": "gt", "threshold": { "param": "tx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "btc_active_addresses" }, "op": "cross_down", "threshold": { "param": "addr_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "range_lb":    { "kind": "int",   "lo": 20, "hi": 55, "step": 1 },
+    "range_break": { "kind": "float", "lo": 0.7, "hi": 0.95 },
+    "addr_floor":  { "kind": "float", "lo": 0.5, "hi": 0.8 },
+    "addr_exit":   { "kind": "float", "lo": 0.3, "hi": 0.6 },
+    "tx_floor":    { "kind": "float", "lo": 0.5, "hi": 0.8 },
+    "stop":        { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":          { "kind": "float", "lo": 0.1, "hi": 0.4 },
+    "time_stop":   { "kind": "int",   "lo": 8, "hi": 20, "step": 1 }
+  },
+  "direction": 1
+}

@@ -1,0 +1,29 @@
+{
+  "name": "Galaxy-score-z REGIME veto ON the accel-ignition long (overlay ablation) (1d)",
+  "rationale": "MECHANISM: galaxy_score blends price+social+correlation health into one rank. The internal finding is explicit — the top-decile drawdown asymmetry did NOT robustly replicate and external analysis shows galaxy_score is largely redundant with price/vol — so galaxy_score_z is used ONLY as a low-confidence quality/regime TAG, never a standalone trigger. Here it filters the attention-onset long: take the social_volume_accel spike only when crowd-health z is NOT deteriorating (galaxy_score_z above a fitted floor), aiming to cut false positives from manipulated spikes. DISCONFIRMER: as a standalone directional signal galaxy_score_z is REJECTED on priors — the bar is that spec+galaxy_veto must beat the accel spec ALONE out of sample (ablation). If the veto does not improve net-of-fee OOS Sharpe, drop it; it must not manufacture a winner by cutting trades. Shuffle the attention series; the accel core must still collapse.",
+  "catalyst": "attention acceleration confirmed by non-deteriorating crowd-health rank",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } },
+    { "feature": { "name": "galaxy_score_z" }, "op": "gt", "threshold": { "param": "galaxy_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_floor":  { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "accel_exit":   { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "galaxy_floor": { "kind": "float", "lo": -0.5, "hi": 1.0 },
+    "stop":         { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":           { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":    { "kind": "int",   "lo": 2,    "hi": 8, "step": 1 }
+  },
+  "direction": 1
+}

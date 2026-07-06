@@ -1,0 +1,38 @@
+{
+  "name": "HH regime-switch 08 — Fear-extreme capitulation reversion long (daily, short hold)",
+  "rationale": "MECHANISM: Crypto Fear & Greed <20 marks retail capitulation — liquidated leverage and panic redemptions dump into thin books while patient capital buys the dislocation. This is a CRYPTO-NATIVE sentiment read (funding, dominance, social) distinct from the equity-vol VIX signals — different information, different crowd. Block Research backtest (buy<20/sell>80) returned 1,240% vs 680% buy-and-hold 2018-2025. The known problem is that the published edge carries a ~147-day mean hold and a 52% LUNA drawdown — which would BREACH the Gate's maxDD<=25% outright. So this variant deliberately forces the SHORT-hold regime: enter on fear_greed below a fitted extreme floor with price washed down (ret_Nd negative), and exit fast on fear_greed recovering back up (crowd un-panics) or stop/TP/time, keeping holds short enough to bound drawdown. Entry uses fear_greed + ret_Nd only — the purest capitulation read. DISCONFIRMER: if the sub-20 entries cannot produce positive net-of-fee returns at holds short enough to keep maxDD<=25%, the edge is inseparable from unacceptable tail risk — kill it. Kill outright if the only profitable version needs >25% DD (the 147-day hold), or if post-2023 sub-20 events are flat (2018-2021 carried it).",
+  "catalyst": "Fear & Greed capitulation extreme into a washed-down price — patient-capital dislocation buy",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 14
+  },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_extreme_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "dislocation_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_extreme_floor": { "kind": "float", "lo": 10, "hi": 25 },
+    "fear_relief_exit": { "kind": "float", "lo": 30, "hi": 55 },
+    "mom_lb": { "kind": "int", "lo": 3, "hi": 14, "step": 1 },
+    "dislocation_floor": { "kind": "float", "lo": -0.2, "hi": -0.03 },
+    "stop": { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp": { "kind": "float", "lo": 0.06, "hi": 0.25 },
+    "time_stop": { "kind": "int", "lo": 3, "hi": 14, "step": 1 }
+  }
+}

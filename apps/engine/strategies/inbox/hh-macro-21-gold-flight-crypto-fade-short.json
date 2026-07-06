@@ -1,0 +1,31 @@
+{
+  "name": "Gold flight-to-safety divergence — short crypto beta when gold surges on a genuine risk-off while crypto stalls",
+  "rationale": "MECHANISM: the 2025-26 'Great Decoupling' — gold now behaves as the geopolitical/real-rate shock absorber while crypto behaves as the liquidity sponge (VanEck/JPMorgan). When gold_xau surges on a real risk-off / real-rate flight, capital rotates to the TRUE safe haven and AWAY from speculative beta; crypto's 'digital gold' bid fails and it underperforms. Signal: gold_xau in a strong up-thrust (positive RoC) WHILE crypto momentum stalls/rolls over (negative ret_Nd) tells the flight is real (not a joint liquidity expansion) — fade crypto beta. Counterparty = the 'BTC = digital gold' narrative crowd expecting crypto to rally WITH gold. DISCONFIRMER: gold-crypto correlation is unstable and sometimes POSITIVE (both are debasement/weak-dollar plays). A 'gold up -> crypto down' rule INVERTS exactly when both rally together on debasement. Kill unless OOS shows the divergence fires predominantly during REAL risk-off, not joint debasement rallies. A crypto short also pays funding/borrow — the net-of-fees short edge must clear that carry or it is a mirage.",
+  "catalyst": "gold up-thrust with crypto momentum stalling (real flight to safety)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "gold_xau", "lookback": { "param": "gold_roc_lb" } }, "op": "gt", "threshold": { "param": "gold_roc_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "gold_xau", "lookback": { "param": "gold_roc_lb" } }, "op": "lt", "threshold": { "param": "gold_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "gold_roc_lb":      { "kind": "int",   "lo": 5,    "hi": 30,   "step": 1 },
+    "gold_roc_floor":   { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "gold_relief_exit": { "kind": "float", "lo": -0.01, "hi": 0.01 },
+    "mom_lb":           { "kind": "int",   "lo": 7,    "hi": 30,   "step": 1 },
+    "mom_ceiling":      { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":        { "kind": "int",   "lo": 2,    "hi": 12,   "step": 1 }
+  },
+  "direction": -1
+}

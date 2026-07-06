@@ -1,0 +1,43 @@
+{
+  "name": "Low-vol anomaly tilt — 4h calm swing (spot)",
+  "rationale": "ECONOMIC MECHANISM (the low-vol anomaly at a 4h swing horizon — a faster expression of the same tilt so it partly reconciles the slow-anomaly premium with the sniper mandate, and tests whether the calm-name edge survives at a shorter hold where fee drag rises): 2025-2026 evidence (432 coins, Binance spot, 2018-2025) shows low-realized-vol coins earn better risk-adjusted returns because leverage-averse retail overpays for high-vol lottery names, underpricing the calm ones. Entry: vol_realized below a fitted ceiling (calm name) AND atr below a fitted ceiling (low-range confirmation) AND range_position below a fitted ceiling (not extended into a high). Hold the calm regime for a swing rather than weeks. The counterparty is the lottery-ticket degen; the leverage constraint sustains the mispricing. SPOT-only (matches the study). Exit: atr crosses up through a fitted level (range expanding, calm regime ending) or stop/TP/time. DISCONFIRMER 1: if the excess return dies net of fees vs buy-and-hold BTC, it's disguised beta not a premium — and at 4h the fee drag is heavier, so this is the harder cost test. DISCONFIRMER 2: a HIGH-vol tilt matching over the same sample => unstable sign => curve-fit. DISCONFIRMER 3: if the 1d version of this tilt already clears and the 4h does not add distinct return, this is redundant timeframe noise, not a separate edge.",
+  "catalyst": "a calm low-vol name held for a swing while the crowd overpays for lottery names",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.5,
+    "max_hold_days": 8
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "lt", "threshold": { "param": "atr_ceiling" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "lt", "threshold": { "param": "rp_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "cross_up", "threshold": { "param": "atr_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":       { "kind": "int",   "lo": 18,   "hi": 54,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.25, "hi": 0.55 },
+    "atr_lb":      { "kind": "int",   "lo": 10,   "hi": 30,  "step": 1 },
+    "atr_ceiling": { "kind": "float", "lo": 0.006, "hi": 0.025 },
+    "rp_lb":       { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "rp_ceiling":  { "kind": "float", "lo": 0.50, "hi": 0.80 },
+    "atr_exit":    { "kind": "float", "lo": 0.02, "hi": 0.05 },
+    "stop":        { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":   { "kind": "int",   "lo": 2,    "hi": 8,   "step": 1 }
+  },
+  "direction": 1
+}

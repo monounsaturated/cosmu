@@ -1,0 +1,39 @@
+{
+  "name": "Cross-sectional funding dispersion — fade the most-positive-funding names (short, 4h)",
+  "rationale": "MECHANISM: the short leg of the funding-dispersion thesis. Across the universe each 4h bar, the most-POSITIVE-funding names (crowded longs, carry drag) tend to UNDER-perform — the marginal buyer is a fee-insensitive leveraged latecomer paying rich funding, and the carry bleed thins demand. We short (direction -1) the names whose funding_rate is at the top of the cross-section and RECEIVE the positive funding carry (funding_feature) while the crowded-long premium unwinds, filtering by a minimum open_interest for tradability. This is the sticky-funding dispersion the giants ignore on smaller names. Distinct from variant 16 (opposite tail, short side). DISCONFIRMER 1: kill if the short edge is eaten by real fees + borrow/slippage on thin books (long-tail trap). DISCONFIRMER 2: kill if it is disguised inverse-beta (most-positive-funding = most-pumped alts = mean-revert regardless of funding) and dies after neutralizing to trailing return. DISCONFIRMER 3: kill if in a broad bull leg high funding stays pinned across the whole cross-section for weeks and the short is run over — the edge must be the DISPERSION (relative), not the level.",
+  "catalyst": "the richest-positive-funding names in the cross-section, filtered for tradable OI — a crowded-long fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 2
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "gt", "threshold": {"param": "xsec_funding_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_tradable"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "cross_down", "threshold": {"param": "funding_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "xsec_funding_ceiling": {"kind": "float", "lo": 0.0004, "hi": 0.0015},
+    "oi_tradable": {"kind": "float", "lo": -0.5, "hi": 1.0},
+    "funding_relief_exit": {"kind": "float", "lo": 0.0, "hi": 0.0005},
+    "stop": {"kind": "float", "lo": 0.03, "hi": 0.12},
+    "tp": {"kind": "float", "lo": 0.04, "hi": 0.18},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 2}
+  }
+}

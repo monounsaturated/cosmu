@@ -1,0 +1,39 @@
+{
+  "name": "Net-liquidity impulse gate — long crypto beta when net_liquidity 4w rate-of-change is positive AND price confirms",
+  "rationale": "ECONOMIC MECHANISM: the persistent edge is NOT the level correlation between net liquidity and crypto (decaying/flipping in 2025-26) but the CHANGE in net liquidity leading crypto beta. When the Treasury General Account drains and the Fed balance sheet expands, fresh reserves reach dealer balance sheets and get levered into the highest-beta liquidity sponge; crypto sits at the far end of the risk curve and absorbs the marginal dollar last and hardest (Howell/CrossBorder ~7.6x amplification). The counterparty is macro/rates desks and TradFi allocators reacting on a SLOWER institutional clock (mandate lags, committee cadence) while 24/7 leveraged retail-heavy crypto front-runs the same plumbing. The lag is structural (reserve settlement + allocation latency), not an arb anyone closes instantly. Here the net_liquidity_usd rate-of-change (ret_Nd on the liquidity series is unavailable, so the impulse is proxied by net_liquidity_usd crossing above a fitted positive floor combined with a positive crypto medium-term return that CONFIRMS the impulse is already transmitting). Entry: net_liquidity_usd above a fitted level floor AND crypto ret_Nd positive (impulse confirmed by beta). Exit when the crypto trend rolls (ret_Nd crosses down) or stop/TP/time. DISCONFIRMER: net_liquidity_usd is WEEKLY with a CONSERVATIVE available_at = ts+8 days; by the time the signal is PIT-legal the 1-2 week lead is largely consumed. Kill if OOS Sharpe net-of-fees on the T+8-lagged series is indistinguishable from naive BTC buy-and-hold, or if the edge only exists pre-2024 (RRP is empty in 2026, so the mechanical liquidity pump is gone).",
+  "catalyst": "positive net-liquidity impulse confirmed by crypto beta already turning up",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 3,
+    "max_hold_days": 25
+  },
+  "entry": [
+    { "feature": { "name": "net_liquidity_usd" }, "op": "gt", "threshold": { "param": "netliq_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "cross_down", "threshold": { "param": "mom_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "netliq_floor": { "kind": "float", "lo": 5.0e12, "hi": 6.5e12 },
+    "mom_lb":       { "kind": "int",   "lo": 14, "hi": 40, "step": 1 },
+    "mom_floor":    { "kind": "float", "lo": 0.0, "hi": 0.06 },
+    "mom_exit":     { "kind": "float", "lo": -0.04, "hi": 0.0 },
+    "stop":         { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":           { "kind": "float", "lo": 0.1, "hi": 0.4 },
+    "time_stop":    { "kind": "int",   "lo": 10, "hi": 30, "step": 1 }
+  },
+  "direction": 1
+}

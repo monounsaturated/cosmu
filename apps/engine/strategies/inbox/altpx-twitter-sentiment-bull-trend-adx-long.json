@@ -1,0 +1,100 @@
+{
+  "name": "Twitter/X sentiment positive + ADX trend \u2014 sentiment-confirmed trend (spot long)",
+  "rationale": "MECHANISM (why bullish X sentiment leads continuation): a positive shift in crypto Twitter/X sentiment marks a narrative gaining momentum \u2014 more voices turning bullish drives incremental retail flow before it is fully priced (a swing-horizon lead). Sentiment ALONE is noisy and can spike on hype that never trades, so we require ADX above a floor: a confirmed trend that the bullish social mood is fueling, not a random headline. Distinct from the fear-washout REVERSION on the same feature \u2014 this is the CONTINUATION regime (positive sentiment + trend). Exit when sentiment rolls back to neutral/negative (fuel gone). DISCONFIRMER 1: if ADX-trend alone matches the deflated Sharpe, sentiment adds nothing orthogonal. DISCONFIRMER 2: sentiment often LAGS price (the crowd turns bullish AFTER the rally) \u2014 if entering on a sentiment DROP does as well, the feature is a coincident price echo, not a lead. Requires XAI_API_KEY; tier1, low-confidence until OOS.",
+  "catalyst": "twitter_sentiment is positive (X crowd bullish) AND ADX confirms a real trend.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "twitter_sentiment"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "tw_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "twitter_sentiment"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "tw_exit_down"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tw_ceiling": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.6
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 32
+    },
+    "tw_exit_down": {
+      "kind": "float",
+      "lo": -0.2,
+      "hi": 0.15
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

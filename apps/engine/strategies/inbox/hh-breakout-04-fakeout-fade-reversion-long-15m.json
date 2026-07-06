@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 04 — fakeout fade reversion, long the down-wick (15m)",
+  "rationale": "MECHANISM: 60-80% of raw crypto breakouts fail — the documented liquidity-grab / stop-hunt where price wicks past a well-watched range extreme to trigger clustered retail stops (the resting liquidity), then reverts into the range. Here we FADE a DOWNSIDE break: enter LONG when range_position is pushed to the LOW extreme (<0.02, fitted) while bb_width is NOT compressed (a range regime, no real vol-expansion fuel — the ceiling keeps us out of genuine squeeze breaks) and adx is LOW (choppy, no trend), betting on snap-back to mid-range. This is the economic INVERSE of the squeeze hypothesis and fires only in the opposite regime (range, low adx), so the two are non-overlapping. Counterparty: the retail breakdown-chaser and their stops, whom larger players deliberately sweep. DISCONFIRMER: KILL if the fade's realized reversion (from the extreme-touch bar) does not beat the fee+slippage round-trip on a MAJORITY of symbols per-symbol (not pooled) — or if it only works pre-2024 and the 2025 holdout shows the reversion now happens INTRA-bar before the close entry. High false-signal churn at 15m makes fees the primary killer, so net-of-fees profit factor <1.2 on holdout = dead.",
+  "catalyst": "down-wick sweep of a range low in a choppy regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_extreme"}},
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_ceiling"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_extreme": {"kind": "float", "lo": 0.01, "hi": 0.06},
+    "bbw_ceiling": {"kind": "float", "lo": 0.04, "hi": 0.12},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "rp_exit": {"kind": "float", "lo": 0.4, "hi": 0.6},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1}
+  }
+}

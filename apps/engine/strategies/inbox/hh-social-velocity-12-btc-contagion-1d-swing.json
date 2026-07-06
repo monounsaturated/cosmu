@@ -1,0 +1,30 @@
+{
+  "name": "Cross-asset contagion — BTC crowd spike, trend-gated alt swing (1d)",
+  "rationale": "MECHANISM: the same BTC-attention-leads-alts contagion, expressed as a low-turnover 1d swing. A btc_social_accel spike broadcasts risk-on rotation; we take the alt long only when the alt is in a real trend (adx above a fitted floor) so the rotating flow has a directional channel to push, not chop. The daily cadence matches the ~1d lead documented internally and keeps costs low. Counterparty is day-late alt repricers. DISCONFIRMER: regress out contemporaneous BTC return — the increment over lagged BTC-beta must survive. Ablate the adx gate: if the trend filter alone (no BTC-attention trigger) reproduces the return, the contagion adds nothing, KILL. Shuffle BTC's attention series; the effect must vanish.",
+  "catalyst": "BTC attention spike into a trending alt — slow risk-on rotation",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 7 },
+  "entry": [
+    { "feature": { "name": "btc_social_accel" }, "op": "gt", "threshold": { "param": "btc_accel_floor" } },
+    { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "btc_social_accel" }, "op": "lt", "threshold": { "param": "btc_accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "btc_accel_floor": { "kind": "float", "lo": 0.3,  "hi": 1.5 },
+    "btc_accel_exit":  { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "adx_lb":          { "kind": "int",   "lo": 10,   "hi": 28, "step": 1 },
+    "adx_floor":       { "kind": "float", "lo": 18,   "hi": 32 },
+    "stop":            { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "tp":              { "kind": "float", "lo": 0.06, "hi": 0.26 },
+    "time_stop":       { "kind": "int",   "lo": 2,    "hi": 7, "step": 1 }
+  },
+  "direction": 1
+}

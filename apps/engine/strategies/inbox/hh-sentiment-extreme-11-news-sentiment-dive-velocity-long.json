@@ -1,0 +1,33 @@
+{
+  "name": "News-sentiment dive velocity as fresh-panic trigger on 1d (long)",
+  "rationale": "MECHANISM: velocity variant using news_sentiment crossing DOWN through a fitted level — a sharp DIVE in the news-mood series marks a fresh negative catalyst hitting, where the emotional overshoot is largest, versus a chronically-negative news backdrop that is already priced. We confirm with a same-window price drop (ret_Nd) and require realized vol elevated so we act inside genuine forced flow. Long the reversion of the overshoot; exit when news mood recovers or stop/TP/time. Distinct from the fear_greed and cryptopanic velocity specs: news_sentiment sources from headline flow, a different information channel, so it tests whether the panic-velocity edge is channel-robust. DISCONFIRMER: jointly regress forward return on news LEVEL vs the cross event; if level dominates, this duplicates a level fade — kill. If the news-dive works identically on random bars, it is short-horizon mean-reversion — kill.",
+  "catalyst": "a sharp dive in news sentiment into a volatile price drop",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "news_sentiment" }, "op": "cross_down", "threshold": { "param": "news_break" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "drop_lb" } }, "op": "lt", "threshold": { "param": "drop_floor" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "gt", "threshold": { "param": "vol_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "news_sentiment" }, "op": "cross_up", "threshold": { "param": "news_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "news_break":       { "kind": "float", "lo": -0.6,  "hi": -0.2 },
+    "news_relief_exit": { "kind": "float", "lo": -0.1,  "hi": 0.2 },
+    "drop_lb":          { "kind": "int",   "lo": 1,     "hi": 3, "step": 1 },
+    "drop_floor":       { "kind": "float", "lo": -0.12, "hi": -0.03 },
+    "vol_lb":           { "kind": "int",   "lo": 7,     "hi": 20, "step": 1 },
+    "vol_floor":        { "kind": "float", "lo": 0.50,  "hi": 1.00 },
+    "stop":             { "kind": "float", "lo": 0.05,  "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06,  "hi": 0.24 },
+    "time_stop":        { "kind": "int",   "lo": 2,     "hi": 8, "step": 1 }
+  },
+  "direction": 1
+}

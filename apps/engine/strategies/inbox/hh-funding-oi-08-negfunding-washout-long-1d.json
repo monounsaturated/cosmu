@@ -1,0 +1,40 @@
+{
+  "name": "Negative-funding capitulation long — deep negative carry into a price washout (funding + return, 1d)",
+  "rationale": "MECHANISM: same negative-funding short-crowd squeeze thesis, but read on a daily clock and confirmed by a deep multi-day price washout (ret_Nd deeply negative) rather than an RSI/basis pair. Deeply negative funding_rate = crowded shorts paying longs; a large negative trailing return says the market has already capitulated hard, so the contrarian SPOT long (direction +1) buys the exhaustion and collects the negative-funding carry (funding_feature) while waiting for the squeeze. The daily horizon and multi-day hold target the slower recovery leg. DISCONFIRMER 1: kill if negative-funding daily events are too rare to clear effective-N. DISCONFIRMER 2: kill if the washout-buy is indistinguishable from a plain deep-drawdown dip-buy without the funding condition — the edge must be the short-crowd positioning, not generic mean reversion. DISCONFIRMER 3: kill if it catches knives during multi-week structural bear capitulation where negative funding persists and price keeps bleeding.",
+  "catalyst": "deeply negative funding into a multi-day price washout — crowded shorts a daily spot long squeezes.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1d",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "neg_funding_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "lt", "threshold": {"param": "ret_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "cross_up", "threshold": {"param": "funding_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "neg_funding_floor": {"kind": "float", "lo": -0.0015, "hi": -0.0002},
+    "ret_lb": {"kind": "int", "lo": 2, "hi": 10, "step": 1},
+    "ret_floor": {"kind": "float", "lo": -0.3, "hi": -0.06},
+    "funding_relief_exit": {"kind": "float", "lo": -0.0002, "hi": 0.0002},
+    "stop": {"kind": "float", "lo": 0.05, "hi": 0.18},
+    "tp": {"kind": "float", "lo": 0.06, "hi": 0.3},
+    "time_stop": {"kind": "int", "lo": 2, "hi": 7, "step": 1}
+  }
+}

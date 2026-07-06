@@ -1,0 +1,31 @@
+{
+  "name": "SSR mcap-accel washout long (defensive minting overshoot rolls over)",
+  "rationale": "MECHANISM: during a drawdown, panic rotation into stables ACCELERATES stablecoin_mcap (defensive minting) while price craters; that defensive flow is late and forced, and it exhausts. This variant enters long when stablecoin_mcap is rising fast (defensive rotation peaking) AND price is deeply oversold on RSI — betting the last forced sellers have arrived. Distinct from variant 01 (which waits for price to turn) and 02 (which reads thin turnover): here the trigger is the defensive-minting surge coinciding with an RSI washout. Other side = capitulating holders minting/moving into stables at the lows. DISCONFIRMER: if removing the stablecoin_mcap acceleration condition and keeping only the RSI washout gives the same net-of-fees edge, the mint surge is inert and this is a plain oversold bounce. Kill if the effect only appears pre-2024 (payments-driven minting now contaminates the mcap signal, corr ~0.4 in 2025-2026).",
+  "catalyst": "defensive stablecoin minting surge into a deeply oversold price",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "stablecoin_mcap", "lookback": { "param": "mcap_lb" } }, "op": "gt", "threshold": { "param": "mcap_accel_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "mcap_lb":          { "kind": "int",   "lo": 5,    "hi": 20,  "step": 1 },
+    "mcap_accel_floor": { "kind": "float", "lo": 0.0,   "hi": 1.5 },
+    "rsi_lb":           { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":        { "kind": "float", "lo": 20.0,  "hi": 38.0 },
+    "rsi_exit":         { "kind": "float", "lo": 52.0,  "hi": 70.0 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.17 },
+    "tp":               { "kind": "float", "lo": 0.08, "hi": 0.30 },
+    "time_stop":        { "kind": "int",   "lo": 4,    "hi": 18,  "step": 1 }
+  },
+  "direction": 1
+}

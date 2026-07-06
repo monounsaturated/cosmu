@@ -1,0 +1,29 @@
+{
+  "name": "DXY down-thrust trend-confirmed — long crypto only when the dollar breaks down AND a crypto trend is building (adx)",
+  "rationale": "MECHANISM: same inverse-dollar thesis (a weaker dollar loosens global conditions and re-rates risk; crypto front-runs slow FX/rates transmission), but the crypto confirmation is a TREND read (adx building above a floor) rather than a range reclaim — so this variant only takes the dollar-weakness long when directional momentum is already established, avoiding chop where DXY drifts but crypto goes nowhere. Distinct feature (adx vs range_position) and a distinct trade profile (ride an established trend vs buy a reclaim). DISCONFIRMER: identical to the reclaim variant — the BTC-dollar correlation may have FLIPPED POSITIVE in the 2024-2026 ETF cycle (JPMorgan Mar 2026), making an inverse-DXY long backwards. Kill unless the inverse tie is strictly OOS-live in 2024-2026 net of fees. Also kill if the adx trend filter alone (a pure crypto-momentum spec) captures the same OOS Sharpe without the DXY gate — the dollar feature must add lift over price-only momentum.",
+  "catalyst": "dollar breakdown with an established crypto uptrend",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 22 },
+  "entry": [
+    { "feature": { "name": "dxy", "lookback": { "param": "dxy_roc_lb" } }, "op": "lt", "threshold": { "param": "dxy_roc_ceiling" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dxy_roc_lb":      { "kind": "int",   "lo": 10,   "hi": 40,   "step": 1 },
+    "dxy_roc_ceiling": { "kind": "float", "lo": -0.03, "hi": -0.005 },
+    "adx_floor":       { "kind": "float", "lo": 20,   "hi": 35 },
+    "adx_exit":        { "kind": "float", "lo": 12,   "hi": 20 },
+    "stop":            { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":              { "kind": "float", "lo": 0.1,  "hi": 0.4 },
+    "time_stop":       { "kind": "int",   "lo": 8,    "hi": 22,   "step": 1 }
+  }
+}

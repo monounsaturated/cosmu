@@ -1,0 +1,30 @@
+{
+  "name": "DXY down-thrust reclaim — long crypto beta on a decisive dollar breakdown confirmed by a range reclaim (daily)",
+  "rationale": "MECHANISM: a falling dollar loosens global financial conditions and cheapens the cost of holding dollar-denominated risk — historically BTC's cleanest inverse macro tie. FX is the deepest, slowest-to-fully-transmit macro market: a decisive DXY breakdown re-rates the whole risk complex over days as carry/allocation flows rotate, and retail-fast 24/7 crypto reprices the dollar signal before TradFi mandates rebalance. Trade: long crypto beta when dxy makes a fresh multi-week low (negative dxy RoC) AND crypto confirms with a range reclaim off the floor. Counterparty = macro FX/rates flow on an institutional clock. DISCONFIRMER — THE BIG ONE: JPMorgan (Mar 2026) reports the BTC-dollar correlation FLIPPED POSITIVE for the first time since pre-2014 (the 0.7 inverse decayed to ~0.45 then inverted this ETF cycle). If the sign has flipped, an inverse-DXY long is backwards. Kill unless a strictly OOS 2024-2026 window shows the inverse relationship is STILL live net of fees; do NOT let a strong 2015-2021 in-sample rescue it. High probability already dead.",
+  "catalyst": "fresh multi-week DXY low with a crypto range reclaim",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "dxy", "lookback": { "param": "dxy_roc_lb" } }, "op": "lt", "threshold": { "param": "dxy_roc_ceiling" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "cross_up", "threshold": { "param": "rp_reclaim" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "dxy", "lookback": { "param": "dxy_roc_lb" } }, "op": "gt", "threshold": { "param": "dxy_reversal_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dxy_roc_lb":        { "kind": "int",   "lo": 10,   "hi": 40,   "step": 1 },
+    "dxy_roc_ceiling":   { "kind": "float", "lo": -0.03, "hi": -0.005 },
+    "dxy_reversal_exit": { "kind": "float", "lo": 0.0,  "hi": 0.02 },
+    "rp_lb":             { "kind": "int",   "lo": 20,   "hi": 60,   "step": 1 },
+    "rp_reclaim":        { "kind": "float", "lo": 0.35, "hi": 0.55 },
+    "stop":              { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":                { "kind": "float", "lo": 0.1,  "hi": 0.35 },
+    "time_stop":         { "kind": "int",   "lo": 5,    "hi": 20,   "step": 1 }
+  }
+}

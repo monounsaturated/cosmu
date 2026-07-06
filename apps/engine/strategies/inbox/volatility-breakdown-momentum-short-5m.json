@@ -1,0 +1,39 @@
+{
+  "name": "Volatility-breakdown momentum (short, 5m)",
+  "rationale": "A rising 5m ATR combined with a strongly NEGATIVE short return is a downside volatility expansion — a breakdown in progress. We short it (direction -1) to ride the continuation as stop cascades and forced deleveraging feed one-sided selling. The other side is the dip-buyer catching a falling knife into thin bids. Edge persists because downside expansions in leveraged crypto are self-reinforcing (liquidation spirals) and asymmetric versus the upside. Distinct from the long ATR-expansion spec by side and by requiring a negative return leg. Disconfirmer: exits when the short return recovers above its exit level (selling exhausted) or the stop (above entry) fires.",
+  "catalyst": "downside volatility expansion / breakdown",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "atr"}, "op": "gt", "threshold": {"param": "atr_floor"}},
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "lt", "threshold": {"param": "mom_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "mom_lb"}}, "op": "gt", "threshold": {"param": "mom_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "param_space": {
+    "atr_floor": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "mom_lb": {"kind": "int", "lo": 3, "hi": 12, "step": 1},
+    "mom_ceiling": {"kind": "float", "lo": -0.02, "hi": -0.002},
+    "mom_exit": {"kind": "float", "lo": 0.0, "hi": 0.015},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.006, "hi": 0.035},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.3}
+  }
+}

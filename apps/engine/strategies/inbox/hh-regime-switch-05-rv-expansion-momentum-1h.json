@@ -1,0 +1,43 @@
+{
+  "name": "HH regime-switch 05 — realized-vol EXPANSION momentum, breakout via range_position (1h)",
+  "rationale": "MECHANISM (distinct from variant 04: it detects the directional break via range_position at the TOP of the band, uses bb_width expansion as the regime gauge instead of vol_realized, and runs on a fast 1h clock to catch the breakout bar early): in a volatility EXPANSION regime the tell is the Bollinger band physically widening (bb_width above a fitted floor) as price pushes to the upper edge of its range (range_position high) — that is a real breakout with directional order flow, not a mid-range wiggle. Trading it on 1h captures the persistence before slow institutions finish repricing. Exit: bb_width contracts back (the expansion regime is over) or ADX collapses, or stop/TP/time. This is a distinct read of the SAME expansion state as 04 (band geometry vs realized vol), so if they produce identical trades they are the same spec. DISCONFIRMER: the breakout edge must clear the Gate net of fees in the expansion (wide-band) regime specifically; if bb_width adds no information beyond variant 04's vol_realized (their trade sets overlap and net Sharpes match), collapse them. Kill if the 1h version's fees eat the entire edge — expansion breakouts are fee-hungry.",
+  "catalyst": "band expansion with price breaking to the top of its range — directional expansion flow",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 4
+  },
+  "entry": [
+    { "feature": { "name": "bb_width", "lookback": { "param": "bb_lb" } }, "op": "gt", "threshold": { "param": "bbw_expansion_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "range_lb" } }, "op": "gt", "threshold": { "param": "range_high_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_width", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bbw_regime_exit" } },
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bb_lb": { "kind": "int", "lo": 14, "hi": 40, "step": 1 },
+    "bbw_expansion_floor": { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "bbw_regime_exit": { "kind": "float", "lo": 0.02, "hi": 0.06 },
+    "range_lb": { "kind": "int", "lo": 10, "hi": 40, "step": 1 },
+    "range_high_floor": { "kind": "float", "lo": 0.7, "hi": 0.95 },
+    "adx_floor": { "kind": "float", "lo": 20, "hi": 35 },
+    "adx_exit": { "kind": "float", "lo": 12, "hi": 20 },
+    "stop": { "kind": "float", "lo": 0.04, "hi": 0.12 },
+    "tp": { "kind": "float", "lo": 0.05, "hi": 0.2 },
+    "time_stop": { "kind": "int", "lo": 1, "hi": 4, "step": 1 }
+  }
+}

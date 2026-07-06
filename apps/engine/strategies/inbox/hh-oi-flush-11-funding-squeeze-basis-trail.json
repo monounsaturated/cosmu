@@ -1,0 +1,156 @@
+{
+  "name": "Crowded-short funding squeeze (1h long, basis-negative + trailing stop)",
+  "rationale": "MECHANISM (H3 read through the perp-spot basis, with a trailing stop to ride the squeeze): when shorts are crowded the perp trades at a DISCOUNT to spot (negative basis) alongside the negative funding \u2014 a corroborating fingerprint of one-sided short positioning. Once a squeeze ignites the cover-chase can run, so a trailing stop (armed after a profit cushion) lets the position ride the self-reinforcing leg rather than capping at a fixed TP. Counterparty: the crowded short forced to cover. Long spot, funding accrues. Entry: funding_rate cross_down through a negative floor AND perp_spot_basis below a negative ceiling (perp at a discount = short crowding) AND ret_Nd above a knife-guard (basing) AND open_interest above a rising floor. DISCONFIRMER: replace the funding cross with a static funding-LEVEL lt \u2014 equal performance means no event edge; drop the basis arm \u2014 no degradation means basis added no crowding separation. The trailing stop must not just fatten winners on look-ahead: net of fees the squeeze must clear.",
+  "catalyst": "funding cross_down + perp discount to spot + price basing + rising OI, ridden on a trail",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 4.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "funding_neg_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "perp_spot_basis"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "basis_neg_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ret_knife_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "oi_rising_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "trailing_stop": {
+      "distance": {
+        "param": "trail_dist"
+      },
+      "arm_after_profit": {
+        "param": "trail_arm"
+      }
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_relief_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_neg_floor": {
+      "kind": "float",
+      "lo": -0.0015,
+      "hi": -0.0003
+    },
+    "basis_neg_ceiling": {
+      "kind": "float",
+      "lo": -0.4,
+      "hi": 0.0
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    },
+    "ret_knife_floor": {
+      "kind": "float",
+      "lo": -0.03,
+      "hi": 0.0
+    },
+    "oi_rising_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.5
+    },
+    "funding_relief_exit": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.09
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.22
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 4.0
+    },
+    "trail_dist": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "trail_arm": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

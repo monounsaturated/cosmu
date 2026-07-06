@@ -1,0 +1,43 @@
+{
+  "name": "Intraday calm-window drift — low-vol seasonality reversion (15m)",
+  "rationale": "ECONOMIC MECHANISM: vol clustering is real but weak (GARCH/realized-EGARCH 2025 explains <=15% of BTC variance) and, critically, PARTIALLY DETERMINISTIC by clock — crypto realized vol has a persistent intraday shape tied to US/Asia session overlaps and the funding-settlement clock. We trade the seasonal calm windows: when vol_realized and atr are in their low intraday band, mean-reversion/carry drift is cleanest and fee drag is survivable; we AVOID the high-vol session windows where slippage and whipsaw dominate. Entry (long): vol_realized below a fitted ceiling (calm regime) AND atr below a fitted ceiling (low current range) AND range_position below a fitted ceiling (buying the lower half of the calm range, not the top). The other side is not a specific counterparty but a structural inefficiency — most systematic crypto flow ignores intraday seasonality, and the calm-window premium survives because it's un-glamorous and small per-trade. Uses ONLY realized features (no DVOL) so it dodges the 148-point data wall. Exit: atr crosses up through a fitted level (a high-vol window is starting -> get out before the whipsaw) or stop/TP/time. DISCONFIRMER 1: the seasonality IS the thesis — if the same edge appears with an hour-of-day / session gate removed (a plain calm-vol reversion, already in the inbox), the intraday-clock claim is unsupported and this collapses into rsi-reversion-calm-vol. DISCONFIRMER 2: <=15% predictable variance means the effect is tiny -> if per-trade net edge doesn't clear ~20bps at 15m it's a fee-eaten curve-fit. DISCONFIRMER 3: session effects can stand in for a few big scheduled events (CPI/FOMC); if excluding those dates kills it, it's event-risk not seasonality.",
+  "catalyst": "the deterministic low-vol intraday session window where calm drift is cleanest",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "lt", "threshold": { "param": "atr_ceiling" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "lt", "threshold": { "param": "rp_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "atr", "lookback": { "param": "atr_lb" } }, "op": "cross_up", "threshold": { "param": "atr_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":       { "kind": "int",   "lo": 12,   "hi": 48,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.25, "hi": 0.55 },
+    "atr_lb":      { "kind": "int",   "lo": 8,    "hi": 24,  "step": 1 },
+    "atr_ceiling": { "kind": "float", "lo": 0.003, "hi": 0.014 },
+    "rp_lb":       { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "rp_ceiling":  { "kind": "float", "lo": 0.35, "hi": 0.60 },
+    "atr_exit":    { "kind": "float", "lo": 0.015, "hi": 0.04 },
+    "stop":        { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "tp":          { "kind": "float", "lo": 0.015, "hi": 0.07 },
+    "time_stop":   { "kind": "int",   "lo": 1,    "hi": 1,   "step": 1 }
+  },
+  "direction": 1
+}

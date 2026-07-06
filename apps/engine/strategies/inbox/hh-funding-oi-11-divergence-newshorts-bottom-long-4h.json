@@ -1,0 +1,41 @@
+{
+  "name": "OI-price divergence — new-shorts-at-lows bottom fade (price down + OI up, long, 4h)",
+  "rationale": "MECHANISM: the mirror of the short-covering fade. A price DROP CONFIRMED by RISING open_interest means fresh SHORTS are entering at the lows — a crowded new-short book that becomes squeeze fuel, so the drop fades and we fade it LONG (direction +1). Signal: negative 4h return (price down) while open_interest expands (OI up) in a non-trending regime (low ADX so it is a range flush, not a real breakdown). The other side is late shorts piling in at the bottom vs the contrarian who buys the exhaustion. Hold ~0.25-0.5d on SPOT. DISCONFIRMER 1: kill if OI is too noisy/aggregated at 4h so the divergence sign is unreliable — a PIT-honest single-venue OI series is required. DISCONFIRMER 2: kill if the long fade underperforms same-bar momentum continuation (i.e. the drop just keeps going and OI-up adds nothing), or if edge dies once real taker fees hit the turnover.",
+  "catalyst": "price falls while open interest rises in a calm regime — fresh shorts at the lows to fade long.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "lt", "threshold": {"param": "ret_floor"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_expand"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "ret_Nd", "lookback": {"param": "ret_lb"}}, "op": "gt", "threshold": {"param": "ret_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "param_space": {
+    "ret_lb": {"kind": "int", "lo": 1, "hi": 3, "step": 1},
+    "ret_floor": {"kind": "float", "lo": -0.1, "hi": -0.02},
+    "oi_expand": {"kind": "float", "lo": 0.2, "hi": 1.5},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "ret_exit": {"kind": "float", "lo": -0.005, "hi": 0.02},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "tp": {"kind": "float", "lo": 0.025, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 0.5}
+  }
+}

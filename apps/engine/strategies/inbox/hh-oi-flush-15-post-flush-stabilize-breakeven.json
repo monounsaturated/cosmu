@@ -1,0 +1,159 @@
+{
+  "name": "Post-flush stabilization entry (15m long, break-even + partial TP)",
+  "rationale": "MECHANISM (H4 with a break-even-after-first-TP exit): the basing entry is confirmed-exhaustion, but the V can still fail on a second leg down; taking a partial profit and moving the stop to break-even once the first leg fills frees the runner to ride the recovery risk-free \u2014 the asymmetric structure a confirmed-base long deserves. Counterparty: late dip-sellers after forced flow exhausts. Entry: open_interest below a floor (flush occurred) AND range_position cross_up through a low floor (off lows) AND rsi cross_up through an oversold-exit level (curling up) AND vol_realized below a ceiling. Exit: a first partial-TP leg, then break-even on the runner with a trailing distance. DISCONFIRMER: ablate against H1 on the same sample \u2014 no tail/maxDD improvement means the wait is pure lag; range_position cross_up alone matching means generic bottom-fishing. The partial/BE structure must not merely mask a negative-edge core \u2014 the base spec must beat buy-and-hold net of fees.",
+  "catalyst": "post-flush base entered with a partial-TP + break-even runner to ride a risk-free recovery",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1.5
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "oi_post_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "range_position"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rangepos_low_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rsi_exit_level"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "plan": {
+      "multi_tp": [
+        {
+          "at": {
+            "param": "tp1_at"
+          },
+          "size_pct": {
+            "param": "tp1_size"
+          }
+        }
+      ],
+      "break_even_after_tp1": true,
+      "runner_trail": {
+        "param": "runner_trail"
+      }
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_take_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_post_flush_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -0.5
+    },
+    "rangepos_low_floor": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "rsi_exit_level": {
+      "kind": "float",
+      "lo": 28,
+      "hi": 42
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.6,
+      "hi": 2.2
+    },
+    "rsi_take_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 70
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.16
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 1.5
+    },
+    "tp1_at": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.05
+    },
+    "tp1_size": {
+      "kind": "float",
+      "lo": 0.3,
+      "hi": 0.6
+    },
+    "runner_trail": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.07
+    }
+  },
+  "direction": 1
+}

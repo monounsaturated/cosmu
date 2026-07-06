@@ -1,0 +1,41 @@
+{
+  "name": "Negative-funding capitulation long — short-crowd squeeze fuel (funding + RSI + basis, 4h)",
+  "rationale": "MECHANISM: deeply negative funding_rate means SHORTS are crowded and PAYING longs to hold — historically a capitulation/bottom tell (Mar-2020, Nov-2022 FTX ~$15.5k). The other side is panicked/forced shorts and hedgers; a contrarian SPOT long (direction +1) is paid twice — funding carry (a long receives when funding is negative, wired via funding_feature) PLUS the short-squeeze recovery when shorts must cover. We require RSI oversold (a genuine washout, not a slow bleed) AND perp_spot_basis negative (perp trading below spot = active short pressure) to confirm the one-sided short crowd. Persists because negative funding is rare and painful, so systematic capital under-allocates. Hold ~0.5-2d. DISCONFIRMER 1: kill if negative-funding events are too rare to clear effective-N (may fire <10-20 times). DISCONFIRMER 2: kill if the bounce is indistinguishable from a plain oversold-RSI long without the funding + basis conditions. DISCONFIRMER 3: kill if it catches knives during structural bear capitulation (negative funding can persist for weeks per 46-day stretches) rather than marking the turn.",
+  "catalyst": "deeply negative funding + oversold RSI + perp discount to spot — an over-short crowd a spot long squeezes.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.5,
+    "max_hold_days": 2
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "lt", "threshold": {"param": "neg_funding_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "perp_spot_basis"}, "op": "lt", "threshold": {"param": "basis_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "cross_up", "threshold": {"param": "funding_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": 1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "neg_funding_floor": {"kind": "float", "lo": -0.0015, "hi": -0.0002},
+    "rsi_floor": {"kind": "float", "lo": 15, "hi": 35},
+    "basis_floor": {"kind": "float", "lo": -0.004, "hi": -0.0005},
+    "funding_relief_exit": {"kind": "float", "lo": -0.0002, "hi": 0.0002},
+    "stop": {"kind": "float", "lo": 0.03, "hi": 0.12},
+    "tp": {"kind": "float", "lo": 0.04, "hi": 0.2},
+    "time_stop": {"kind": "float", "lo": 0.5, "hi": 2}
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "name": "CryptoPanic bearish-vote peak + oversold \u2014 news-panic capitulation reversion (spot long)",
+  "rationale": "MECHANISM (why bearish votes lead a bottom): a spike in CryptoPanic bearish votes marks the crowd piling into a pessimistic narrative on the news \u2014 the classic point of maximum fear where weak hands have already sold. Peak crowd pessimism reliably clusters near short-term price bottoms, and the vote tally registers the panic as it forms, slightly leading the price low. We require RSI oversold as the price confirmation so we fade a genuine washout, not a slow grind, and buy SPOT. Exit on RSI reverting up. DISCONFIRMER 1: if RSI-oversold alone (no vote arm) matches the deflated Sharpe, the bearish-vote spike adds nothing. DISCONFIRMER 2: if the panic is a real regime break (a hack/ban), the reversion catches a knife \u2014 the tight stop and short max-hold are the guard; if the fit needs a wide stop to survive, the 'fade' is really a downtrend. Requires CRYPTOPANIC_API_KEY; low-confidence until validated OOS.",
+  "catalyst": "cryptopanic_bearish_votes spike (peak news pessimism) while RSI is oversold \u2014 a fear washout to fade.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "cryptopanic_bearish_votes"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "bvotes_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "bvotes_floor": {
+      "kind": "float",
+      "lo": 5,
+      "hi": 60
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 32
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 72
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "Reddit post-volume surge — a distinct read-time chatter-count proxy (4h)",
+  "rationale": "MECHANISM: reddit_post_volume is a read-time-honest COUNT of fresh posts (observation == availability at hot.json read time), a different proxy for the attention-onset than LunarCrush's blended social_volume. A surge in raw post count (cross_up a fitted floor) signals a fresh narrative forming BEFORE aggregators pick it up; on small/mid floats the count surge leads price as new participants arrive. Confirming with rising comment volume (reddit_comment_volume) ensures the posts are drawing engagement, not a lone spammer. Counterparty is dashboard-lagged retail. DISCONFIRMER: post-count surges are the most bot-forgeable social signal — the comment-volume confirm is the breadth tripwire; a post surge with flat comments is likely manufactured, and if the effect survives shuffling the reddit series it is price autocorrelation, KILL. Lead-lag must be asymmetric (+1 strong, -1 ~0). Must clear 4h round-trip fees.",
+  "catalyst": "a genuine surge in fresh reddit posts drawing real comment engagement",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.08, "max_hold_days": 2 },
+  "entry": [
+    { "feature": { "name": "reddit_post_volume" }, "op": "cross_up", "threshold": { "param": "post_floor" } },
+    { "feature": { "name": "reddit_comment_volume" }, "op": "gt", "threshold": { "param": "comment_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "reddit_post_volume" }, "op": "lt", "threshold": { "param": "post_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "post_floor":    { "kind": "float", "lo": 5,    "hi": 80 },
+    "post_exit":     { "kind": "float", "lo": 1,    "hi": 40 },
+    "comment_floor": { "kind": "float", "lo": 10,   "hi": 150 },
+    "stop":          { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":            { "kind": "float", "lo": 0.03, "hi": 0.14 },
+    "time_stop":     { "kind": "float", "lo": 0.5,  "hi": 2.0 }
+  },
+  "direction": 1
+}

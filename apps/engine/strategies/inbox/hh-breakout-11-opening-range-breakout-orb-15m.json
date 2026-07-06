@@ -1,0 +1,45 @@
+{
+  "name": "HH breakout 11 — opening-range breakout, ORB module (15m)",
+  "rationale": "MECHANISM: crypto volume is NOT uniform across 24h — the US cash open and the Europe-US overlap concentrate order flow (>$5B in the first 45 min at US open), and the first burst of directional volume tends to set the session tone. The counterparty is overnight/Asia-session range-traders and passive LPs whose quotes get swept when Western institutional flow arrives. We use the dedicated OpeningRangeBreakout module (setup.orb): range_bars defines the opening-range window and buffer is the fitted break-above margin (both ParamRefs). We require vol_realized RISING (above a fitted floor — real participation, not a dead-session drift) so the break is backed by genuine flow. Distinct from all channel/squeeze variants because the trigger is the ORB structural module, not a raw range_position threshold. bar_size 15m. DISCONFIRMER: KILL if the ORB break shows no edge over the SAME break fired at a random hour (the time/opening-range anchor adds nothing — the US-open effect has bled into 24/7 crypto), OR if the edge exists only for BTC/ETH and evaporates on alts per-symbol, OR if the vol_realized rising-participation filter is decorative (removing it does not degrade the edge).",
+  "catalyst": "break above the opening-range high with rising participation",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "vol_realized"}, "op": "gt", "threshold": {"param": "vr_floor"}}
+  ],
+  "setup": {
+    "orb": {
+      "range_bars": {"param": "orb_bars"},
+      "buffer": {"param": "orb_buffer"},
+      "anchor": "rolling"
+    }
+  },
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "orb_bars": {"kind": "int", "lo": 4, "hi": 24, "step": 1},
+    "orb_buffer": {"kind": "float", "lo": 0.001, "hi": 0.015},
+    "vr_floor": {"kind": "float", "lo": 0.005, "hi": 0.025},
+    "rsi_exit": {"kind": "float", "lo": 70, "hi": 88},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.015, "hi": 0.08},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1.5}
+  }
+}

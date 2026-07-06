@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: chop-gated band fade, low-vol regime (30m)",
+  "rationale": "MECHANISM: identical regime-first band fade as the 15m variant — fade a bb_z extreme ONLY inside a compressed low-realized-vol range where inventory-managing makers profit fading noise around a stable mid — but on the 30m bar, which trades slower, holds longer, and lets a larger reversion accrue relative to fixed round-trip cost. The timeframe change is economically meaningful: a 30m oscillation clears fee/spread more easily than a 15m one, at the price of fewer events and more overnight regime drift risk. Entry: bb_z below a fitted floor AND vol_realized below a fitted low-vol ceiling. Long-only spot; exit on bb_z reversion. DISCONFIRMER: if the 30m net Sharpe is not distinguishable from the 15m variant after fees, the timeframe axis adds nothing and this is a duplicate — keep the better one. Split by vol quartile: the low-vol quartile must dominate monotonically or the regime gate is fitted, not real — kill.",
+  "catalyst": "band extreme faded inside a low-vol range on the slower 30m clock",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1.0
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "vol_ceiling": {"kind": "float", "lo": 0.3, "hi": 1.0},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "time_stop": {"kind": "float", "lo": 0.2, "hi": 1.0}
+  },
+  "direction": 1
+}

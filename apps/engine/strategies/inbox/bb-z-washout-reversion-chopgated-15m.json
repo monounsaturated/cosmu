@@ -1,0 +1,37 @@
+{
+  "name": "Bollinger z-score washout reversion, chop-gated (15m)",
+  "rationale": "A deeply negative Bollinger z-score on 15m marks a statistically unusual washout; gating on ADX below a ceiling ensures we only fade in a NON-trending regime where band extremes revert rather than in a trend where they extend. The other side is the panic seller / forced liquidation who dumps into thin books and pays the reversion premium. Edge persists because short-horizon overreaction in range-bound crypto is structural. Distinct from RSI reversion (band-relative, not momentum-relative). Disconfirmer: exits when z-score reverts toward zero, or the stop fires if the washout was the start of a real breakdown.",
+  "catalyst": "statistically unusual downside dislocation in a non-trending regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.5},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

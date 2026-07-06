@@ -1501,7 +1501,7 @@ def _warmup_bars(spec: StrategySpec, params: dict[str, float]) -> int:
 
 
 def _bars_per_day(bar_size: str) -> float:
-    return {"1h": 24.0, "4h": 6.0, "1d": 1.0}[bar_size]
+    return {"1m": 1440.0, "5m": 288.0, "15m": 96.0, "30m": 48.0, "1h": 24.0, "4h": 6.0, "1d": 1.0}[bar_size]
 
 
 # Trading SESSIONS per year by asset class — the annualization base for Sharpe/Sortino. Crypto/HL perps and

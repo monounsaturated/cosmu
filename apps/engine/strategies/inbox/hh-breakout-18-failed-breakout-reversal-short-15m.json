@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 18 — failed-breakout reversal, short the rejection (15m)",
+  "rationale": "MECHANISM: the mirror trap — an UPSIDE break to the range high that immediately fails traps breakout-BUYERS who bought the high and must now puke, driving a reversal down past the opposite extreme. We detect the rejection as range_position crossing DOWN through a fitted level (op cross_down) after having pushed to the high, while adx stays LOW (no trend to justify the break) and bb_width is not compressed. We go SHORT (direction -1) the failed break, selling into the forced liquidation of trapped longs. Kept SEPARATE from the long reclaim (variant 17) because the short-the-failed-high leg must earn against crypto's upward drift, a genuinely distinct cell. Distinct from the plain up-wick fade (variant 05) because it requires the break-then-REJECT sequence (cross_down back through the level), not just touching the high. bar_size 15m. DISCONFIRMER: KILL if the reject sequence has no edge beyond being at the high (the trap adds nothing over variant 05's plain fade), OR if the short specifically loses to the upward drift while the long reclaim survives, OR if 15m fills/slippage erase the reversal, OR if it only survives on illiquid alts with fictional fills.",
+  "catalyst": "price rejects the high after a failed upside break",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "direction": -1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "cross_down", "threshold": {"param": "rp_reject"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}},
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_reject": {"kind": "float", "lo": 0.7, "hi": 0.9},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "bbw_ceiling": {"kind": "float", "lo": 0.04, "hi": 0.12},
+    "rp_exit": {"kind": "float", "lo": 0.2, "hi": 0.45},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.012, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1}
+  }
+}

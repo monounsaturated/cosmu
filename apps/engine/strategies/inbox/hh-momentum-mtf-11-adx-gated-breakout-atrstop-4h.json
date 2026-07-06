@@ -1,0 +1,43 @@
+{
+  "name": "ADX-gated breakout continuation — ATR-scaled stop, trend-run exit (4h)",
+  "rationale": "MECHANISM: same conditional-breakout economics (breaks only pay in a trend; ADX filters chop) but the risk overlay is an ATR-multiple stop rather than a fixed fraction, letting a volatile 4h breakout breathe without being noise-stopped, and the position is allowed to ride via a trailing stop armed after a profit cushion (asymmetric: tight-once-armed, open-ended upside — the trend-follower payoff). Entry: range_position near the ceiling AND adx above a fitted floor. DISCONFIRMER: kill if a FIXED-stop version of the same signal lives while this ATR/trailing version dies, or vice-versa with identical DSR — that would prove the edge is in the risk overlay, not the ADX-gated breakout thesis. Also kill if the adx gate adds no net lift over the ungated breakout (curve-fit gate).",
+  "catalyst": "range-ceiling breakout in a trend, ridden with a volatility-scaled trailing stop",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 7
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "atr_mult": { "param": "atr_mult" },
+    "trailing_stop": { "distance": { "param": "trail_dist" }, "arm_after_profit": { "param": "trail_arm" } },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "adx_floor":  { "kind": "float", "lo": 20, "hi": 36 },
+    "adx_exit":   { "kind": "float", "lo": 12, "hi": 20 },
+    "rp_lb":      { "kind": "int",   "lo": 10, "hi": 48, "step": 1 },
+    "rp_floor":   { "kind": "float", "lo": 0.7, "hi": 0.95 },
+    "atr_mult":   { "kind": "float", "lo": 1.0, "hi": 3.5 },
+    "trail_dist": { "kind": "float", "lo": 0.02, "hi": 0.1 },
+    "trail_arm":  { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "stop":       { "kind": "float", "lo": 0.02, "hi": 0.08 },
+    "tp":         { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "time_stop":  { "kind": "float", "lo": 1.0, "hi": 7.0 }
+  }
+}

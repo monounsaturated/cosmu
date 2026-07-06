@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: washout snapback liquidation fade (5m core)",
+  "rationale": "MECHANISM: in a forced-liquidation cascade the margin engine is a PRICE-INSENSITIVE seller — it dumps at market to protect the insurance fund, driving price transiently below fair value. The other side is the market-maker / arbitrageur who provides liquidity into the panic and captures the snapback as forced flow exhausts. The edge persists because crypto leverage is structural and 24/7, cascades recur (Oct 10-11 2025 wiped $19B in 36h), and the price-insensitive seller is not competing on price, so the fader is paid to warehouse inventory for minutes. Entry: bb_z at a fitted multi-sigma washout AND rsi deeply oversold (a genuine capitulation, not routine noise). Long-only spot; exit as bb_z reverts toward the band basis. DISCONFIRMER: if per-symbol net-of-fee PnL is flat/negative once real taker fees + spread are charged on every entry (a ~0.4% 5m bounce sits inside the round-trip cost on all but the most liquid pairs), OR the win-rate on the washout events is no better than a random long at the same timestamps, the overshoot is just correctly-priced bad news continuing down — kill. Hard test: exclude the top-5 liquidation days; if the whole edge lives in <5 tail events it is regime luck, not a repeatable snapback.",
+  "catalyst": "multi-sigma forced-liquidation washout that snaps back as price-insensitive flow exhausts",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.0,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -2.0},
+    "rsi_floor": {"kind": "float", "lo": 12, "hi": 22},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.005, "hi": 0.025},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.25}
+  },
+  "direction": 1
+}

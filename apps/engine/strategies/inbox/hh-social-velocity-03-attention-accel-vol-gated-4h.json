@@ -1,0 +1,29 @@
+{
+  "name": "Attention-velocity ignition — accel spike vol-gated (4h, quiet-tape onset)",
+  "rationale": "MECHANISM: the attention-onset lead is cleanest when it fires into a QUIET tape — a fresh accel spike while realized vol is still low means the crowd has not yet moved price, so the informational lead is maximal; once vol is already elevated the move is half-priced. social_volume_accel = ln(v_t/v_{t-1}) leads UP at k=1-3d on small floats. Entry LONG when accel clears a fitted spike floor AND vol_realized is BELOW a fitted ceiling (onset, not late). Exit on accel decay or stop/TP/time. DISCONFIRMER: the low-vol gate must ADD incremental edge over the plain accel spike (ablation: accel+vol-gate must beat accel-alone OOS); if a low-vol filter alone (buy any quiet coin) matches it, the attention is redundant, KILL. Time-shuffle the attention series — survival = price autocorrelation, KILL. Net of 4h round-trip fees.",
+  "catalyst": "attention acceleration firing into a still-quiet tape before price has moved",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 6 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_spike" } },
+    { "feature": { "name": "vol_realized" }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_decay_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_spike":       { "kind": "float", "lo": 0.3,  "hi": 1.4 },
+    "accel_decay_exit":  { "kind": "float", "lo": -0.2, "hi": 0.1 },
+    "vol_ceiling":       { "kind": "float", "lo": 0.3,  "hi": 1.0 },
+    "stop":              { "kind": "float", "lo": 0.04, "hi": 0.13 },
+    "tp":                { "kind": "float", "lo": 0.05, "hi": 0.2 },
+    "time_stop":         { "kind": "float", "lo": 0.5,  "hi": 6 }
+  },
+  "direction": 1
+}

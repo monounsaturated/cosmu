@@ -1,0 +1,43 @@
+{
+  "name": "RV-over-IV cheap-gamma breakout — ADX-confirmed trend (4h)",
+  "rationale": "ECONOMIC MECHANISM (the 4h RV>IV cheap-gamma breakout, confirming the directional move with ADX trend strength instead of a raw return leg — a structurally different momentum gauge so the vol cross is not just re-reading recent return): when vol_realized crosses ABOVE dvol, realized outruns implied — dealers are under-hedged and a genuine directional move is underway; realized-vol continuation is stickier here (vol clustering). We require a CONFIRMED trend (adx above a fitted floor) so we ride expansion with a real trend, not a one-bar spike. Entry: vol_realized clears a fitted floor AND dvol below a fitted ceiling (implied lagging -> options cheap) AND adx above a fitted floor (trend confirmed). The other side is complacent vol sellers short gamma into the move, forced to buy spot to hedge -> their hedging flow fuels the continuation. OPPOSITE regime to VRP-harvest (inverted sign on the same IV/RV pair) -> not double-counted. Exit: adx crosses down (the trend is dying) or stop/TP/time. DISCONFIRMER 1: if a plain ADX-trend long (drop the RV>IV cross) matches the deflated Sharpe, the vol dislocation adds no timing edge and this is the already-tested adx-trend-follow. DISCONFIRMER 2: if dropping the dvol-ceiling leg (keep only rv-floor + adx) matches it, the IMPLIED side is inert and the 'cheap gamma' claim is unsupported. HARD CAVEAT: ~148 DVOL points -> paper-only.",
+  "catalyst": "realized vol overtaking implied inside a confirmed ADX trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 6
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "gt", "threshold": { "param": "rv_floor" } },
+    { "feature": { "name": "dvol" }, "op": "lt", "threshold": { "param": "dvol_ceiling" } },
+    { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx", "lookback": { "param": "adx_lb" } }, "op": "cross_down", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":         { "kind": "int",   "lo": 14,   "hi": 42,  "step": 1 },
+    "rv_floor":      { "kind": "float", "lo": 0.55, "hi": 1.10 },
+    "dvol_ceiling":  { "kind": "float", "lo": 40.0, "hi": 70.0 },
+    "adx_lb":        { "kind": "int",   "lo": 10,   "hi": 28,  "step": 1 },
+    "adx_floor":     { "kind": "float", "lo": 20.0, "hi": 34.0 },
+    "adx_exit":      { "kind": "float", "lo": 14.0, "hi": 22.0 },
+    "stop":          { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":            { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":     { "kind": "int",   "lo": 1,    "hi": 6,   "step": 1 }
+  },
+  "lane": "explore",
+  "direction": 1
+}

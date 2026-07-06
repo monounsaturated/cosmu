@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 17 — failed-breakout reversal, long the reclaim (15m)",
+  "rationale": "MECHANISM: the highest-conviction pattern in the fakeout literature — a break of a range extreme that IMMEDIATELY re-enters the range is not neutral: it signals trapped breakout traders who must puke, driving a reversal PAST the opposite extreme. Here we catch the DOWNSIDE failure: after a wick to the range LOW, price RECLAIMS the range — detected as range_position crossing UP through a fitted reclaim level (op cross_up) — while adx stays LOW (no real trend justified the break) and bb_width is not compressed (a range regime). We go LONG the reclaim, buying from trapped shorts/breakdown-sellers who are now forced to cover. Economically distinct from the plain fade (variant 04): this requires the break-then-RECLAIM SEQUENCE (a cross_up back through the level = a trap being sprung), not merely touching an extreme. bar_size 15m to catch the trap tightly. DISCONFIRMER: KILL if the break-then-reclaim sequence has no forward edge beyond simply being at an extreme (the trap adds nothing over variant 04's plain fade, so it is not economically distinct in the data), OR if the sequence needs such tight timing that realistic 15m fills/slippage erase the reversal profit, OR if it only survives on illiquid alts where the fills are fictional (spread wider than the reversal).",
+  "catalyst": "price reclaims the range after a failed downside break",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "cross_up", "threshold": {"param": "rp_reclaim"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}},
+    {"feature": {"name": "bb_width"}, "op": "lt", "threshold": {"param": "bbw_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_reclaim": {"kind": "float", "lo": 0.1, "hi": 0.3},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "bbw_ceiling": {"kind": "float", "lo": 0.04, "hi": 0.12},
+    "rp_exit": {"kind": "float", "lo": 0.55, "hi": 0.8},
+    "stop": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "tp": {"kind": "float", "lo": 0.012, "hi": 0.06},
+    "time_stop": {"kind": "float", "lo": 0.08, "hi": 1}
+  }
+}

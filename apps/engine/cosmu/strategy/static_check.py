@@ -66,7 +66,7 @@ def validate_spec(spec: StrategySpec) -> list[str]:
                 issues.append(issue)
     if spec.universe.min_instruments < 5:
         issues.append("universe_too_small")
-    if spec.horizon.min_hold_days < 1 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
+    if spec.horizon.min_hold_days < 0 or spec.horizon.max_hold_days < spec.horizon.min_hold_days:
         issues.append("invalid_horizon")
     # Completeness contract: a hypothesis with no entry conditions never fires, and an empty rationale loses the
     # WHY — the disconfirmable thesis the Gate is testing and the summary is written from. Both are required so the

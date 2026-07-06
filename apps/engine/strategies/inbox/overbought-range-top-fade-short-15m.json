@@ -1,0 +1,40 @@
+{
+  "name": "Overbought range-top fade (short, 15m)",
+  "rationale": "In a non-trending 15m regime, price pinned at the range ceiling with an overbought RSI is a distribution zone: late longs chase the high into resting maker offers and the price fades back to the mid. We take the SHORT side (direction -1) — the other side is the breakout-chaser who buys the top and is stopped as it rolls over. Edge persists because in range regimes the ceiling is where reversion is strongest and retail chases hardest. Distinct from all long specs by side and by fading rather than following. Disconfirmer: exits when RSI cools below the exit level, or the stop (above entry) fires if the ceiling breaks into a real trend.",
+  "catalyst": "overbought price at the channel ceiling in a non-trending regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_ceiling"}},
+    {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_ceiling"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "param_space": {
+    "rp_ceiling": {"kind": "float", "lo": 0.75, "hi": 0.95},
+    "rsi_ceiling": {"kind": "float", "lo": 68, "hi": 85},
+    "rsi_exit": {"kind": "float", "lo": 45, "hi": 58},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "hh-meanrev-micro: post-shock re-entry on RSI turn confirmation (5m)",
+  "rationale": "MECHANISM: same 'don't catch the knife mid-cascade' family, but the exhaustion is confirmed through MOMENTUM turning rather than vol contracting: after a washout, wait for rsi to CROSS UP off its low (the first tick of recovering momentum) before entering, so the fader buys the moment forced selling stops accelerating rather than the moment of the spike. Economically this is the momentum-analogue of the vol-rolloff timing: RSI turning up from a deep-oversold trough is the point the last stop-outs are done and the bid ladder starts winning. Entry: bb_z still extreme (dislocation present) AND rsi crossing UP through a fitted low level (momentum turn) while vol_realized has calmed below a ceiling (not mid-cascade). Long-only spot; exit as bb_z reverts. DISCONFIRMER: if the RSI-turn confirmation does not beat entering at the raw bb_z extreme, the momentum-timing refinement earns nothing. If it is statistically identical to the vol-contraction re-entry variant, the two timing gauges are collinear here — keep one. LEAKAGE: the RSI cross-up must be computed from closed bars; a 1-bar-lag re-run that erases the edge is look-ahead — kill.",
+  "catalyst": "fade entered on the first RSI turn up off a washout trough",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.0,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "rsi"}, "op": "cross_up", "threshold": {"param": "rsi_turn"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.5, "hi": -1.8},
+    "rsi_turn": {"kind": "float", "lo": 18, "hi": 32},
+    "vol_ceiling": {"kind": "float", "lo": 0.6, "hi": 2.0},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.005, "hi": 0.03},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.25}
+  },
+  "direction": 1
+}

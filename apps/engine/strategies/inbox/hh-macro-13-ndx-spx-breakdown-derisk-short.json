@@ -1,0 +1,31 @@
+{
+  "name": "Equity breakdown circuit-breaker — short crypto beta when NDX AND SPX both break down (asymmetric risk-off)",
+  "rationale": "MECHANISM: exploits the 2025-26 asymmetry — crypto tracks Nasdaq DOWN closely (avg corr 0.52 in 2025 vs 0.23 in 2024) but decouples UP. Institutional risk-off is a portfolio-level VaR event: when ndx_index breaks trend the SAME allocators cut crypto (their highest-beta sleeve) hardest, and the de-risking propagates over 1-3 days. Short crypto beta when BOTH ndx_index and spx_index roll over (negative RoC), capturing the downside-only correlation a long-only book eats in full. Counterparty = the crowd staying levered-long into an equity risk-off it is slow to acknowledge. DISCONFIRMER: correlation is regime-unstable — BTC-NDX swung -0.68 to +0.72 in two weeks (Feb 2025) and Oct 2025 saw crypto -30% while NDX rallied. A rule keyed on equity breakdown WHIPSAWS in decoupled regimes and misses crypto-idiosyncratic crashes. Kill if the captured-downside net of extra round-trips (and short funding/borrow) does not beat the false-signal turnover cost. A short also pays funding — the net-of-carry short edge must clear it.",
+  "catalyst": "simultaneous NDX and SPX trend breakdown (portfolio risk-off)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "ndx_index", "lookback": { "param": "ndx_roc_lb" } }, "op": "lt", "threshold": { "param": "ndx_roc_ceiling" } },
+    { "feature": { "name": "spx_index", "lookback": { "param": "spx_roc_lb" } }, "op": "lt", "threshold": { "param": "spx_roc_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ndx_index", "lookback": { "param": "ndx_roc_lb" } }, "op": "gt", "threshold": { "param": "ndx_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "ndx_roc_lb":      { "kind": "int",   "lo": 5,    "hi": 25,   "step": 1 },
+    "ndx_roc_ceiling": { "kind": "float", "lo": -0.04, "hi": -0.01 },
+    "ndx_relief_exit": { "kind": "float", "lo": -0.005, "hi": 0.01 },
+    "spx_roc_lb":      { "kind": "int",   "lo": 5,    "hi": 25,   "step": 1 },
+    "spx_roc_ceiling": { "kind": "float", "lo": -0.03, "hi": -0.005 },
+    "stop":            { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":              { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":       { "kind": "int",   "lo": 2,    "hi": 10,   "step": 1 }
+  },
+  "direction": -1
+}

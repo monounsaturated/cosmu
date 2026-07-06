@@ -1,0 +1,43 @@
+{
+  "name": "Rolling-anchor ORB control — breakout WITHOUT the session anchor (15m)",
+  "rationale": "MECHANISM/ROLE: this is the deliberate CONTROL for the session-handoff family. It runs the identical opening-range breakout with anchor='rolling' (a rolling trailing range, no US-session timing) gated by the same adx trend filter and positive ret_Nd. Economically it tests the pure breakout-continuation mechanism stripped of any regional-flow-handoff timing: momentum algos and stop-runs trigger a cascade when price clears a recent range, independent of the clock. DISCONFIRMER built into the cohort: if this rolling control nets the SAME as the session-anchored variants, the 'session' timing carried nothing and those variants are curve-fit; if this control dies while the session variants live, the handoff timing is the real edge. Either way it must itself clear DSR 0.95 net of fees to count as a standalone edge — a rolling breakout that only survives via best-of-N tuning is a fee-churning trap.",
+  "catalyst": "price breaking a rolling recent range in a confirmed trend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.08,
+    "max_hold_days": 1
+  },
+  "entry": [
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "setup": {
+    "orb": { "range_bars": { "param": "orb_bars" }, "buffer": { "param": "orb_buffer" }, "anchor": "rolling" }
+  },
+  "param_space": {
+    "adx_floor":  { "kind": "float", "lo": 18, "hi": 32 },
+    "adx_exit":   { "kind": "float", "lo": 10, "hi": 18 },
+    "mom_lb":     { "kind": "int",   "lo": 8,  "hi": 32, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0, "hi": 0.02 },
+    "orb_bars":   { "kind": "int",   "lo": 4,  "hi": 24, "step": 1 },
+    "orb_buffer": { "kind": "float", "lo": 0.0005, "hi": 0.004 },
+    "stop":       { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "tp":         { "kind": "float", "lo": 0.015, "hi": 0.09 },
+    "time_stop":  { "kind": "float", "lo": 0.25, "hi": 1.0 }
+  }
+}

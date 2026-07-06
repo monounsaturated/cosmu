@@ -1,0 +1,100 @@
+{
+  "name": "Galaxy Score strength + RSI pullback \u2014 buy dips in socially-strong names (spot long)",
+  "rationale": "MECHANISM (why Galaxy Score leads the dip-buy): LunarCrush's Galaxy Score blends price action and social health into one 0-100 rank; a high score identifies an asset with durable, well-supported strength. Within such a name, an RSI pullback is a temporary shakeout, not a top \u2014 the social+price health persists through the dip and the trend resumes. The score is the REGIME filter that tells a healthy pullback (buy) apart from a breakdown (avoid). Distinct from galaxy-score-momentum-breakout (which chases strength): this BUYS THE DIP inside strength. Exit when the Galaxy Score itself falls (the strength regime broke). DISCONFIRMER 1: if a plain RSI-dip buy without the Galaxy gate matches the deflated Sharpe, the score adds nothing. DISCONFIRMER 2: Galaxy Score embeds price, so a high score may just be recent momentum \u2014 if it collinearly duplicates ret_Nd, it is not orthogonal social information. tier1, low-confidence until validated OOS.",
+  "catalyst": "galaxy_score is high (strong blended price+social health) while RSI has dipped \u2014 a pullback inside strength.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "galaxy_score"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "gs_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_dip"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "galaxy_score"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "gs_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "gs_floor": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 75
+    },
+    "rsi_dip": {
+      "kind": "float",
+      "lo": 35,
+      "hi": 50
+    },
+    "gs_exit": {
+      "kind": "float",
+      "lo": 40,
+      "hi": 58
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

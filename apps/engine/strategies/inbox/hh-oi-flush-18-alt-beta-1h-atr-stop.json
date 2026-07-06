@@ -1,0 +1,145 @@
+{
+  "name": "Alt OI-flush beta (1h long, ATR-scaled stop for alt volatility)",
+  "rationale": "MECHANISM (H5 on 1h with an ATR-scaled stop): alts are more volatile than BTC, so a fixed percent stop is systematically wrong; sizing the stop as an ATR-multiple at entry lets protection scale with the alt's own cascade volatility, the honest way to survive the knife-edge before the over-shot rebound. A 1h bar reads the deeper, decisive alt flushes. The spot float anchors the snap-back; counterparty is thin-book alt liquidation flow. SPOT long. Entry: open_interest cross_down through a DEEP negative floor AND rsi below a low oversold floor AND ret_Nd below a negative floor (falling) AND vol_realized above a floor. DISCONFIRMER: cross-asset ablation vs BTC-only \u2014 equal performance kills the alt-idiosyncratic thesis; per-symbol not pooled \u2014 outlier-carried edge is an artifact; the ATR stop must not merely fatten the loser tail. Must beat BH net of fees, maxDD <= 25%.",
+  "catalyst": "1h deep alt OI flush + oversold + falling, held on an ATR-scaled stop",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_deep_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "ret_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "vol_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "atr_mult": {
+      "param": "atr_mult"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_deep_flush_floor": {
+      "kind": "float",
+      "lo": -5.5,
+      "hi": -2.5
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 30
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 3,
+      "hi": 12,
+      "step": 1
+    },
+    "ret_down_floor": {
+      "kind": "float",
+      "lo": -0.15,
+      "hi": -0.04
+    },
+    "vol_floor": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 2.0
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 50,
+      "hi": 64
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.14
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 3.0
+    },
+    "atr_mult": {
+      "kind": "float",
+      "lo": 1.2,
+      "hi": 4.5
+    }
+  },
+  "direction": 1
+}

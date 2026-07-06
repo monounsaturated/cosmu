@@ -1,0 +1,44 @@
+{
+  "name": "HH breakout 09 — channel break with trailing runner (4h)",
+  "rationale": "MECHANISM: the Donchian break convexity again (rare multi-week trend catches carry a low win-rate but fat payoff), but the distinct upgrade here is a STANDALONE trailing stop (exit.trailing_stop) armed only after a profit cushion — the Turtle 'let winners run' rule made explicit. Rather than a fixed take-profit that caps the fat right tail, we ride the trend and let the trailing stop (distance a ParamRef) lock in gains behind the favourable extreme once arm_after_profit is cleared, so the few big winners are not truncated. Enter long on a range_position break with adx above a trend floor on the 4h clock. This is economically distinct from variants 07/08 because the EXIT structure — trail-the-winner vs range-re-entry vs ATR-stop — is what determines whether the fat-tail payoff is actually harvested. DISCONFIRMER: KILL if the trailing runner does not beat the fixed take-profit exit net of fees on the holdout (the trail just gives back gains in chop), OR if it fails to beat buy-and-hold, OR if arm_after_profit has to be set so high that almost no trade ever arms the trail (the mechanism never engages).",
+  "catalyst": "new-high break, ride the trend with a profit-armed trailing stop",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.5,
+    "max_hold_days": 20
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_break"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "trailing_stop": {
+      "distance": {"param": "trail_dist"},
+      "arm_after_profit": {"param": "trail_arm"}
+    },
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_break": {"kind": "float", "lo": 0.9, "hi": 0.99},
+    "adx_floor": {"kind": "float", "lo": 20, "hi": 35},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "trail_dist": {"kind": "float", "lo": 0.02, "hi": 0.1},
+    "trail_arm": {"kind": "float", "lo": 0.02, "hi": 0.12},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.09},
+    "tp": {"kind": "float", "lo": 0.08, "hi": 0.4},
+    "time_stop": {"kind": "float", "lo": 2, "hi": 25}
+  }
+}

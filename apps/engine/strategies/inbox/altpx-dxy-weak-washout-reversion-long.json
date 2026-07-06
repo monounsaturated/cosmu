@@ -1,0 +1,109 @@
+{
+  "name": "Weak dollar (DXY low) + band washout \u2014 dollar-tailwind reversion (spot long)",
+  "rationale": "MECHANISM (why the dollar leads crypto): the US dollar (DXY) is the global funding currency; a weak/falling dollar loosens worldwide financial conditions and is a persistent tailwind for scarce, dollar-denominated risk assets like crypto. When the dollar is weak AND crypto is momentarily washed out (bb_z stretched below its band), the washout is a dislocation against a supportive macro backdrop and snaps back. The dollar regime leads because global liquidity re-prices in FX before it shows in crypto. Distinct from dollar-weak-MOMENTUM (continuation): this is a REVERSION (buy the washout under a weak-dollar regime). Exit if the dollar turns up through its exit level (tailwind gone). DISCONFIRMER 1: if the bb_z washout alone matches the deflated Sharpe, DXY adds nothing. DISCONFIRMER 2: DXY is a slow multi-week driver \u2014 if the fit needs same-bar DXY reactivity to pay, the mechanism (a slow regime) is not what is being captured. tier0 macro; low-confidence until OOS.",
+  "catalyst": "dxy is BELOW a fitted ceiling (weak dollar = looser global conditions) while bb_z shows a downside washout.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 7
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "dxy"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "dxy_ceiling"
+      }
+    },
+    {
+      "feature": {
+        "name": "bb_z",
+        "lookback": {
+          "param": "bb_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "bbz_wash"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "dxy"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "dxy_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "dxy_ceiling": {
+      "kind": "float",
+      "lo": 95,
+      "hi": 104
+    },
+    "bb_lb": {
+      "kind": "int",
+      "lo": 14,
+      "hi": 48,
+      "step": 1
+    },
+    "bbz_wash": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -1.2
+    },
+    "dxy_exit": {
+      "kind": "float",
+      "lo": 102,
+      "hi": 109
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

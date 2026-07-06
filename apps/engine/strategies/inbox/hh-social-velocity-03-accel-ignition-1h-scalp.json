@@ -1,0 +1,29 @@
+{
+  "name": "Attention-velocity ignition — fast accel scalp with vol guard (1h)",
+  "rationale": "MECHANISM: the fastest expression of attention-onset — an accel z-spike on the 1h bar, taken only when realized vol is not already blown out (vol_realized ceiling) so we buy the ignition, not the exhaustion tail. On small floats the CHANGE in attention leads the very-short-horizon move as fresh eyeballs hit before order flow. Counterparty is dashboard-lagged retail. DISCONFIRMER: at 1h cadence the daily social source may be stale-repeated within the bar — if lead-lag shows the effect is symmetric (equal at -1 and +1) the signal is interpolation/look-ahead, KILL. Shuffle-test the attention series. Must clear 1h round-trip fees, which is a high bar at this turnover.",
+  "catalyst": "sharp intrabar attention acceleration into contained volatility",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1h", "min_hold_days": 0.04, "max_hold_days": 1 },
+  "entry": [
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } },
+    { "feature": { "name": "vol_realized" }, "op": "lt", "threshold": { "param": "vol_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_volume_accel" }, "op": "lt", "threshold": { "param": "accel_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "accel_floor": { "kind": "float", "lo": 0.4,  "hi": 1.8 },
+    "accel_exit":  { "kind": "float", "lo": -0.3, "hi": 0.2 },
+    "vol_ceiling": { "kind": "float", "lo": 0.02, "hi": 0.12 },
+    "stop":        { "kind": "float", "lo": 0.015, "hi": 0.06 },
+    "tp":          { "kind": "float", "lo": 0.02, "hi": 0.12 },
+    "time_stop":   { "kind": "float", "lo": 0.25, "hi": 1.0 }
+  },
+  "direction": 1
+}

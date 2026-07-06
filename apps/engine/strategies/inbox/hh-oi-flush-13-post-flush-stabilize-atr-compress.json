@@ -1,0 +1,128 @@
+{
+  "name": "Post-flush stabilization entry (15m long, ATR-compression confirmation)",
+  "rationale": "MECHANISM (H4 with an ATR-compression arm replacing realized-vol): the honest signature of 'the flush is over' is that the true-range CONTRACTS after the cascade spike \u2014 an ATR relative to its post-flush low confirms the violent selling has drained. Waiting for that contraction isolates the confirmed-basing subset. Counterparty: late dip-sellers hitting bids after forced flow is gone. Entry: open_interest below a floor (flush occurred) AND range_position cross_up through a low floor (lifting off lows) AND rsi cross_up through an oversold-exit level (curling up) AND atr below a ceiling (true-range compressing post-flush). DISCONFIRMER: ablate against H1 on the same sample \u2014 no tail/maxDD improvement means the wait is pure lag; and range_position cross_up alone (no OI) matching means generic bottom-fishing. The ATR arm must add real separation (drop it \u2014 if no degradation, it is cosmetic). Beat buy-and-hold net of fees.",
+  "catalyst": "post-flush basing with ATR (true-range) compressing \u2014 the cascade is confirmed drained",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "oi_post_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "range_position"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rangepos_low_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rsi_exit_level"
+      }
+    },
+    {
+      "feature": {
+        "name": "atr"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "atr_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_take_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_post_flush_floor": {
+      "kind": "float",
+      "lo": -3.0,
+      "hi": -0.5
+    },
+    "rangepos_low_floor": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.35
+    },
+    "rsi_exit_level": {
+      "kind": "float",
+      "lo": 28,
+      "hi": 42
+    },
+    "atr_ceiling": {
+      "kind": "float",
+      "lo": 0.01,
+      "hi": 0.06
+    },
+    "rsi_take_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 70
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.08
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 1.5
+    }
+  },
+  "direction": 1
+}

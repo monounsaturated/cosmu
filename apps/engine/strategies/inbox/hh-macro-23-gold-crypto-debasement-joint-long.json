@@ -1,0 +1,32 @@
+{
+  "name": "Gold-led debasement joint rally — LONG crypto when gold surges WITHOUT a fear tell (the other side of the decoupling)",
+  "rationale": "MECHANISM: the OPPOSITE-SIGN expression of the gold-crypto relationship, isolating the debasement regime the short variants must avoid. When gold_xau surges but there is NO risk-off fear tell (vix_level stays LOW), the gold bid is a monetary-debasement / weak-dollar play — and in that regime crypto is a CO-BENEFICIARY 'harder money' asset, not a victim. So a gold up-thrust in a calm-VIX regime is a LONG signal for crypto beta, confirmed by crypto momentum turning up (positive ret_Nd). This directly harvests the joint-rally regime that makes the naive gold-fade short backwards. Counterparty = traders mechanically shorting crypto on any gold strength. DISCONFIRMER: the gold-crypto correlation trended to ZERO from Feb 2025 (coinmetrics), so gold strength may carry NO crypto information at all in calm regimes — the signal could be pure noise. Kill unless OOS shows calm-VIX gold surges genuinely precede crypto strength net of fees, and unless it beats a bare crypto-momentum long WITHOUT the gold gate (gold must add lift, not decorate momentum).",
+  "catalyst": "gold surge in a calm-VIX regime (debasement) with crypto momentum turning up",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 18 },
+  "entry": [
+    { "feature": { "name": "gold_xau", "lookback": { "param": "gold_roc_lb" } }, "op": "gt", "threshold": { "param": "gold_roc_floor" } },
+    { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "cross_up", "threshold": { "param": "vix_break_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "gold_roc_lb":    { "kind": "int",   "lo": 5,    "hi": 30,   "step": 1 },
+    "gold_roc_floor": { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "vix_ceiling":    { "kind": "float", "lo": 14,   "hi": 22 },
+    "vix_break_exit": { "kind": "float", "lo": 20,   "hi": 30 },
+    "mom_lb":         { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "mom_floor":      { "kind": "float", "lo": 0.0,  "hi": 0.06 },
+    "stop":           { "kind": "float", "lo": 0.06, "hi": 0.18 },
+    "tp":             { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop":      { "kind": "int",   "lo": 5,    "hi": 18,   "step": 1 }
+  }
+}

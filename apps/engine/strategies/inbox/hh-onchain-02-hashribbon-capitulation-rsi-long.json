@@ -1,0 +1,31 @@
+{
+  "name": "Hash-ribbon capitulation with RSI-washout confirm (BTC, momentum exit)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the bb_z variant: this gauges over-extension via RSI, not the band z-score, and exits on price-momentum recovery rather than a hashrate re-cross): miner capitulation forces contraction of btc_hashrate; buying that contraction when RSI is deeply oversold takes the other side of a distressed forced-seller flow that unwinds over weeks. The dual gate (hashrate contracted AND RSI washed out) demands BOTH the supply-side exhaustion and a price washout, filtering the 'hashrate low but price still elevated' false starts. Exit is a positive medium-term return re-cross (ret_Nd back above a floor), harvesting the mean-reversion when momentum turns. DISCONFIRMER 1: if a bare RSI-oversold dip-buy on price matches the deflated Sharpe, the hashrate feature is redundant and this dies. DISCONFIRMER 2: hashrate contractions cluster in violent down-legs (halving-cycle survivorship) -> KILL if the post-2023 slice collapses or if this catches falling knives beyond the DD cap. Must clear DSR>=0.95, maxDD<=25%, net of fees.",
+  "catalyst": "miner hashrate contraction confirmed by a deep RSI washout",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 40 },
+  "entry": [
+    { "feature": { "name": "btc_hashrate" }, "op": "lt", "threshold": { "param": "hashrate_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "cross_up", "threshold": { "param": "mom_relief" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "hashrate_floor": { "kind": "float", "lo": 0.4, "hi": 0.8 },
+    "rsi_lb":         { "kind": "int",   "lo": 10, "hi": 30, "step": 1 },
+    "rsi_floor":      { "kind": "float", "lo": 20, "hi": 38 },
+    "mom_lb":         { "kind": "int",   "lo": 14, "hi": 45, "step": 1 },
+    "mom_relief":     { "kind": "float", "lo": 0.0, "hi": 0.06 },
+    "stop":           { "kind": "float", "lo": 0.08, "hi": 0.22 },
+    "tp":             { "kind": "float", "lo": 0.12, "hi": 0.45 },
+    "time_stop":      { "kind": "int",   "lo": 18, "hi": 40, "step": 1 }
+  },
+  "direction": 1
+}

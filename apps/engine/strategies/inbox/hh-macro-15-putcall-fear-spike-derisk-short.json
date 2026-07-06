@@ -1,0 +1,30 @@
+{
+  "name": "Options put/call fear-spike de-risk — short crypto beta when equity options positioning screams risk-off",
+  "rationale": "MECHANISM: a DISTINCT risk-off tell from index price or VIX — the equity put/call ratio reads real hedging DEMAND. A spiking putcall_ratio means allocators are aggressively buying downside protection, which historically precedes and accompanies the portfolio-level de-risking that cuts crypto (the highest-beta sleeve) hardest. Pairing the put/call fear spike with crypto momentum already rolling over (negative ret_Nd) times the de-risk to when the cross-asset unwind is underway, not merely feared. Counterparty = the levered-long crypto crowd slow to hedge. DISCONFIRMER: putcall_ratio is an equity-options read whose crypto linkage is indirect and regime-dependent; extreme put/call can also mark a CONTRARIAN bottom (peak hedging = capitulation), which would make a fresh short the exact wrong side. Kill if entries cluster at equity local BOTTOMS (contrarian trap) rather than the start of the slide, or if the avoided drawdown net of extra round-trips and short funding does not beat holding. Short pays funding — net-of-carry edge must clear it.",
+  "catalyst": "equity put/call fear spike with crypto momentum rolling over",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "putcall_ratio" }, "op": "gt", "threshold": { "param": "pc_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "lt", "threshold": { "param": "mom_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "putcall_ratio" }, "op": "lt", "threshold": { "param": "pc_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "pc_floor":       { "kind": "float", "lo": 0.9,  "hi": 1.4 },
+    "pc_relief_exit": { "kind": "float", "lo": 0.7,  "hi": 1.0 },
+    "mom_lb":         { "kind": "int",   "lo": 7,    "hi": 30,   "step": 1 },
+    "mom_ceiling":    { "kind": "float", "lo": -0.05, "hi": 0.0 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.05, "hi": 0.22 },
+    "time_stop":      { "kind": "int",   "lo": 2,    "hi": 10,   "step": 1 }
+  },
+  "direction": -1
+}

@@ -1,0 +1,38 @@
+{
+  "name": "hh-meanrev-micro: chop-gated band fade, low-vol regime (15m)",
+  "rationale": "MECHANISM: mean reversion only pays in RANGING regimes; trend days run fades over as price keeps leaving the mean. This spec makes the REGIME the primary gate, not the trigger: fade a bb_z extreme ONLY when vol_realized sits below a fitted ceiling (compressed, mechanical oscillation), explicitly refusing to trade when realized vol is elevated (breakout/trend risk). The economic other side is the inventory-managing maker who profits fading noise around a stable mid only when there is no directional flow imbalance — grid/MM bots keep re-quoting a range until flow forces a break, so within-range reversion is a repeatable micro-oscillation they manufacture. Entry: bb_z below a fitted floor AND vol_realized below a fitted low-vol ceiling. Long-only spot; exit on bb_z reversion toward zero. DISCONFIRMER: split the sample by realized-vol quartile — if the low-vol quartile does NOT show a materially higher net Sharpe than the high-vol quartile, the regime gate adds nothing and is a fitted threshold. If performance flips sign out-of-sample when the vol cutoff is nudged 10-20%, the gate is an artifact — kill. A real regime effect is monotone in the vol rank, not a knife-edge at one value.",
+  "catalyst": "band extreme faded only inside a low-realized-vol ranging regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "bb_z"}, "op": "lt", "threshold": {"param": "bbz_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "bb_z"}, "op": "gt", "threshold": {"param": "bbz_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "bbz_floor": {"kind": "float", "lo": -3.0, "hi": -1.8},
+    "vol_ceiling": {"kind": "float", "lo": 0.3, "hi": 1.0},
+    "bbz_exit": {"kind": "float", "lo": -0.5, "hi": 0.5},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 0.5}
+  },
+  "direction": 1
+}

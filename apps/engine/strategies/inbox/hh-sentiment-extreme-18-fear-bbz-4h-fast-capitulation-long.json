@@ -1,0 +1,30 @@
+{
+  "name": "Fear-extreme + bb_z washout on 4h bars (intraday capitulation snap, long)",
+  "rationale": "MECHANISM: the capitulation-confluence thesis (forced retail seller vs patient accumulator) taken to the 4h timeframe to catch the FASTER intraday flush-and-snap. On 4h, an extreme-fear reading coinciding with a deep bb_z washout marks a same-session panic where the discount reverts within hours rather than days; fractional holds let us harvest the quick snapback and get out before a second leg. Distinct from the 1d capitulation spec by clock: it tests whether the sentiment discount reverts intraday and whether the edge survives the higher 4h fee cadence. Long; exit on fear relief or time. DISCONFIRMER: 4h round-trips pay fees far more often — if per-trade net edge < 2x fee+slippage the faster clock is worse; kill and prefer 1d. If the confluence subset does not beat fear-alone on 4h, the TA gate adds nothing (buy-the-dip beta) — kill.",
+  "catalyst": "extreme fear into a 4h bb_z washout (intraday flush)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.08, "max_hold_days": 2.0 },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_floor":       { "kind": "float", "lo": 10.0, "hi": 30.0 },
+    "fear_relief_exit": { "kind": "float", "lo": 40.0, "hi": 60.0 },
+    "bb_lb":            { "kind": "int",   "lo": 14,   "hi": 40, "step": 1 },
+    "bb_floor":         { "kind": "float", "lo": -3.0, "hi": -1.5 },
+    "stop":             { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":               { "kind": "float", "lo": 0.03, "hi": 0.14 },
+    "time_stop":        { "kind": "float", "lo": 0.25, "hi": 2.0 }
+  },
+  "direction": 1
+}

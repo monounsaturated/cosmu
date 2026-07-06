@@ -1,0 +1,30 @@
+{
+  "name": "Net-liquidity impulse regime — faster 4h re-entry into a positive-liquidity uptrend",
+  "rationale": "MECHANISM: same net-liquidity-impulse thesis as the daily variant (the CHANGE in WALCL-TGA leads crypto beta; giants trade the plumbing on a slow institutional clock while crypto front-runs it), but expressed on a 4h bar so the crypto momentum confirmation reads the tape faster and re-enters intraweek when the slow weekly liquidity gate is open. The weekly net_liquidity_usd value simply persists across the intraday bars (a regime gate), while range_position captures a fresher reclaim than a daily return. DISCONFIRMER: net_liquidity_usd is weekly with available_at = ts+8 days — a 4h bar CANNOT add liquidity timing that a daily bar lacks; the extra intraday churn only adds fees. Kill if the 4h version's OOS net-of-fee Sharpe does not beat the daily variant (hh-macro-01) — the higher turnover must earn its cost or the frequency is decoration on a weekly signal.",
+  "catalyst": "open net-liquidity regime with a fresh intraday crypto reclaim",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "net_liquidity_usd", "lookback": { "param": "liq_roc_lb" } }, "op": "gt", "threshold": { "param": "liq_roc_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "gt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "net_liquidity_usd", "lookback": { "param": "liq_roc_lb" } }, "op": "lt", "threshold": { "param": "liq_roll_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "liq_roc_lb":    { "kind": "int",   "lo": 20,   "hi": 40,   "step": 1 },
+    "liq_roc_floor": { "kind": "float", "lo": 0.0,  "hi": 0.03 },
+    "liq_roll_exit": { "kind": "float", "lo": -0.02, "hi": 0.0 },
+    "rp_lb":         { "kind": "int",   "lo": 20,   "hi": 60,   "step": 1 },
+    "rp_floor":      { "kind": "float", "lo": 0.45, "hi": 0.7 },
+    "stop":          { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":            { "kind": "float", "lo": 0.08, "hi": 0.3 },
+    "time_stop":     { "kind": "int",   "lo": 3,    "hi": 12,   "step": 1 }
+  }
+}

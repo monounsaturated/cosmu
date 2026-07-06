@@ -1,0 +1,29 @@
+{
+  "name": "Attention-share rotation — social_dominance rising captures the crowd's pivot (4h)",
+  "rationale": "MECHANISM: a distinct axis from raw accel — social_dominance is this asset's SHARE of total crypto chatter. When an asset's dominance rises (cross_up a fitted floor) the crowd is PIVOTING toward it relative to the rest of the market, a rotation signal that leads price on small/mid floats as attention (and then flow) concentrates. Requiring the asset's own attention to also be accelerating confirms the share gain is from real new eyeballs, not others going quiet. Counterparty is dashboard-lagged retail who see the rotation a day later. DISCONFIRMER: dominance can rise mechanically when the aggregate falls; the social_volume_accel confirm must ensure absolute (not just relative) attention growth — if dominance-alone reproduces the return it may be a denominator artifact, KILL. Shuffle the attention series; the effect must collapse. Must clear 4h round-trip fees.",
+  "catalyst": "the crowd's attention share pivoting toward this asset",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 3 },
+  "entry": [
+    { "feature": { "name": "social_dominance" }, "op": "cross_up", "threshold": { "param": "dom_floor" } },
+    { "feature": { "name": "social_volume_accel" }, "op": "gt", "threshold": { "param": "accel_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "social_dominance" }, "op": "lt", "threshold": { "param": "dom_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "dom_floor":   { "kind": "float", "lo": 0.5,  "hi": 5.0 },
+    "dom_exit":    { "kind": "float", "lo": 0.2,  "hi": 3.0 },
+    "accel_floor": { "kind": "float", "lo": 0.2,  "hi": 1.2 },
+    "stop":        { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":          { "kind": "float", "lo": 0.05, "hi": 0.20 },
+    "time_stop":   { "kind": "int",   "lo": 1,    "hi": 3, "step": 1 }
+  },
+  "direction": 1
+}

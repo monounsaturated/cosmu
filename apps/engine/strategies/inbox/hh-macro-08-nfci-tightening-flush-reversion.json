@@ -1,0 +1,29 @@
+{
+  "name": "NFCI financial-conditions shock reversion — buy crypto capitulation when broad conditions snap tight",
+  "rationale": "MECHANISM: nfci (Chicago Fed National Financial Conditions Index) is a BROAD composite of risk, credit and leverage sub-indices — a single read of system-wide financial stress that is more comprehensive than VIX or credit_spread alone. A sharp jump in NFCI marks a genuine tightening shock in which levered players across the whole system deleverage and crypto, the liquid risk sleeve, is flushed and overshoots. Fade that flush when NFCI spikes AND crypto is stretched down (bb_z deeply negative). This is a cleaner regime read of 'the whole system is forced to sell' than any single-market gate. DISCONFIRMER: NFCI is weekly and revision-prone — the tightening may already be priced by the PIT bar. Kill if it adds no OOS lift over the VIX-gated (hh-macro-05) or credit-gated (hh-macro-07) reversion — if all three stress reads collapse into one trade, keep the best-performing single gauge. Also kill if a bare bb_z washout dip-buy matches it without the NFCI gate.",
+  "catalyst": "broad financial-conditions tightening shock into a washed-out crypto tape",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "nfci" }, "op": "gt", "threshold": { "param": "nfci_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "bb_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "nfci_floor": { "kind": "float", "lo": -0.2, "hi": 0.6 },
+    "bb_lb":      { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "bb_floor":   { "kind": "float", "lo": -3.0, "hi": -1.5 },
+    "bb_exit":    { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "stop":       { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":         { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop":  { "kind": "int",   "lo": 3,    "hi": 14,   "step": 1 }
+  }
+}

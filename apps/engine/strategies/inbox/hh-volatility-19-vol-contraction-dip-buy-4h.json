@@ -1,0 +1,43 @@
+{
+  "name": "Vol-contraction dip-buy — realized calming into a washout (4h)",
+  "rationale": "ECONOMIC MECHANISM: the realized-vol-only calm-reversion — buy a washed-out dip ONLY once realized volatility has already CONTRACTED, so we are catching a knife that has stopped falling rather than mid-panic. Volatility clusters and mean-reverts (GARCH); a high-vol flush that then calms (vol_realized dropping below a fitted ceiling) marks the point where the forced-seller flow has exhausted and the tape can drift back up. This is distinct from a plain oversold dip-buy because the vol-CONTRACTION gate is the timing edge: it keeps us OUT of the still-accelerating leg of a sell-off (the knife) and only fires once realized has cooled. Entry (long): vol_realized below a fitted ceiling (realized has calmed) AND rsi in washout (price is oversold) AND range_position near the bottom of its band (at the low, genuine washout not mid-range). The counterparty is the panic seller who dumped into the flush; we buy once their flow is spent. Realized features only (no DVOL) -> dodges the 148-point data wall. Exit: rsi crosses up out of oversold (the bounce has paid) or stop/TP/time. DISCONFIRMER 1: if the plain RSI washout dip-buy (drop the vol_realized-contraction gate) matches the deflated Sharpe, the vol-contraction timing adds nothing and this is generic oversold. DISCONFIRMER 2: if range_position and rsi co-fire >80% of the time they are one over-extension gauge -> drop one. DISCONFIRMER 3: net of ~20bps round-trip at 4h the bounces must clear per-trade.",
+  "catalyst": "a washed-out dip AFTER realized vol has already contracted — the knife has stopped",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 4
+  },
+  "entry": [
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } },
+    { "feature": { "name": "range_position", "lookback": { "param": "rp_lb" } }, "op": "lt", "threshold": { "param": "rp_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rv_lb":      { "kind": "int",   "lo": 14,   "hi": 45,  "step": 1 },
+    "rv_ceiling": { "kind": "float", "lo": 0.30, "hi": 0.60 },
+    "rsi_lb":     { "kind": "int",   "lo": 8,    "hi": 20,  "step": 1 },
+    "rsi_floor":  { "kind": "float", "lo": 22.0, "hi": 36.0 },
+    "rp_lb":      { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "rp_floor":   { "kind": "float", "lo": 0.05, "hi": 0.25 },
+    "rsi_exit":   { "kind": "float", "lo": 48.0, "hi": 62.0 },
+    "stop":       { "kind": "float", "lo": 0.03, "hi": 0.12 },
+    "tp":         { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop":  { "kind": "int",   "lo": 1,    "hi": 4,   "step": 1 }
+  },
+  "direction": 1
+}

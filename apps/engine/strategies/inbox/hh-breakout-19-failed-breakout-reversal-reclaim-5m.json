@@ -1,0 +1,40 @@
+{
+  "name": "HH breakout 19 — failed-breakout reversal, fast reclaim (5m)",
+  "rationale": "MECHANISM: the same trap — a failed downside break that reclaims the range signals trapped shorts who must cover — but on a FAST 5m clock, which is a genuinely different microstructure regime: the trap is detected and traded within minutes, catching the immediate cover cascade before it decays. Detect range_position crossing UP through a fitted reclaim level (cross_up) while adx is low and vol_realized is not elevated (a range, not a real freefall we are catching a knife in). Go LONG the reclaim. The 5m clock and the vol_realized guard (vs bb_width in variant 17) make this a distinct, higher-frequency cell that is much more fee- and fill-sensitive. DISCONFIRMER: KILL if the reclaim sequence has no edge over simply being at the low (the trap adds nothing), OR — most likely at 5m — if realistic fills/slippage on a 5m bar erase the reversal profit (net-of-fees profit factor <1.2 on holdout), OR if it only survives on illiquid alts where the 5m fills are fictional (spread wider than the reversal), OR if the vol_realized guard is decorative.",
+  "catalyst": "fast reclaim of the range after a failed downside break",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0,
+    "max_hold_days": 0.25
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "cross_up", "threshold": {"param": "rp_reclaim"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vr_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_reclaim": {"kind": "float", "lo": 0.1, "hi": 0.3},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "vr_ceiling": {"kind": "float", "lo": 0.01, "hi": 0.04},
+    "rp_exit": {"kind": "float", "lo": 0.55, "hi": 0.8},
+    "stop": {"kind": "float", "lo": 0.005, "hi": 0.025},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.04, "hi": 0.5}
+  }
+}

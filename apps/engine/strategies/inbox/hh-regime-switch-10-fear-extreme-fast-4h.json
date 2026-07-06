@@ -1,0 +1,42 @@
+{
+  "name": "HH regime-switch 10 — Fear-extreme capitulation, fast bounce with ATR stop (4h)",
+  "rationale": "MECHANISM (distinct from 08/09: it runs on a 4h clock with a fractional sub-day hold to trade the immediate capitulation BOUNCE rather than a multi-day reversion, and sizes the stop off ATR so the wide bars of a panic don't whipsaw it out): the deepest part of a Fear & Greed<20 capitulation is a fast, violent flush followed by a sharp reflex bounce within hours as forced liquidations exhaust. Trading it on 4h with a short max hold explicitly targets that reflex and gets flat before the multi-day drift risk (the 52% LUNA path) can accumulate — directly answering the disconfirmer that the published edge's drawdown is inseparable from its long hold. rsi oversold on the 4h confirms the flush. ATR stop holds through the panic's own volatility. Exit: rsi recovers (bounce played out) or fear_greed relieves, or stop/TP/time. DISCONFIRMER: if the fast 4h bounce cannot produce positive net-of-fee returns (fees are heavier at this frequency) while keeping maxDD<=25%, the capitulation edge only exists at the long, high-DD hold — kill it. Kill if the bounce edge is confined to 2020-2021 flushes.",
+  "catalyst": "Fear extreme capitulation flush — the fast intraday reflex bounce",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3
+  },
+  "entry": [
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_extreme_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "atr_mult": { "param": "atr_mult" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_exit" } },
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "fear_extreme_floor": { "kind": "float", "lo": 10, "hi": 25 },
+    "fear_relief_exit": { "kind": "float", "lo": 30, "hi": 50 },
+    "rsi_lb": { "kind": "int", "lo": 5, "hi": 18, "step": 1 },
+    "rsi_floor": { "kind": "float", "lo": 15, "hi": 32 },
+    "rsi_exit": { "kind": "float", "lo": 45, "hi": 62 },
+    "atr_mult": { "kind": "float", "lo": 1.5, "hi": 3.5 },
+    "stop": { "kind": "float", "lo": 0.04, "hi": 0.12 },
+    "tp": { "kind": "float", "lo": 0.04, "hi": 0.16 },
+    "time_stop": { "kind": "int", "lo": 1, "hi": 3, "step": 1 }
+  }
+}

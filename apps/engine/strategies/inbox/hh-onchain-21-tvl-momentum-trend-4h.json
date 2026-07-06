@@ -1,0 +1,32 @@
+{
+  "name": "DeFi TVL momentum trend-follow (ETH, 4h clock, faster deposit-flow capture)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the daily de-beta'd TVL variants: this trades TVL-momentum on a 4h clock as a trend-follow, capturing the faster leg of deposit inflows and letting the same de-beta caveat apply on a shorter hold — new capital locking into protocols pushing ETH within the day-to-few-days window rather than over weeks): defi_tvl rising confirmed by ADX (a real trend, not chop) is deposit-driven demand; on a 4h bar the deployment-to-price leg is captured earlier. The honest edge remains the deposit inflow beyond price, so entry pairs rising TVL with a confirmed trend and non-stretched short-horizon momentum. Exit on trend death (ADX collapse) or stop/TP/time. DISCONFIRMER 1: raw TVL is partly ETH-denominated -> on a 4h clock the beta contamination is even tighter; KILL if the signal is just fast ETH price with a lag (no residual power). DISCONFIRMER 2: heavier fee drag at 4h -> require net-of-fee DSR>=0.95. DISCONFIRMER 3: if the daily TVL-residual variant captures all of it, the fast clock adds nothing. Net of fees.",
+  "catalyst": "TVL deposit-inflow trend on a fast clock",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 4 },
+  "entry": [
+    { "feature": { "name": "defi_tvl" }, "op": "gt", "threshold": { "param": "tvl_growth" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gte", "threshold": { "param": "mom_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "adx" }, "op": "lt", "threshold": { "param": "adx_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tvl_growth": { "kind": "float", "lo": 0.4, "hi": 1.8 },
+    "adx_floor":  { "kind": "float", "lo": 18, "hi": 32 },
+    "adx_exit":   { "kind": "float", "lo": 12, "hi": 20 },
+    "mom_lb":     { "kind": "int",   "lo": 4, "hi": 20, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": -0.02, "hi": 0.02 },
+    "stop":       { "kind": "float", "lo": 0.04, "hi": 0.12 },
+    "tp":         { "kind": "float", "lo": 0.05, "hi": 0.2 },
+    "time_stop":  { "kind": "int",   "lo": 1, "hi": 4, "step": 1 }
+  },
+  "direction": 1
+}

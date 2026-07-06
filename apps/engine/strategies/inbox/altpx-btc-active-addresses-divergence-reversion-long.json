@@ -1,0 +1,100 @@
+{
+  "name": "BTC active addresses healthy + price oversold \u2014 bullish on-chain/price divergence (spot long)",
+  "rationale": "MECHANISM (why the divergence leads a bounce): when PRICE sells off (RSI oversold) but on-chain usage (active addresses) stays HEALTHY, the drop is driven by leverage/sentiment, not a collapse in real demand \u2014 a classic bullish divergence between fundamentals and price. On-chain activity, being sticky and demand-driven, holds up through speculative flushes and 'anchors' the recovery, so the healthy-activity read leads the mean-reversion. Distinct from the momentum spec on the same feature: there activity CONFIRMS an uptrend; here it DIVERGES from a downtrend. Exit on RSI reverting up. DISCONFIRMER 1: if RSI-oversold alone matches the deflated Sharpe, the on-chain arm adds nothing. DISCONFIRMER 2: if activity also rolls over with price (no divergence, just a broad risk-off) the setup should NOT fire \u2014 if the fit relaxes the address floor to always-true, there is no divergence being captured. Data knowable T+1. tier1, low-confidence until OOS.",
+  "catalyst": "btc_active_addresses stays elevated (fundamentals intact) while RSI is oversold \u2014 price weak, network strong.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 1,
+    "max_hold_days": 4
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_active_addresses"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "addr_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "addr_floor": {
+      "kind": "float",
+      "lo": 600000,
+      "hi": 1050000
+    },
+    "rsi_floor": {
+      "kind": "float",
+      "lo": 15,
+      "hi": 33
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 52,
+      "hi": 72
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.2
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 1,
+      "hi": 4,
+      "step": 1
+    }
+  }
+}

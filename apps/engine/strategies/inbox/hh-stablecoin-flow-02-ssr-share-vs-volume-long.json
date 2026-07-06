@@ -1,0 +1,31 @@
+{
+  "name": "SSR share-vs-volume mean-reversion long (stablecoin base large vs thin activity)",
+  "rationale": "MECHANISM: a large stablecoin_mcap sitting against LOW total crypto volume (cg_total_volume) is the classic high-SSR 'coiled spring' — lots of dry powder, little activity to absorb it. When price is simultaneously washed out (bb_z low), that sidelined capital is the reservoir for the mean-reversion bounce. This variant reads the sidelined-vs-active gauge directly (stablecoin base big AND turnover thin) rather than timing a rollover. Other side = defensive holders who parked stables and stopped trading. DISCONFIRMER: if a long fired on the bb_z washout ALONE (no stablecoin/volume context) matches this net of fees, the SSR context is decorative and it is a generic oversold dip-buy. Split-sample kill: if the edge exists only pre-2024 and vanishes in 2025-2026 (mcap<->crypto corr ~0.4), it is a regime artifact.",
+  "catalyst": "large stablecoin base against thin turnover into a price washout",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 3, "max_hold_days": 25 },
+  "entry": [
+    { "feature": { "name": "cg_total_volume", "lookback": { "param": "vol_lb" } }, "op": "lt", "threshold": { "param": "vol_ceiling" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "bb_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vol_lb":         { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "vol_ceiling":    { "kind": "float", "lo": -1.0,  "hi": 0.0 },
+    "bb_lb":          { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bb_floor":       { "kind": "float", "lo": -3.0,  "hi": -1.3 },
+    "bb_relief_exit": { "kind": "float", "lo": -0.5,  "hi": 0.5 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.18 },
+    "tp":             { "kind": "float", "lo": 0.08, "hi": 0.35 },
+    "time_stop":      { "kind": "int",   "lo": 5,    "hi": 25,  "step": 1 }
+  },
+  "direction": 1
+}

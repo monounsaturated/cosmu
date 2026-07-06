@@ -1,0 +1,30 @@
+{
+  "name": "NDX breakdown + VIX-spike confirmation short — 4h crypto de-risk on equity-led risk-off with a fear tell",
+  "rationale": "MECHANISM: same asymmetric downside-correlation thesis (crypto is the highest-beta sleeve cut first in an equity-led VaR risk-off), but requires a SECOND confirming stress tell — a VIX spike — before shorting, and runs on a 4h bar so the de-risk fires faster once the daily-available macro reads flip. Requiring BOTH ndx_index rolling over AND vix_level elevated filters the whipsaw regimes where NDX wobbles but there is no genuine cross-asset fear. Distinct from hh-macro-13 by the VIX confirmation (fewer, higher-conviction signals) and the faster bar. DISCONFIRMER: correlation is regime-unstable and both ndx and vix are daily FRED-style reads that a 4h bar cannot refresh intraday — the 4h frequency may just churn on stale macro. Kill if the two-tell version's avoided-drawdown net of extra round-trips and short funding does not beat the single-tell daily variant, or if it whipsaws when crypto decouples up (Oct-2025-style). Short pays funding — net-of-carry edge must clear it.",
+  "catalyst": "equity breakdown with a confirming VIX fear spike",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 8 },
+  "entry": [
+    { "feature": { "name": "ndx_index", "lookback": { "param": "ndx_roc_lb" } }, "op": "lt", "threshold": { "param": "ndx_roc_ceiling" } },
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "vix_level" }, "op": "lt", "threshold": { "param": "vix_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "ndx_roc_lb":      { "kind": "int",   "lo": 5,    "hi": 25,   "step": 1 },
+    "ndx_roc_ceiling": { "kind": "float", "lo": -0.04, "hi": -0.01 },
+    "vix_floor":       { "kind": "float", "lo": 20,   "hi": 34 },
+    "vix_relief_exit": { "kind": "float", "lo": 16,   "hi": 24 },
+    "stop":            { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":              { "kind": "float", "lo": 0.05, "hi": 0.2 },
+    "time_stop":       { "kind": "int",   "lo": 2,    "hi": 8,    "step": 1 }
+  },
+  "direction": -1
+}

@@ -1,0 +1,30 @@
+{
+  "name": "Price-up / tx-count-down divergence -> exhaustion fade short (BTC, transaction throughput)",
+  "rationale": "ECONOMIC MECHANISM (distinct from the active-addresses variant: it reads THROUGHPUT — btc_tx_count — rather than unique participants; tx-count divergence catches settlement-demand exhaustion which can diverge from address counts, e.g. when a few whales transact but broad on-chain settlement dries up): a price pushing highs while btc_tx_count falls means the up-move is not backed by rising on-chain settlement demand — thin, derivative-led price. The fade harvests reversion when the chasing flow exhausts. Entry: RSI overbought AND tx_count low. Fade short; exit on RSI cooling or stop/TP/time. DISCONFIRMER 1 (confound): tx_count also leaks to L2/batching -> if the decline is secular the signal is always-on; KILL if it is a one-way trend. DISCONFIRMER 2: if the active-addresses variant (10) and this give the same trades they are one spec — throughput must add distinct information over participant count. DISCONFIRMER 3: shorting into a trend can blow the DD cap; KILL if no forward predictive coefficient after BH-FDR. Very high death probability — a test. Net of fees, DSR>=0.95.",
+  "catalyst": "new price highs unconfirmed by on-chain transaction throughput",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 12 },
+  "entry": [
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_hot" } },
+    { "feature": { "name": "btc_tx_count" }, "op": "lt", "threshold": { "param": "tx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_cool" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rsi_lb":    { "kind": "int",   "lo": 10, "hi": 25, "step": 1 },
+    "rsi_hot":   { "kind": "float", "lo": 62, "hi": 80 },
+    "tx_floor":  { "kind": "float", "lo": 0.2, "hi": 0.5 },
+    "rsi_cool":  { "kind": "float", "lo": 45, "hi": 58 },
+    "stop":      { "kind": "float", "lo": 0.05, "hi": 0.15 },
+    "tp":        { "kind": "float", "lo": 0.06, "hi": 0.2 },
+    "time_stop": { "kind": "int",   "lo": 3, "hi": 12, "step": 1 }
+  },
+  "direction": -1
+}

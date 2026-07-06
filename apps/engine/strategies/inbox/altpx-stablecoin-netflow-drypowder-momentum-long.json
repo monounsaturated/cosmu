@@ -1,0 +1,109 @@
+{
+  "name": "Stablecoin net inflow (dry powder) + momentum \u2014 fresh fiat fueling the move (spot long)",
+  "rationale": "MECHANISM (why stablecoin flow leads price): net daily stablecoin minting is fresh fiat ENTERING crypto \u2014 dry powder waiting to buy. When the float is expanding (positive net flow) AND price is already rising, the rally has real capital behind it, not just rotation. The FLOW leads the price because minting/redemption is the on-ramp: dollars are created first, then deployed into assets. A rally on FLAT or negative stablecoin flow is internal rotation that exhausts. We require stablecoin_net_flow_usd above a fitted positive floor AND positive ret_Nd, and exit when net flow turns negative (redemptions = fuel draining). DISCONFIRMER 1: if plain momentum without the flow gate matches the deflated Sharpe, the flow adds nothing. DISCONFIRMER 2: aggregate mint flow is market-wide, so it cannot time an individual alt \u2014 if it only works on BTC-beta and adds nothing cross-sectionally, it is a market-timing overlay, not an edge. Data knowable T+1. tier1, low-confidence OOS.",
+  "catalyst": "stablecoin_net_flow_usd is positive (fresh fiat minting into crypto) while price momentum is positive.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 9
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "stablecoin_net_flow_usd"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "flow_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "stablecoin_net_flow_usd"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "flow_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "flow_floor": {
+      "kind": "float",
+      "lo": 100000000,
+      "hi": 2000000000
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "flow_exit": {
+      "kind": "float",
+      "lo": -500000000,
+      "hi": 300000000
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "Intraday calm-window drift — compressed-band session (30m)",
+  "rationale": "ECONOMIC MECHANISM (the intraday calm-window drift at 30m, reading calm through band compression bb_width instead of ATR — a distinct low-vol gauge, and a wider bar to cut fee drag): crypto realized vol has a persistent, partly deterministic intraday shape (session overlaps + funding-settlement clock); GARCH 2025 explains <=15% of variance but the calm windows are exploitable. We drift-long in the calm session windows where fee drag is survivable and avoid the high-vol windows. Entry (long): bb_width below a fitted ceiling (bands compressed -> calm window) AND vol_realized below a fitted ceiling (realized confirms calm) AND ret_Nd modestly negative (buying a small dip inside the calm, not chasing). The edge survives because most systematic flow ignores intraday seasonality — it's un-glamorous and small per trade. Realized features only (no DVOL) -> dodges the 148-point data wall. Exit: bb_width crosses up (compression releasing -> a high-vol window opening) or stop/TP/time. DISCONFIRMER 1: if removing the session/hour conditioning (a plain compressed-band calm reversion) matches the deflated Sharpe, the intraday-clock claim is unsupported and this is a generic squeeze-reversion. DISCONFIRMER 2: <=15% predictable variance -> if per-trade net edge doesn't clear ~20bps at 30m it's fee-eaten. DISCONFIRMER 3: if excluding CPI/FOMC dates kills it, it's event-risk masquerading as seasonality. DISCONFIRMER 4: if bb_width-ceiling and vol_realized-ceiling co-fire >80% they are one gauge -> drop one.",
+  "catalyst": "a compressed-band calm session window where small-dip drift is cleanest",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "30m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "lt", "threshold": { "param": "bbw_ceiling" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "rv_lb" } }, "op": "lt", "threshold": { "param": "rv_ceiling" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "ret_lb" } }, "op": "lt", "threshold": { "param": "ret_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_width", "lookback": { "param": "bbw_lb" } }, "op": "cross_up", "threshold": { "param": "bbw_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bbw_lb":      { "kind": "int",   "lo": 16,   "hi": 48,  "step": 1 },
+    "bbw_ceiling": { "kind": "float", "lo": 0.02, "hi": 0.07 },
+    "rv_lb":       { "kind": "int",   "lo": 12,   "hi": 48,  "step": 1 },
+    "rv_ceiling":  { "kind": "float", "lo": 0.25, "hi": 0.55 },
+    "ret_lb":      { "kind": "int",   "lo": 2,    "hi": 8,   "step": 1 },
+    "ret_ceiling": { "kind": "float", "lo": -0.03, "hi": -0.003 },
+    "bbw_exit":    { "kind": "float", "lo": 0.07, "hi": 0.16 },
+    "stop":        { "kind": "float", "lo": 0.01, "hi": 0.05 },
+    "tp":          { "kind": "float", "lo": 0.015, "hi": 0.08 },
+    "time_stop":   { "kind": "int",   "lo": 1,    "hi": 1,   "step": 1 }
+  },
+  "direction": 1
+}

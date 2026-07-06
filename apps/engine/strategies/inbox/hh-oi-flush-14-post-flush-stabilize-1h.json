@@ -1,0 +1,128 @@
+{
+  "name": "Post-flush stabilization entry (1h long the confirmed base)",
+  "rationale": "MECHANISM (H4 on 1h \u2014 a fuller basing confirmation): a slower bar demands the base hold for a full hour before entry, filtering the fake-out bounces that fail on 15m at the cost of a later fill. OI has collapsed and price is basing (range_position lifting, rsi curling up from oversold). Counterparty: late dip-sellers after the forced flow is exhausted. Entry: open_interest below a floor (flush occurred) AND range_position cross_up through a low floor (off the lows) AND rsi cross_up through an oversold-exit level AND vol_realized below a ceiling (post-flush compression). DISCONFIRMER: ablate against H1 on the same sample \u2014 no tail/maxDD or net-Sharpe improvement means the confirmation is only lag; range_position cross_up alone matching means generic bottom-fishing. On 1h the entries are fewer but larger \u2014 must still beat buy-and-hold net of ~20bps.",
+  "catalyst": "1h confirmed base after an OI flush: price off lows, RSI curling, vol compressing",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "oi_post_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "range_position"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rangepos_low_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "cross_up",
+      "threshold": {
+        "param": "rsi_exit_level"
+      }
+    },
+    {
+      "feature": {
+        "name": "vol_realized"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "vol_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_take_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_post_flush_floor": {
+      "kind": "float",
+      "lo": -3.5,
+      "hi": -0.8
+    },
+    "rangepos_low_floor": {
+      "kind": "float",
+      "lo": 0.1,
+      "hi": 0.38
+    },
+    "rsi_exit_level": {
+      "kind": "float",
+      "lo": 30,
+      "hi": 44
+    },
+    "vol_ceiling": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 2.0
+    },
+    "rsi_take_exit": {
+      "kind": "float",
+      "lo": 56,
+      "hi": 72
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.1
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.16
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 3.0
+    }
+  },
+  "direction": 1
+}

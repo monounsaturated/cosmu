@@ -1,0 +1,109 @@
+{
+  "name": "Perp-spot basis discount + positive momentum \u2014 spot-led demand continuation (spot long)",
+  "rationale": "MECHANISM (why basis leads price): the perp-spot basis is the market's revealed price of leverage. When the basis goes NEGATIVE (perp trades at a discount to spot), the marginal buyer is in SPOT, not levered perps \u2014 a healthier, less reflexive bid that does not evaporate on a funding flip. Distinct from the basis-discount CONTRARIAN (which fades an oversold short-crowding extreme), this spec is CONTINUATION: it requires the discount AND positive ret_Nd, i.e. spot demand that is already lifting price. The basis is a high-frequency spot-perp spread so it flags the spot-led regime earlier than a realized-funding print. Exit when the basis flips back to premium (leverage chasing returns = froth). DISCONFIRMER 1: if a plain positive-momentum long matches the deflated Sharpe, the basis discount adds nothing. DISCONFIRMER 2: basis and funding are tightly coupled \u2014 if a funding-floor filter alone does as well, this is the funding spec re-skinned. Must clear ~20bps round-trip net.",
+  "catalyst": "perp_spot_basis is in DISCOUNT (perp cheap to spot = spot buyers leading) while price momentum is already turning up.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "perp_spot_basis"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "basis_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "mom_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "mom_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "perp_spot_basis"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "basis_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "basis_floor": {
+      "kind": "float",
+      "lo": -0.02,
+      "hi": -0.001
+    },
+    "mom_lb": {
+      "kind": "int",
+      "lo": 6,
+      "hi": 40,
+      "step": 1
+    },
+    "mom_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 0.05
+    },
+    "basis_exit": {
+      "kind": "float",
+      "lo": -0.005,
+      "hi": 0.006
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

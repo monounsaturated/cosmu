@@ -1,0 +1,41 @@
+{
+  "name": "RSI-pullback re-entry in an uptrend — 1h swing cadence",
+  "rationale": "MECHANISM: same buy-the-dip continuation as the 15m variant (in a confirmed uptrend, a shallow RSI pullback is a liquidity event where trend-followers add and shorts cover, so price resumes up; reversal-faders are the counterparty) but on a 1h bar for a swing cadence with a longer hold — fewer, deeper pullbacks, lower fee churn, larger continuation legs. Entry: rsi below a fitted dip floor AND positive ret_Nd AND adx above a floor (uptrend confirmed). DISCONFIRMER: kill if removing the uptrend gate (ret_Nd + adx) leaves the edge intact — then it is a reversion trade misfiled here, and crypto reversion is largely arbitraged away. Kill if it also wins symmetrically as an overbought SHORT (rsi = pure reversion, not continuation). Must ONLY work as a dip-buy conditional on the uptrend.",
+  "catalyst": "shallow RSI dip inside a confirmed uptrend, swing cadence",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 4
+  },
+  "entry": [
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_dip" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_floor" } },
+    { "feature": { "name": "adx" }, "op": "gt", "threshold": { "param": "adx_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "cross_up", "threshold": { "param": "rsi_resume" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "rsi_lb":     { "kind": "int",   "lo": 6,  "hi": 24, "step": 1 },
+    "rsi_dip":    { "kind": "float", "lo": 35, "hi": 48 },
+    "rsi_resume": { "kind": "float", "lo": 52, "hi": 65 },
+    "mom_lb":     { "kind": "int",   "lo": 6,  "hi": 30, "step": 1 },
+    "mom_floor":  { "kind": "float", "lo": 0.0, "hi": 0.03 },
+    "adx_floor":  { "kind": "float", "lo": 20, "hi": 34 },
+    "stop":       { "kind": "float", "lo": 0.02, "hi": 0.07 },
+    "tp":         { "kind": "float", "lo": 0.03, "hi": 0.15 },
+    "time_stop":  { "kind": "float", "lo": 1.0, "hi": 4.0 }
+  }
+}

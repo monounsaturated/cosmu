@@ -1,0 +1,37 @@
+{
+  "name": "RSI oversold snapback (5m)",
+  "rationale": "A low 5m RSI in a non-trending regime (ADX below a ceiling) flags short-term overextension that snaps back as the selling impulse exhausts and liquidity providers reload. The other side is the momentum-chasing seller who arrives late to a move that has already spent itself. Edge persists because 5m crypto flow is dominated by reactive retail and stop cascades that overshoot. Distinct from band z-score reversion: RSI measures momentum overextension, not distance from a mean. Disconfirmer: exits when RSI recovers above the exit level, or the stop fires if the drop was the front of a trend the ADX gate failed to catch.",
+  "catalyst": "momentum exhaustion in a non-trending intraday tape",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "rsi"}, "op": "lt", "threshold": {"param": "rsi_floor"}},
+    {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "rsi"}, "op": "gt", "threshold": {"param": "rsi_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rsi_floor": {"kind": "float", "lo": 15, "hi": 32},
+    "rsi_exit": {"kind": "float", "lo": 45, "hi": 60},
+    "adx_ceiling": {"kind": "float", "lo": 15, "hi": 25},
+    "stop": {"kind": "float", "lo": 0.004, "hi": 0.02},
+    "tp": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "time_stop": {"kind": "float", "lo": 0.05, "hi": 0.5}
+  }
+}

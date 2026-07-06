@@ -1,0 +1,138 @@
+{
+  "name": "Crowded-short funding squeeze (1h long, RSI-washout confirmation)",
+  "rationale": "MECHANISM (H3 with an RSI-washout arm replacing the vol ceiling): the cleanest squeeze setups pair a crowded-short funding extreme with a price that is genuinely washed out (RSI oversold), not merely a funding blip in a calm tape \u2014 the oversold read confirms the shorts piled in during an actual down-move that is now exhausting. Counterparty: the crowded short forced to cover; edge is the non-economic cover flow ignited by the first bid. Long spot, funding accrues. Entry: funding_rate cross_down through a negative floor AND ret_Nd above a knife-guard (stopped falling) AND rsi below an oversold floor (washout) AND open_interest above a rising floor (shorts adding). DISCONFIRMER: replace the funding cross with a static funding-LEVEL lt \u2014 if equal, the event is redundant with decayed carry-harvest; and drop the funding arm entirely keeping only rsi-oversold + ret_Nd-stopped \u2014 if that matches, this is generic oversold-bounce and funding adds nothing. Net of ~20bps round-trip.",
+  "catalyst": "funding cross_down into a crowded short + RSI washout + price basing + OI rising",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "funding_neg_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ret_knife_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    },
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "oi_rising_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "funding_rate"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "funding_relief_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "funding_neg_floor": {
+      "kind": "float",
+      "lo": -0.0015,
+      "hi": -0.0003
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    },
+    "ret_knife_floor": {
+      "kind": "float",
+      "lo": -0.03,
+      "hi": 0.0
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 20,
+      "hi": 38
+    },
+    "oi_rising_floor": {
+      "kind": "float",
+      "lo": 0.0,
+      "hi": 1.5
+    },
+    "funding_relief_exit": {
+      "kind": "float",
+      "lo": -0.0002,
+      "hi": 0.0002
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.02,
+      "hi": 0.09
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.14
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.5,
+      "hi": 3.0
+    }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

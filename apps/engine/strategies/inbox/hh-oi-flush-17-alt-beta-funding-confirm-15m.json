@@ -1,0 +1,138 @@
+{
+  "name": "Alt OI-flush beta (15m long, funding-negative confirms leveraged washout)",
+  "rationale": "MECHANISM (H5 with a funding-negative arm replacing realized-vol): in an alt cascade the perps that flush hardest are exactly the ones where leverage was one-sided, and a deeply negative funding at the flush confirms the wiped-out crowd was over-levered (not a calm spot sell-off). Alt leverage over-shoots and the spot float anchors the snap-back. Counterparty: thin-book alt liquidation flow. SPOT long, funding accrues (we pay nothing while funding is negative). Entry: open_interest cross_down through a DEEP negative floor AND rsi below a low oversold floor AND ret_Nd below a negative floor (falling) AND funding_rate below a negative floor (leverage was one-sided). DISCONFIRMER: cross-asset ablation vs BTC-only \u2014 equal performance kills the 'alt idiosyncratic' thesis; per-symbol not pooled \u2014 an outlier-carried edge is an artifact; and drop the funding arm \u2014 no degradation means it added no leverage-confirmation. Must beat BH net of fees with alt-appropriate maxDD.",
+  "catalyst": "deep alt OI flush + oversold + falling + negative funding \u2014 a one-sided leverage washout",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 1.0
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_deep_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_oversold"
+      }
+    },
+    {
+      "feature": {
+        "name": "ret_Nd",
+        "lookback": {
+          "param": "ret_lb"
+        }
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "ret_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_neg_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_deep_flush_floor": {
+      "kind": "float",
+      "lo": -5.0,
+      "hi": -2.5
+    },
+    "rsi_oversold": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 28
+    },
+    "ret_lb": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    },
+    "ret_down_floor": {
+      "kind": "float",
+      "lo": -0.12,
+      "hi": -0.03
+    },
+    "funding_neg_floor": {
+      "kind": "float",
+      "lo": -0.0015,
+      "hi": -0.0002
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 48,
+      "hi": 62
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.12
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.16
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.25,
+      "hi": 1.5
+    }
+  },
+  "direction": 1,
+  "funding_feature": "funding_rate"
+}

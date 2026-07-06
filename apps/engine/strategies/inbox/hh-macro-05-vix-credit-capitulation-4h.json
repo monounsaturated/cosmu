@@ -1,0 +1,31 @@
+{
+  "name": "VIX-spike + credit-spread blowout capitulation reversion — buy the forced-deleverage crypto flush (4h)",
+  "rationale": "MECHANISM: post-ETF crypto trades as high-beta risk collateral; a VIX spike + credit-spread blowout triggers cross-asset VaR deleveraging and crypto — the most liquid 24/7 collateral — is sold FIRST and OVERSHOOTS on leveraged-long liquidation cascades. The counterparty is risk-parity/CTA/margin desks that are PRICE-INSENSITIVE forced sellers dumping into a thin book. Edge: fade the forced-seller overshoot after the panic peaks. Enter long when vix_level is in an extreme-high band AND credit_spread is wide (market-wide macro gate) AND crypto is washed out (bb_z deeply negative). A 'someone HAS to sell' liquidity premium, not a forecast. DISCONFIRMER: vix_level and credit_spread are FRED daily with next-day availability — a 4h bar cannot react intraday to a same-day spike (macro read is stale until next day). Kill if entries fire only AFTER the crypto low is in (test T+1-lagged VIX vs the actual bottom), or if a plain oversold bb_z reversion captures the same edge WITHOUT the macro gate.",
+  "catalyst": "macro panic peak (high VIX + wide credit) into a washed-out crypto tape",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "vix_level" }, "op": "gt", "threshold": { "param": "vix_floor" } },
+    { "feature": { "name": "credit_spread" }, "op": "gt", "threshold": { "param": "cs_floor" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_up", "threshold": { "param": "bb_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "vix_floor": { "kind": "float", "lo": 24,   "hi": 40 },
+    "cs_floor":  { "kind": "float", "lo": 1.2,  "hi": 3.5 },
+    "bb_lb":     { "kind": "int",   "lo": 14,   "hi": 40,   "step": 1 },
+    "bb_floor":  { "kind": "float", "lo": -3.0, "hi": -1.5 },
+    "bb_exit":   { "kind": "float", "lo": -0.5, "hi": 0.5 },
+    "stop":      { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":        { "kind": "float", "lo": 0.06, "hi": 0.28 },
+    "time_stop": { "kind": "int",   "lo": 2,    "hi": 10,   "step": 1 }
+  }
+}

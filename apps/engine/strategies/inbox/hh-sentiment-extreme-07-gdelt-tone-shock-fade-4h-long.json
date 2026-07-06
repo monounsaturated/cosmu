@@ -1,0 +1,30 @@
+{
+  "name": "GDELT-tone shock fade on 4h bars (broad-news overreaction reversal, long)",
+  "rationale": "MECHANISM: variant of the headline-shock fade that uses gdelt_tone (broad global news mood) instead of crypto-native news_sentiment. Broad-tone shocks (macro fear spilling into crypto) are the purest emotional overshoots because the information is often NOT crypto-specific — the tape overreacts and reverts once traders realize the headline does not change crypto fundamentals. Entry: gdelt_tone in an extreme LOW tail AND a confirming 4h price drop (ret_Nd). Fade long, exit fast. Tests whether the reversion premium attaches to the broad macro-tone series distinctly from crypto news. DISCONFIRMER: must clear REAL 4h round-trip fees (edge < 2x cost => mirage, kill). If gdelt_tone-fade and news_sentiment-fade fire on the same bars with the same returns, they are one signal — keep only the more-covered one. If the fade works on random bars, it is generic mean-reversion — kill.",
+  "catalyst": "extreme-negative broad news tone confirmed by a 4h price drop",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.04, "max_hold_days": 1.0 },
+  "entry": [
+    { "feature": { "name": "gdelt_tone" }, "op": "lt", "threshold": { "param": "tone_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "shock_lb" } }, "op": "lt", "threshold": { "param": "shock_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "gdelt_tone" }, "op": "cross_up", "threshold": { "param": "tone_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tone_floor":       { "kind": "float", "lo": -10.0, "hi": -3.0 },
+    "tone_relief_exit": { "kind": "float", "lo": -3.0,  "hi": 0.0 },
+    "shock_lb":         { "kind": "int",   "lo": 1,     "hi": 3, "step": 1 },
+    "shock_floor":      { "kind": "float", "lo": -0.10, "hi": -0.02 },
+    "stop":             { "kind": "float", "lo": 0.02,  "hi": 0.08 },
+    "tp":               { "kind": "float", "lo": 0.02,  "hi": 0.10 },
+    "time_stop":        { "kind": "float", "lo": 0.25,  "hi": 1.0 }
+  },
+  "direction": 1
+}

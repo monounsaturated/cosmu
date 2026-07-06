@@ -1,0 +1,42 @@
+{
+  "name": "Crowded-long fragility fade — high funding + OI expansion + band-stretch (short, 4h)",
+  "rationale": "MECHANISM: when funding_rate is persistently high (top decile) AND open_interest is EXPANDING into that funding, longs are crowded and financing their own eventual unwind — every 8h they bleed carry and the marginal buyer is a fee-insensitive leveraged latecomer. We short (direction -1) the crowd just before funding cost thins demand (documented loop: high funding -> longs close to avoid fees -> premium collapses). bb_z stretched high confirms price is over-extended, not mid-range, so we are fading exhaustion not a fresh breakout. funding_feature accrues the positive carry to us as a short (we RECEIVE it). Hold ~0.5-1d. DISCONFIRMER 1: kill if it shorts into trends — in a strong bull leg funding stays pinned high for weeks while price keeps rising and a naive high-funding short is run over; the edge MUST be conditional on OI EXPANSION and die when the OI-expansion filter is dropped (else it is a losing 'short strength' trade). DISCONFIRMER 2: kill if maxDD > 25% from being early on the crowded side.",
+  "catalyst": "high funding + rising open interest + stretched band z — a crowded-long book to fade short.",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 0.25,
+    "max_hold_days": 1
+  },
+  "entry": [
+    {"feature": {"name": "funding_rate"}, "op": "gt", "threshold": {"param": "funding_ceiling"}},
+    {"feature": {"name": "open_interest"}, "op": "gt", "threshold": {"param": "oi_expand"}},
+    {"feature": {"name": "bb_z", "lookback": {"param": "bb_lb"}}, "op": "gt", "threshold": {"param": "bbz_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "funding_rate"}, "op": "cross_down", "threshold": {"param": "funding_relief_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "direction": -1,
+  "funding_feature": "funding_rate",
+  "param_space": {
+    "funding_ceiling": {"kind": "float", "lo": 0.0003, "hi": 0.0015},
+    "oi_expand": {"kind": "float", "lo": 0.3, "hi": 2.0},
+    "bb_lb": {"kind": "int", "lo": 14, "hi": 40, "step": 1},
+    "bbz_ceiling": {"kind": "float", "lo": 1.2, "hi": 2.8},
+    "funding_relief_exit": {"kind": "float", "lo": 0.0, "hi": 0.0005},
+    "stop": {"kind": "float", "lo": 0.02, "hi": 0.08},
+    "tp": {"kind": "float", "lo": 0.025, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 1}
+  }
+}

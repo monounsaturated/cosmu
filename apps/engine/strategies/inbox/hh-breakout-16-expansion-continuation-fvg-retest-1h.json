@@ -1,0 +1,46 @@
+{
+  "name": "HH breakout 16 — expansion continuation via FVG retest (1h)",
+  "rationale": "MECHANISM: the same 'enter the pullback into a confirmed trend, not the break' logic, but the pullback is defined STRUCTURALLY as a fair-value-gap (FVG) retest rather than a range_position level — the distinct claim being that the specific 3-bar imbalance left behind by the expansion impulse is where resting demand sits, so a retest of THAT gap is the highest-quality low-cost re-entry. Uses the dedicated FairValueGap module (setup.fvg): gap_min is the fitted minimum gap size and max_retests caps re-entries (both ParamRefs). Gate the regime with adx above a trend floor (a real trend to hold the retest) and bb_width above a floor (the expansion actually happened). bar_size 1h. Distinct from variants 14/15 because the entry trigger is the FVG structural module, not a range/return pullback threshold. DISCONFIRMER: KILL if FVG retests resume the trend no more often than random pullbacks net of fees (the gap carries no information beyond 'a pullback happened'), OR if the FVG module survives only when max_retests is large enough to be effectively unbounded (it is just buying every dip), OR if adx leaks (verify PIT), OR if the edge is BTC/ETH-only per-symbol.",
+  "catalyst": "retest of an expansion-impulse fair-value gap within an uptrend",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "1h",
+    "min_hold_days": 0.08,
+    "max_hold_days": 3
+  },
+  "direction": 1,
+  "entry": [
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}},
+    {"feature": {"name": "bb_width"}, "op": "gt", "threshold": {"param": "bbw_floor"}}
+  ],
+  "setup": {
+    "fvg": {
+      "max_retests": {"param": "fvg_retests"},
+      "gap_min": {"param": "fvg_gap_min"}
+    }
+  },
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "adx_floor": {"kind": "float", "lo": 22, "hi": 34},
+    "bbw_floor": {"kind": "float", "lo": 0.03, "hi": 0.09},
+    "fvg_retests": {"kind": "int", "lo": 1, "hi": 4, "step": 1},
+    "fvg_gap_min": {"kind": "float", "lo": 0.002, "hi": 0.015},
+    "adx_exit": {"kind": "float", "lo": 12, "hi": 20},
+    "stop": {"kind": "float", "lo": 0.01, "hi": 0.05},
+    "tp": {"kind": "float", "lo": 0.02, "hi": 0.12},
+    "time_stop": {"kind": "float", "lo": 0.25, "hi": 4}
+  }
+}

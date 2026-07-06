@@ -1,0 +1,100 @@
+{
+  "name": "BTC transaction-count throughput + ADX trend \u2014 usage-confirmed trend (spot long)",
+  "rationale": "MECHANISM (why transaction throughput leads durability): confirmed Bitcoin transactions per day measures actual settlement usage \u2014 economic activity on the chain, independent of price, funding, and social hype. A trend that coincides with high/rising on-chain throughput is backed by real utilization and tends to persist; a trend on thin throughput is speculative and fragile. Throughput reflects organic demand that leads sustained price moves. We require btc_tx_count above a fitted floor AND adx above a floor (a real trend), riding it and exiting when ADX collapses. Distinct from the active-addresses specs (breadth of participants) \u2014 this is THROUGHPUT (volume of settlement). DISCONFIRMER 1: if ADX-trend alone matches the deflated Sharpe, tx-count adds nothing orthogonal. DISCONFIRMER 2 (non-stationarity): tx-count drifted structurally (e.g. inscriptions) so a fitted absolute floor can be always-true \u2014 the Gate must reject a degenerate level; the edge must be the usage regime. Data knowable T+1. tier1, low-confidence until validated OOS.",
+  "catalyst": "btc_tx_count is above a fitted floor (real on-chain throughput high) while ADX confirms a trend.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 10
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "btc_tx_count"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "tx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "adx"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "adx_floor"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "adx"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "adx_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tx_floor": {
+      "kind": "float",
+      "lo": 250000,
+      "hi": 550000
+    },
+    "adx_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 32
+    },
+    "adx_exit": {
+      "kind": "float",
+      "lo": 12,
+      "hi": 20
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.16
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.07,
+      "hi": 0.3
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 10,
+      "step": 1
+    }
+  }
+}

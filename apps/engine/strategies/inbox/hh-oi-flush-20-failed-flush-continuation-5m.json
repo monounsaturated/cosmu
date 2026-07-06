@@ -1,0 +1,128 @@
+{
+  "name": "Failed-flush continuation short (5m short the mid-acceleration cascade)",
+  "rationale": "MECHANISM (H6 on 5m \u2014 the acceleration timescale): a cascade that is still consuming its liquidation ladder accelerates over minutes (14.6x mid-event Oct-2025), so a 5m bar catches the continuation while the ladder below is still being hit. OI falls, price prints new lows, no bounce \u2014 forced sellers remain below. Counterparty: the next tranche of margin-called longs. Run as a perp SHORT. Entry: open_interest cross_down (deleveraging) AND range_position below a very low floor (new lows, no bounce) AND rsi below an oversold floor (still bleeding) AND funding_rate below a small-negative ceiling (room to fall before shorts crowd). DISCONFIRMER: must be time-disjoint from H1 \u2014 shared profitable bars mean noise; range_position is the distinguisher, so its removal must collapse the spec. HIGH curve-fit risk on a fast bar \u2014 the 5m fee drag makes the bar for a real edge stricter; kill unless a clean low-overlap OOS window clears ~20bps net.",
+  "catalyst": "5m OI cross_down + fresh new low + no bounce \u2014 a cascade still mid-acceleration",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.0,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "open_interest"
+      },
+      "op": "cross_down",
+      "threshold": {
+        "param": "oi_flush_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "range_position"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rangepos_newlow_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_down_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "funding_rate"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "funding_room_ceiling"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "range_position"
+        },
+        "op": "gt",
+        "threshold": {
+          "param": "rangepos_bounce_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "oi_flush_floor": {
+      "kind": "float",
+      "lo": -3.5,
+      "hi": -0.8
+    },
+    "rangepos_newlow_floor": {
+      "kind": "float",
+      "lo": 0.03,
+      "hi": 0.16
+    },
+    "rsi_down_floor": {
+      "kind": "float",
+      "lo": 18,
+      "hi": 36
+    },
+    "funding_room_ceiling": {
+      "kind": "float",
+      "lo": -0.0004,
+      "hi": 0.0002
+    },
+    "rangepos_bounce_exit": {
+      "kind": "float",
+      "lo": 0.22,
+      "hi": 0.48
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.06
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.015,
+      "hi": 0.08
+    },
+    "time_stop": {
+      "kind": "float",
+      "lo": 0.08,
+      "hi": 0.25
+    }
+  },
+  "direction": -1
+}

@@ -1,0 +1,100 @@
+{
+  "name": "DeFi TVL elevated regime + RSI dip \u2014 buy dips while capital sits in DeFi (spot long)",
+  "rationale": "MECHANISM (why DeFi TVL leads the dip-buy): total value locked in DeFi is capital actively committed to on-chain risk \u2014 when TVL is elevated, participants are leaning IN (risk-on), and dips within that regime are shaken-out longs re-entered, not the start of a bear. TVL is a slow-moving risk-appetite gauge that frames whether a dip is a buy; it turns regime BEFORE the fast price tape confirms. So we require defi_tvl above a fitted floor (risk-on regime) AND an RSI dip (the entry timing), and exit when TVL falls below its exit level (capital leaving = regime over). Distinct from defi-tvl-momentum (which chases inflows): this BUYS DIPS under a TVL regime. DISCONFIRMER 1: if a plain RSI-dip buy without the TVL gate matches the deflated Sharpe, TVL adds nothing. DISCONFIRMER 2 (non-stationarity): TVL grew ~orders of magnitude, so a fitted USD floor can be always-true \u2014 the Gate must reject a degenerate level. Data knowable T+1. tier1, low-confidence until OOS.",
+  "catalyst": "defi_tvl is above a fitted floor (capital committed to DeFi = risk-on regime) while RSI has dipped.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "defi_tvl"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "tvl_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_dip"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "defi_tvl"
+        },
+        "op": "cross_down",
+        "threshold": {
+          "param": "tvl_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "tvl_floor": {
+      "kind": "float",
+      "lo": 40000000000,
+      "hi": 150000000000
+    },
+    "rsi_dip": {
+      "kind": "float",
+      "lo": 35,
+      "hi": 50
+    },
+    "tvl_exit": {
+      "kind": "float",
+      "lo": 35000000000,
+      "hi": 120000000000
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

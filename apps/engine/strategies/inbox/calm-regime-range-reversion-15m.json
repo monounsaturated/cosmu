@@ -1,0 +1,37 @@
+{
+  "name": "Calm-regime range-floor reversion (15m)",
+  "rationale": "Reversion at the channel floor works only when the regime is calm: pairing a low range_position with a low realized volatility on 15m isolates the quiet, oscillating tape where a dip to support is bought back, not the volatile tape where support fails. The other side is the seller pressing a support level that holds in a low-energy book. Edge persists because calm ranges are the natural habitat of grid/market-making bids. Distinct from the ADX-gated floor reversion: the regime filter here is realized-vol MAGNITUDE, not trend directionality — two different ways to define 'calm'. Disconfirmer: exits when range_position recovers toward the mid, or the stop fires if the floor breaks.",
+  "catalyst": "price at channel floor in a low-volatility regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "15m",
+    "min_hold_days": 0.04,
+    "max_hold_days": 0.5
+  },
+  "entry": [
+    {"feature": {"name": "range_position"}, "op": "lt", "threshold": {"param": "rp_floor"}},
+    {"feature": {"name": "vol_realized"}, "op": "lt", "threshold": {"param": "vol_ceiling"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "range_position"}, "op": "gt", "threshold": {"param": "rp_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "rp_floor": {"kind": "float", "lo": 0.02, "hi": 0.25},
+    "vol_ceiling": {"kind": "float", "lo": 0.02, "hi": 0.07},
+    "rp_exit": {"kind": "float", "lo": 0.45, "hi": 0.65},
+    "stop": {"kind": "float", "lo": 0.006, "hi": 0.03},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.1, "hi": 1}
+  }
+}

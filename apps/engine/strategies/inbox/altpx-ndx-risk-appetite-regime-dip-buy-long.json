@@ -1,0 +1,100 @@
+{
+  "name": "Nasdaq-100 risk-appetite regime + RSI dip \u2014 tech-beta dip buy (spot long)",
+  "rationale": "MECHANISM (why the Nasdaq leads crypto dips): the Nasdaq-100 carries the high-beta tech/liquidity factor that crypto co-moves with most strongly \u2014 a faster risk-appetite read than the broad SPX. When the NDX is holding an up-regime (above a fitted line), the liquidity/tech-risk backdrop is intact, so a crypto RSI dip is a buyable shakeout, not a regime break. The NDX leads because the tech-liquidity factor re-prices in equities before crypto follows. We require ndx_index above a fitted floor AND an RSI dip, exiting on RSI reverting up. Distinct from the nasdaq-leadlag-MOMENTUM spec: this is a DIP-BUY under an NDX regime. DISCONFIRMER 1: if a plain RSI-dip buy matches the deflated Sharpe, the NDX gate adds nothing. DISCONFIRMER 2 (non-stationarity): the raw NDX level trends up, so a fitted floor risks always-true \u2014 the Gate must reject a degenerate level; the edge must be the risk-appetite partition, not the index's drift. tier0 macro; low-confidence until OOS.",
+  "catalyst": "ndx_index is above a fitted regime floor (tech/liquidity risk-appetite intact) while RSI has dipped.",
+  "universe": {
+    "venues": [
+      "binance"
+    ],
+    "asset_classes": [
+      "crypto"
+    ],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "4h",
+    "min_hold_days": 1,
+    "max_hold_days": 8
+  },
+  "entry": [
+    {
+      "feature": {
+        "name": "ndx_index"
+      },
+      "op": "gt",
+      "threshold": {
+        "param": "ndx_floor"
+      }
+    },
+    {
+      "feature": {
+        "name": "rsi"
+      },
+      "op": "lt",
+      "threshold": {
+        "param": "rsi_dip"
+      }
+    }
+  ],
+  "exit": {
+    "stop_loss": {
+      "param": "stop"
+    },
+    "take_profit": {
+      "param": "tp"
+    },
+    "time_stop_days": {
+      "param": "time_stop"
+    },
+    "signal_exits": [
+      {
+        "feature": {
+          "name": "rsi"
+        },
+        "op": "cross_up",
+        "threshold": {
+          "param": "rsi_exit"
+        }
+      }
+    ]
+  },
+  "risk": {
+    "max_concurrent_positions": 5,
+    "max_position_pct": 0.2,
+    "conviction": 0.5
+  },
+  "param_space": {
+    "ndx_floor": {
+      "kind": "float",
+      "lo": 13000,
+      "hi": 21500
+    },
+    "rsi_dip": {
+      "kind": "float",
+      "lo": 35,
+      "hi": 50
+    },
+    "rsi_exit": {
+      "kind": "float",
+      "lo": 55,
+      "hi": 75
+    },
+    "stop": {
+      "kind": "float",
+      "lo": 0.04,
+      "hi": 0.15
+    },
+    "tp": {
+      "kind": "float",
+      "lo": 0.05,
+      "hi": 0.24
+    },
+    "time_stop": {
+      "kind": "int",
+      "lo": 2,
+      "hi": 8,
+      "step": 1
+    }
+  }
+}

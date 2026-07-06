@@ -1,0 +1,34 @@
+{
+  "name": "Reactive stablecoin-inflow FADE short (4h, RSI-overbought + rising volatility)",
+  "rationale": "MECHANISM: reactive inflows that LAG price mark late money; when that late inflow lands on an RSI-overbought tape with rising realized volatility (vol_realized), the up-move is running on fumes and fresh, structurally-late purchasing power is the last buyer. Entry: stablecoin_net_flow_usd spike AND rsi overbought AND vol_realized elevated — short. Distinct from variant 07 (bb_z + ret extension): here overextension is read via RSI and the fade is conditioned on a volatility expansion (blow-off character). Other side = trend-chasers buying the top. DISCONFIRMER: if the fade also works when the inflow lands on a neutral RSI, the flow feature is decorative and it is a generic RSI short. Kill if net-of-fees the short cannot beat crypto's long-drift + the cost of shorting into a still-rising tape.",
+  "catalyst": "reactive stablecoin inflow into an RSI-overbought, volatility-expanding 4h top",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "4h", "min_hold_days": 0.25, "max_hold_days": 3 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "gt", "threshold": { "param": "flow_spike_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_ceiling" } },
+    { "feature": { "name": "vol_realized", "lookback": { "param": "vol_lb" } }, "op": "gt", "threshold": { "param": "vol_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_lb":          { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 },
+    "flow_spike_floor": { "kind": "float", "lo": 0.5,   "hi": 2.5 },
+    "rsi_lb":           { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_ceiling":      { "kind": "float", "lo": 62.0,  "hi": 80.0 },
+    "rsi_exit":         { "kind": "float", "lo": 45.0,  "hi": 58.0 },
+    "vol_lb":           { "kind": "int",   "lo": 10,   "hi": 40,  "step": 1 },
+    "vol_floor":        { "kind": "float", "lo": 0.0,   "hi": 1.5 },
+    "stop":             { "kind": "float", "lo": 0.03, "hi": 0.10 },
+    "tp":               { "kind": "float", "lo": 0.04, "hi": 0.14 },
+    "time_stop":        { "kind": "int",   "lo": 1,    "hi": 3,   "step": 1 }
+  },
+  "direction": -1
+}

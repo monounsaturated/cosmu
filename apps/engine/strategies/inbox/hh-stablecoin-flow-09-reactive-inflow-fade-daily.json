@@ -1,0 +1,34 @@
+{
+  "name": "Reactive stablecoin-inflow FADE short (daily, late-money crowding into a stretched swing)",
+  "rationale": "MECHANISM: on a daily bar, a large sustained stablecoin_net_flow_usd inflow arriving after an already-extended multi-day up-move (ret_Nd strongly positive, bb_z high) is late crowding money — the reactive/lagging flow the VAR literature documents. Fading it targets the multi-day mean-reversion that follows exhaustion of trend-chasers. Distinct from the intraday 4h fades by hold length and the multi-day extension window. Other side = retail deploying freshly-moved stables at the top. DISCONFIRMER: if the fade also works without the price-extension gate (bb_z / ret_Nd), the flow feature is decorative and it is a plain overbought short. Also fails if net-of-fees the short cannot overcome structural long-drift + funding on a multi-day hold — weak inflow signals (corr<0.3) rarely deliver a reliable daily reversal.",
+  "catalyst": "sustained reactive stablecoin inflow into a stretched multi-day up-move",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 10 },
+  "entry": [
+    { "feature": { "name": "stablecoin_net_flow_usd", "lookback": { "param": "flow_lb" } }, "op": "gt", "threshold": { "param": "flow_spike_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "mom_ceiling" } },
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "gt", "threshold": { "param": "bb_ceiling" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "cross_down", "threshold": { "param": "bb_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "flow_lb":          { "kind": "int",   "lo": 3,    "hi": 10,  "step": 1 },
+    "flow_spike_floor": { "kind": "float", "lo": 0.5,   "hi": 2.2 },
+    "mom_lb":           { "kind": "int",   "lo": 3,    "hi": 12,  "step": 1 },
+    "mom_ceiling":      { "kind": "float", "lo": 0.08,  "hi": 0.35 },
+    "bb_lb":            { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bb_ceiling":       { "kind": "float", "lo": 1.3,   "hi": 3.0 },
+    "bb_relief_exit":   { "kind": "float", "lo": -0.5,  "hi": 0.8 },
+    "stop":             { "kind": "float", "lo": 0.05, "hi": 0.14 },
+    "tp":               { "kind": "float", "lo": 0.06, "hi": 0.22 },
+    "time_stop":        { "kind": "int",   "lo": 2,    "hi": 10,  "step": 1 }
+  },
+  "direction": -1
+}

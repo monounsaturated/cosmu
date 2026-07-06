@@ -1,0 +1,34 @@
+{
+  "name": "SSR-dominance rollover exhaustion long (dry-powder rolls back into risk)",
+  "rationale": "MECHANISM: when stablecoin_mcap has risen sharply relative to total crypto volume (defensive capital parked on the sidelines) and that share then STOPS rising, the marginal defensive seller is exhausted and the sidelined stables become fuel for the next leg up. This variant times the ROLLOVER: enter long only once the recent stablecoin_mcap acceleration has cooled (ret_Nd of price turning up out of a washout) while the stablecoin base is still large. Other side = late, forced defensive sellers who already rotated into stables during the drawdown. DISCONFIRMER: if a long that fires while stablecoin_mcap is STILL climbing (dominance still rising) beats one that waits for the price washout to turn — the 'exhaustion timing' is fictional and this is just a dip-buy. Also kill if the edge lives only in 2020-2022 and dies in the 2025-2026 sample where the mcap<->crypto correlation fell to ~0.4 (regime artifact, not a persistent mechanism).",
+  "catalyst": "sidelined-stablecoin share stops rising into a price washout — dry-powder exhaustion",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 2, "max_hold_days": 20 },
+  "entry": [
+    { "feature": { "name": "bb_z", "lookback": { "param": "bb_lb" } }, "op": "lt", "threshold": { "param": "bb_floor" } },
+    { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "lt", "threshold": { "param": "rsi_floor" } },
+    { "feature": { "name": "ret_Nd", "lookback": { "param": "mom_lb" } }, "op": "gt", "threshold": { "param": "reversal_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "rsi", "lookback": { "param": "rsi_lb" } }, "op": "gt", "threshold": { "param": "rsi_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "bb_lb":          { "kind": "int",   "lo": 14,   "hi": 40,  "step": 1 },
+    "bb_floor":       { "kind": "float", "lo": -3.0,  "hi": -1.2 },
+    "rsi_lb":         { "kind": "int",   "lo": 7,    "hi": 21,  "step": 1 },
+    "rsi_floor":      { "kind": "float", "lo": 25.0,  "hi": 42.0 },
+    "rsi_exit":       { "kind": "float", "lo": 55.0,  "hi": 72.0 },
+    "mom_lb":         { "kind": "int",   "lo": 2,    "hi": 6,   "step": 1 },
+    "reversal_floor": { "kind": "float", "lo": 0.0,   "hi": 0.05 },
+    "stop":           { "kind": "float", "lo": 0.05, "hi": 0.16 },
+    "tp":             { "kind": "float", "lo": 0.08, "hi": 0.32 },
+    "time_stop":      { "kind": "int",   "lo": 4,    "hi": 20,  "step": 1 }
+  },
+  "direction": 1
+}

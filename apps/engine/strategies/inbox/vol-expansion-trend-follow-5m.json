@@ -1,0 +1,37 @@
+{
+  "name": "Volatility-expansion trend follow (5m)",
+  "rationale": "The mirror of the low-vol momentum thesis: on 5m, a HIGH realized volatility together with a strong ADX says a violent, directional regime is live — the moment to ride the trend rather than fade it. The other side is the reversion scalper who keeps fading spikes in a regime that is trending hard. Edge persists because high-vol trending bursts (news-driven, liquidation-driven) have strong short-horizon continuation before they exhaust. Distinct from the ATR-expansion breakout: the confirmation is trend STRENGTH (ADX), and the regime filter is realized vol, not the ATR level itself. Disconfirmer: exits when ADX collapses under the exit floor (trend died) or the stop fires.",
+  "catalyst": "high-volatility, strong-trend regime",
+  "universe": {
+    "venues": ["binance"],
+    "asset_classes": ["crypto"],
+    "min_liquidity_usd": 10000000,
+    "min_instruments": 5
+  },
+  "horizon": {
+    "bar_size": "5m",
+    "min_hold_days": 0.02,
+    "max_hold_days": 0.25
+  },
+  "entry": [
+    {"feature": {"name": "vol_realized"}, "op": "gt", "threshold": {"param": "vol_floor"}},
+    {"feature": {"name": "adx"}, "op": "gt", "threshold": {"param": "adx_floor"}}
+  ],
+  "exit": {
+    "stop_loss": {"param": "stop"},
+    "take_profit": {"param": "tp"},
+    "time_stop_days": {"param": "time_stop"},
+    "signal_exits": [
+      {"feature": {"name": "adx"}, "op": "lt", "threshold": {"param": "adx_exit"}}
+    ]
+  },
+  "risk": {"max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5},
+  "param_space": {
+    "vol_floor": {"kind": "float", "lo": 0.03, "hi": 0.1},
+    "adx_floor": {"kind": "float", "lo": 22, "hi": 38},
+    "adx_exit": {"kind": "float", "lo": 14, "hi": 22},
+    "stop": {"kind": "float", "lo": 0.005, "hi": 0.025},
+    "tp": {"kind": "float", "lo": 0.008, "hi": 0.04},
+    "time_stop": {"kind": "float", "lo": 0.02, "hi": 0.3}
+  }
+}

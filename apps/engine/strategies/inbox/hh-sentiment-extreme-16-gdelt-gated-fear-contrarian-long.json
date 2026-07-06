@@ -1,0 +1,29 @@
+{
+  "name": "GDELT-tone macro regime gates fear contrarian-long (macro-forced-selling reversion)",
+  "rationale": "MECHANISM: gdelt_tone measures broad global news mood beyond crypto chatter and is used here as a REGIME GATE, not a trigger. When broad tone is deeply NEGATIVE (macro risk-off) AND crypto fear is extreme, the selling is macro-driven forced liquidation that reverts once the macro scare passes — contrarian-long works. This is the explicit 'contrarian at extremes' leg of the family's two-regime design, switched on ONLY by the slow macro-tone series so we are not applying the contrarian rule in a bull regime where it whipsaws. Entry: gdelt_tone below a fitted negative floor AND fear_greed below a fitted extreme floor. Long; exit on fear relief or stop/TP/time. DISCONFIRMER: run this contrarian leg UNGATED vs gdelt_tone-GATED — if the tone gate does not improve OOS DSR over the ungated fear contrarian, gdelt_tone adds no regime information and this is over-engineering; kill. Also: if gdelt_tone is near-constant or laggy at the daily horizon (fires AFTER the turn, not before), it cannot gate in time — verify it moves at regime turns or kill.",
+  "catalyst": "deeply negative macro tone AND extreme crypto fear (macro forced selling)",
+  "universe": { "venues": ["binance"], "asset_classes": ["crypto"], "min_liquidity_usd": 10000000, "min_instruments": 5 },
+  "horizon": { "bar_size": "1d", "min_hold_days": 1, "max_hold_days": 14 },
+  "entry": [
+    { "feature": { "name": "gdelt_tone" }, "op": "lt", "threshold": { "param": "tone_floor" } },
+    { "feature": { "name": "fear_greed" }, "op": "lt", "threshold": { "param": "fear_floor" } }
+  ],
+  "exit": {
+    "stop_loss": { "param": "stop" },
+    "take_profit": { "param": "tp" },
+    "time_stop_days": { "param": "time_stop" },
+    "signal_exits": [
+      { "feature": { "name": "fear_greed" }, "op": "cross_up", "threshold": { "param": "fear_relief_exit" } }
+    ]
+  },
+  "risk": { "max_concurrent_positions": 5, "max_position_pct": 0.2, "conviction": 0.5 },
+  "param_space": {
+    "tone_floor":       { "kind": "float", "lo": -8.0,  "hi": -2.0 },
+    "fear_floor":       { "kind": "float", "lo": 10.0,  "hi": 30.0 },
+    "fear_relief_exit": { "kind": "float", "lo": 40.0,  "hi": 60.0 },
+    "stop":             { "kind": "float", "lo": 0.05,  "hi": 0.16 },
+    "tp":               { "kind": "float", "lo": 0.06,  "hi": 0.28 },
+    "time_stop":        { "kind": "int",   "lo": 3,     "hi": 14, "step": 1 }
+  },
+  "direction": 1
+}
