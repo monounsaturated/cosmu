@@ -246,3 +246,81 @@ class TestPaperExecutionBooksParityFee:
         fill_price = Decimal("65000") * (Decimal("1") + Decimal("0.0005"))  # buy crosses up
         expected = Decimal("0.1") * fill_price * (binance.taker_fee_bps / Decimal("10000"))
         assert fee == expected  # byte-identical to the pre-change crypto behaviour
+
+
+# ---------------------------------------------------------------------------
+# 4. The REAL prod path — kickstart_paper_fills backfill (orchestrator/loop.py)
+# ---------------------------------------------------------------------------
+
+class TestKickstartBackfillChargesParityFee:
+    """Reproduce the EXACT 2026-07-03 prod condition and lock the fix. A *screened* version HOLDS an IBKR-equity
+    position (opened the documented-TAA-arm way via apply_fill → `positions`, NEVER `executions`) with ZERO paper
+    fills; `kickstart_paper_fills` then back-fills the missing ledger rows. The pre-fix code hardcoded ``fee=0``
+    HERE — a THIRD fee path, distinct from the `execute_orders`/`_pit_fee_for_order` path the tests above cover.
+    That divergence is exactly why `test_ibkr_paper_execution_charges_per_share_fee` PASSED (execute_orders resolves
+    the instrument) while all 33 prod IBKR-equity fills — every one written by this backfill — read fee=0. This
+    test exercises the SAME instrument-resolution the orchestrator uses and asserts the parity fee, not 0."""
+
+    _TS = "2026-01-01T00:00:00+00:00"
+
+    def _screened_ibkr_holding(self, store, *, symbol, qty, price) -> str:
+        """A screened version holding one IBKR-equity leg with NO executions — the precise held-but-unledgered
+        state the boot-time backfill exists to repair (apply_fill writes `positions`, record_execution defaults
+        False so it writes NO `executions`)."""
+        sid = store.insert("strategies", {"name": f"TAA {symbol}", "thesis": "documented", "origin": "documented", "created_at": self._TS})
+        vid = store.insert(
+            "strategy_versions",
+            {"strategy_id": sid, "parent_id": None, "spec": {}, "generated_code": "", "code_hash": f"h-{symbol}",
+             "params": {}, "mutation_operator": None, "mutation_rationale": "documented", "origin": "documented",
+             "status": "screened", "created_at": self._TS, "killed_at": None, "kill_reason": None},
+        )
+        Portfolio(store).apply_fill(
+            instrument_id=f"{symbol.lower()}-ibkr", symbol=symbol, venue="ibkr", side=1,
+            qty=qty, price=price, fee=Decimal("0"), strategy_version_id=vid,
+        )
+        return vid
+
+    def test_kickstart_ibkr_backfill_charges_per_share_fee_not_zero(self):
+        from cosmu.orchestrator.loop import kickstart_paper_fills
+
+        store = _store()
+        catalog = default_catalog()
+        qty, price = Decimal("1.3558"), Decimal("737.55")  # a real DAA/GEM SPY leg from the prod incident
+        vid = self._screened_ibkr_holding(store, symbol="SPY", qty=qty, price=price)
+
+        assert kickstart_paper_fills(store) == 1
+        row = store.row(
+            "SELECT fee, is_paper, venue_id, fill_log FROM executions WHERE strategy_version_id = ? ORDER BY id DESC LIMIT 1",
+            (vid,),
+        )
+        assert row is not None
+        assert int(row["is_paper"]) == 1
+        assert row["venue_id"] == "ibkr"
+        assert "kickstart_backfill" in str(row["fill_log"])
+        fee = Decimal(str(row["fee"]))
+        assert fee > 0  # THE REGRESSION: pre-fix this leg was written with a hardcoded fee=0
+        # PARITY: byte-identical to the money-path chokepoint for the SAME leg (IBKR per-share, min+cap aware) —
+        # which shares the resolver build_cost_context uses, so paper == backtest fee by construction.
+        expected = _pit_fee_for_order(
+            store, catalog.venue("ibkr"), "SPY", qty, price, instrument=catalog.instrument("SPY", "ibkr")
+        )
+        assert expected > 0
+        assert fee == expected
+
+    def test_kickstart_never_crashes_on_unknown_symbol(self):
+        """An IBKR symbol absent from the catalog must NOT crash the boot-time backfill: the resolver degrades to
+        the venue's flat taker bps (0.5 for IBKR) — still > 0, still honest, never a hard failure."""
+        from cosmu.orchestrator.loop import kickstart_paper_fills
+
+        store = _store()
+        catalog = default_catalog()
+        qty, price = Decimal("10"), Decimal("100")
+        vid = self._screened_ibkr_holding(store, symbol="ZZZZ", qty=qty, price=price)  # not in default_catalog
+
+        assert kickstart_paper_fills(store) == 1
+        fee = Decimal(str(store.row(
+            "SELECT fee FROM executions WHERE strategy_version_id = ? ORDER BY id DESC LIMIT 1", (vid,)
+        )["fee"]))
+        ibkr = catalog.venue("ibkr")
+        assert fee == qty * price * (ibkr.taker_fee_bps / Decimal("10000"))  # flat 0.5 bps fallback
+        assert fee > 0  # never the 0 the bug wrote

@@ -769,6 +769,33 @@ def reclassify_unforwarded_paper(store: Store) -> int:
     return demoted
 
 
+def _kickstart_leg_fee(store: Store, catalog: VenueCatalog, leg: dict) -> Decimal:
+    """The honest entry fee for a KICKSTART-backfilled held leg — the SAME asset-aware, pinned-to-today taker fee
+    the money path (master.execution._pit_fee_for_order) and the backtest cost model (build_cost_context) charge
+    for this (symbol, venue). This closes the paper↔backtest parity break: a backfilled IBKR-equity leg now pays
+    its real per-share commission (min-order + value-cap aware) instead of a hardcoded 0, and a crypto leg reads
+    the catalog/PIT bps exactly as the order path does. NEVER raises: an unknown venue returns 0 (no fee model to
+    honestly apply), an unknown symbol degrades to the resolver's flat-bps fallback (still > 0 for IBKR), and any
+    other failure yields 0 — a fee-calc error must never crash the boot-time backfill (the executions row is
+    advisory display/accounting data, NOT the money path, which was already booked into positions/realized P&L)."""
+    from cosmu.master.execution import _pit_fee_for_order  # lazy: the money-path fee chokepoint (one-way dep)
+
+    try:
+        venue = catalog.venue(leg["venue"])
+    except KeyError:
+        return Decimal("0")  # unknown venue → no fee model; leave the row at 0 rather than guess
+    try:
+        instrument = catalog.instrument(leg["symbol"], leg["venue"])
+    except KeyError:
+        instrument = None  # unknown symbol → the resolver falls back to the venue's flat taker bps
+    try:
+        qty = abs(Decimal(str(leg["qty"])))
+        price = Decimal(str(leg["avg_price"]))
+        return _pit_fee_for_order(store, venue, leg["symbol"], qty, price, instrument=instrument)
+    except Exception:  # noqa: BLE001 — a fee-calc failure must never crash the backfill; 0 is the safe floor
+        return Decimal("0")
+
+
 def kickstart_paper_fills(store: Store) -> int:
     """One-shot, idempotent: record the documented arms' REAL held allocation as paper fills, so a strategy
     that is genuinely paper-trading (it HOLDS marked positions opened via apply_fill) finally reads "Paper"
@@ -776,8 +803,11 @@ def kickstart_paper_fills(store: Store) -> int:
     in the `executions` ledger. For every screened version that holds open positions yet has ZERO paper fills,
     log one paper execution per open leg (the entry that established the leg: its real qty + average basis) and
     promote it screened→paper. HONEST: each execution MIRRORS a position the arm actually opened — it back-fills
-    the missing ledger row, never invents a trade. Idempotent: once a version has fills it's skipped, so this is
-    a no-op on every boot after the first."""
+    the missing ledger row, never invents a trade, and it charges the leg the SAME asset-aware, pinned-to-today
+    taker fee the money path (_pit_fee_for_order) and the backtest cost model (build_cost_context) charge for that
+    (symbol, venue) — so a backfilled IBKR-equity leg pays its real per-share commission, NOT the hardcoded 0 that
+    broke paper↔backtest fee parity for the documented TAA arms (fees-always-today is a locked invariant).
+    Idempotent: once a version has fills it's skipped, so this is a no-op on every boot after the first."""
     candidates = store.rows(
         """
         SELECT DISTINCT sv.id FROM strategy_versions sv
@@ -788,6 +818,7 @@ def kickstart_paper_fills(store: Store) -> int:
           )
         """
     )
+    catalog = default_catalog()  # one static catalog for the whole backfill (venue + instrument fee resolution)
     promoted: set[str] = set()
     for c in candidates:
         vid = c["id"]
@@ -803,12 +834,13 @@ def kickstart_paper_fills(store: Store) -> int:
         )
         for leg in legs:
             q = float(leg["qty"])
+            fee = _kickstart_leg_fee(store, catalog, leg)
             store.insert(
                 "executions",
                 {
                     "run_id": rid, "strategy_version_id": vid, "instrument_id": leg["instrument_id"],
                     "venue_id": leg["venue"], "side": "buy" if q > 0 else "sell", "qty": str(abs(q)),
-                    "price": str(leg["avg_price"]), "fee": "0", "slippage": "0", "order_type": "market",
+                    "price": str(leg["avg_price"]), "fee": str(fee), "slippage": "0", "order_type": "market",
                     "is_paper": 1, "ts": utcnow(), "fill_log": json.dumps({"source": "kickstart_backfill"}),
                 },
             )
