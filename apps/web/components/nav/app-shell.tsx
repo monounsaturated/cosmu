@@ -91,7 +91,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
     }
     probe();
-    const id = setInterval(probe, 15_000);
+    // 60s (was 15s): the footer health dot + /autonomy/status enrichment is a monitoring nicety, not a real-time
+    // control — a one-minute cadence keeps the dot honest while cutting the /health + /autonomy/status egress 4×.
+    const id = setInterval(probe, 60_000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -99,7 +101,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   // Best-effort nav counts from the leaderboard (client-side via the proxy; never blocks first paint).
-  // Polled every 30s so the sidebar counts track the machine live (cheap — one proxied GET, no first-paint cost).
+  // Polled every 120s so the sidebar counts track the machine (cheap — one proxied GET, no first-paint cost; the
+  // engine also serves /leaderboard from a 45s server-side TTL cache, so this poll rarely reaches Postgres).
   useEffect(() => {
     if (!ENGINE_CONFIGURED) return;
     let alive = true;
@@ -131,7 +134,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
     }
     pull();
-    const id = setInterval(pull, 30_000);
+    // 120s (was 30s): the sidebar per-stage counts are a slow-moving monitoring badge, not a live tape. At 30s every
+    // open tab fired a /leaderboard GET each half-minute (the top Supabase egress line); 120s + the engine's 45s
+    // server-side TTL cache coalesces all tabs to ~one real Postgres hit/min.
+    const id = setInterval(pull, 120_000);
     return () => {
       alive = false;
       clearInterval(id);

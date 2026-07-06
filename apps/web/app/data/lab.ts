@@ -6,13 +6,15 @@ import { getJson } from "./client";
 const emptyLabSymbols: LabSymbolsResponse = { rows: [], symbols: [], venues: [], timeframes: [], min_trades: 0 };
 
 // Per-symbol backtest cells (strategy × symbol × venue), outlier-ranked by the engine (return desc). The SSR
-// fetches the FIRST page (top-1,000 by return) for an instant, lightweight paint; the client table then
+// fetches the FIRST page (top-150 by return) for an instant, lightweight paint; the client table then
 // background-pages through the rest via the engine proxy (?limit=&offset=) until `total_combos` is covered — so
 // the operator can reach EVERY combo while the loaded set still filters/sorts/pages in-memory (snappy, no
-// per-filter roundtrip). 1,000 keeps the SSR HTML small while already carrying the best combos + every funded
-// Paper bot on top. Coalesce the arrays so a partial engine response can never white-screen the table.
+// per-filter roundtrip). 150 keeps the SSR HTML small AND cuts the biggest single Supabase egress payload on the
+// screener (a full 1,000-row hydrate on every page load) while still carrying the top combos + every funded Paper
+// bot on top; the client immediately resumes paging from the SSR offset, so nothing below the fold is lost.
+// Coalesce the arrays so a partial engine response can never white-screen the table.
 export async function getLabSymbols(): Promise<{ data: LabSymbolsResponse; connected: boolean }> {
-  const { data, connected } = await getJson<LabSymbolsResponse>("/lab/symbols?limit=1000", emptyLabSymbols);
+  const { data, connected } = await getJson<LabSymbolsResponse>("/lab/symbols?limit=150", emptyLabSymbols);
   return {
     // Preserve the engine's TRUE whole-set denominators (total_combos / total_strategies) — the prior coalesce
     // rebuilt `data` with only the arrays + min_trades and SILENTLY DROPPED both totals, so the page fell back to

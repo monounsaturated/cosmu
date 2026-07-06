@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import threading
+import time
 
 from fastapi import APIRouter
 
@@ -14,6 +16,36 @@ from cosmu.master.paper_maturity import maturity as paper_maturity
 from cosmu.strategy.taxonomy import derive_facets
 
 router = APIRouter()
+
+# The floor leaderboard is a heavy multi-CTE aggregation (a window-ranked portfolio_snapshots scan + a batched
+# sparkline read + several correlated subqueries), and it's polled by EVERY open dashboard tab AND the sidebar
+# counts — so an uncached endpoint fans one Postgres round-trip out per poll per tab and became the top Supabase
+# EGRESS line. The board only changes when an autonomy tick funds/marks a track (minutes-to-hours cadence), so we
+# serve it from a process-local TTL cache: the first request in a window pays the query, the rest are instant and
+# byte-identical (same JSON, same shape — we cache the fully-built LeaderboardResponse, never a fabricated one).
+# 45s stale is fine for a monitoring surface and coalesces the coarsened 120s tab poll to ~1 DB hit/min overall.
+# Keyed on (database_url, effective params) so different stores (each test's fresh sqlite path) and — if this
+# endpoint ever grows filter/paging params — different queries never collide; today the handler is parameterless,
+# so the key is just the store's db url.
+_CACHE_TTL_SECONDS = 45.0
+_cache_lock = threading.Lock()
+_cache: dict[tuple[object, ...], tuple[float, LeaderboardResponse]] = {}
+
+
+def reset_cache() -> None:
+    """Drop every cached board (used by tests, and safe to call to force a recompute on the next request)."""
+    with _cache_lock:
+        _cache.clear()
+
+
+def _cache_key() -> tuple[object, ...]:
+    """The board's identity for the TTL cache: the store's database_url (isolates each test's fresh sqlite path and
+    keeps prod to one warm entry). Extend this tuple with any future effective query params so distinct queries get
+    distinct entries and never serve one another's rows."""
+    try:
+        return (store.settings.database_url,)
+    except Exception:  # noqa: BLE001 — a missing settings must never break the endpoint; fall back to one shared key.
+        return ("__default__",)
 
 # _oos_window_days now lives in cosmu.api._shared (shared with the strategy-detail router's Backtest column),
 # imported above as the same name so this router's call sites are unchanged.
@@ -81,6 +113,12 @@ def _paper_return_pct(tr_equity: object, starting_capital: object) -> float | No
     return (equity / start - 1.0) * 100.0
 
 
+# The sparkline is a ≤24-point decoration; reading more than the last ~500 marks per track buys nothing but egress.
+# We keep the most-recent this-many scope='track' snapshots per ref (the recent tail carries the shape), then
+# downsample — so a long paper history streams a bounded number of rows instead of its whole unbounded trajectory.
+_SPARK_MAX_ROWS = 500
+
+
 def _downsample(values: list[float], k: int = 24) -> list[float]:
     """Compact a per-track equity series to at most k evenly-spaced points (first + last always kept), each rounded
     to the cent — a lean payload for the row sparkline. A series of <= k points passes through unchanged."""
@@ -93,6 +131,22 @@ def _downsample(values: list[float], k: int = 24) -> list[float]:
 
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 def leaderboard() -> LeaderboardResponse:
+    """The gate-ranked floor leaderboard. Served from a process-local TTL cache (see module note): the response is
+    byte-identical to the uncached one — this only adds a staleness window (≤ _CACHE_TTL_SECONDS) so the heavy
+    aggregation runs ~once/min instead of once per dashboard poll per tab (the top Supabase egress line)."""
+    key = _cache_key()
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None and (now - hit[0]) < _CACHE_TTL_SECONDS:
+            return hit[1]
+    result = _compute_leaderboard()
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), result)
+    return result
+
+
+def _compute_leaderboard() -> LeaderboardResponse:
     # The track's paper clock origin = its FIRST `track_opened` event (per-version, written when the
     # deterministic gate opened the standalone track). MIN(ts) is the moment the paper run started ticking;
     # advisory maturity (paper_age_days / live_ready) is computed from it. LEFT JOIN so non-funded rows still
@@ -186,9 +240,18 @@ def leaderboard() -> LeaderboardResponse:
             from itertools import groupby
 
             placeholders = ", ".join(["?"] * len(paper_starts))
+            # Bound the per-ref history to the LAST _SPARK_MAX_ROWS marks: a long-lived paper track can accumulate
+            # thousands of scope='track' snapshots, and the old unbounded read streamed every one of them off
+            # Postgres just to feed a ≤24-point sparkline (a real egress + latency cost that grows without limit).
+            # We keep the most-recent N per ref via a window function (portable SQLite/Postgres — same idiom as the
+            # `ps` CTE), then re-order ASC for honest_track_equity_series + _downsample. The tail is where the recent
+            # shape lives, so the sparkline is unchanged for any track under the bound and faithfully recent above it.
             snap_rows = store.rows(
-                f"SELECT ref_id, ts, equity FROM portfolio_snapshots WHERE scope = 'track' "
-                f"AND ref_id IN ({placeholders}) ORDER BY ref_id, ts ASC",
+                f"SELECT ref_id, ts, equity FROM ("
+                f"  SELECT ref_id, ts, equity, ROW_NUMBER() OVER ("
+                f"    PARTITION BY ref_id ORDER BY ts DESC) AS _rn "
+                f"  FROM portfolio_snapshots WHERE scope = 'track' AND ref_id IN ({placeholders})"
+                f") ranked WHERE _rn <= {_SPARK_MAX_ROWS} ORDER BY ref_id, ts ASC",
                 tuple(paper_starts.keys()),
             )
             for ref_id, grp in groupby(snap_rows, key=lambda s: s["ref_id"]):
