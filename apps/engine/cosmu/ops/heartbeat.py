@@ -5,8 +5,8 @@
 # never touches the Gate. Lives off the same DB the jobs write, so a stale signal means "a writer stopped".
 #
 # Watched signals (each ~2x its job's cadence so a single missed run doesn't page, but a dark fleet does):
-#   ingest → MAX(alt_data.ingested_at)            (Modal ingest hourly)
-#   tick   → autonomy_status().last_tick_at        (Modal gate_sweep every 4h)
+#   ingest → MAX(alt_data.ingested_at)            (Modal ingest every 6h)
+#   tick   → autonomy_status().last_tick_at        (Modal gate_sweep daily)
 #   mark   → MAX(events.ts WHERE kind=tracks_marked) (Modal paper_mark daily)
 #   exec   → MAX(events.ts WHERE kind IN (paper_stepped, forward_entry)) (Modal paper-exec — the EXECUTOR clock)
 #   backup → age of the newest r2://<bucket>/backups/pg/*.dump   (Modal daily_backup at 05:00 UTC)
@@ -37,11 +37,10 @@ from cosmu.master.scheduler import autonomy_status
 from cosmu.notify.slack import SlackNotifier
 
 # Staleness ceilings in HOURS. None of these gate money; they only decide when to page.
-# `exec` shares the daily paper-clock cadence (paper_step runs alongside paper_mark), so 30h ~= 2x a daily run —
-# a single missed run won't page, a dark executor will. `backup` rides the same 2x-daily logic: the dump fires
-# at 05:00 UTC daily, so 30h means a single missed run is tolerated but a dark backup job pages.
+# `ingest` is intentionally slower in Supabase cost-saver mode (6h); 14h tolerates one missed run but pages a dark
+# ingest lane. `tick`/`exec`/`backup` are daily, so 30h means a single missed run is tolerated but a dark job pages.
 DEFAULT_THRESHOLDS_H: dict[str, float] = {
-    "ingest": 3.0, "tick": 9.0, "mark": 30.0, "exec": 30.0, "backup": 30.0,
+    "ingest": 14.0, "tick": 30.0, "mark": 30.0, "exec": 30.0, "backup": 30.0,
 }
 
 

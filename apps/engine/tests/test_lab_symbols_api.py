@@ -185,7 +185,7 @@ def test_track_only_strategies_surface_as_rows(tmp_path, monkeypatch):
 
 def test_cell_less_version_without_a_track_is_hidden(tmp_path, monkeypatch):
     """The noise filter: a cell-less version with NO track (e.g. a killed graveyard version) must NOT flood the
-    screener — only track-bearing (forward-tested) strategies are surfaced as synthetic rows."""
+    screener — only track-bearing (paper-tested) strategies are surfaced as synthetic rows."""
     store = _store(tmp_path)
     _seed_cell(store, name="HasCell", symbol="BTCUSDT", venue="binance", return_pct=0.20, verdict="robust")
     ghost_vid = _seed_track_only_version(store, name="KilledGraveyard", status="killed", track=False)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from cosmu.config.settings import get_settings
 from cosmu.data.altdata import StoreBackedAltProvider
@@ -41,10 +42,18 @@ def _hoard_universe_bars(store: Store) -> None:
         logger.exception("bar hoard step failed; ingest step (already persisted) is unaffected")
 
 
-# Bound the per-pass odds fetch: the top-N most-liquid open polymarket markets × two cadences (daily + hourly).
-# Small + cheap (keyless public CLOB); a hard cap so one cron pass can never hammer the endpoint. Daily is the
-# macro-feature cadence; hourly is the ~24×-denser series the per-cell min-trades Gate can clear honestly.
-_ODDS_MAX_MARKETS = 30
+# TEMPORARY_FREE_PLAN_COST_SAVER: restore wider/hourly prediction-market ingest when Supabase Pro/live-readiness
+# justifies the DB growth. Bound the per-pass odds fetch. Cost-saver defaults keep prediction-market history alive without making
+# Postgres a high-frequency odds lake: daily odds stay on, hourly odds are opt-in because odds_60 is the largest
+# current alt_data writer on Supabase Free. Re-enable with COSMU_POLYMARKET_HOURLY_ODDS_ENABLED=1 when the hot
+# store has moved off Postgres or when actively researching prediction-market cells.
+_ODDS_MAX_MARKETS = int(os.environ.get("COSMU_POLYMARKET_ODDS_MAX_MARKETS", "10"))
+_POLYMARKET_DAILY_ODDS_ENABLED = os.environ.get("COSMU_POLYMARKET_DAILY_ODDS_ENABLED", "1").strip().lower() not in (
+    "0", "false", "no"
+)
+_POLYMARKET_HOURLY_ODDS_ENABLED = os.environ.get("COSMU_POLYMARKET_HOURLY_ODDS_ENABLED", "0").strip().lower() in (
+    "1", "true", "yes"
+)
 
 
 def _hoard_per_market_odds(store: Store, alt_store) -> None:  # noqa: ANN001
@@ -65,8 +74,16 @@ def _hoard_per_market_odds(store: Store, alt_store) -> None:  # noqa: ANN001
             ingest_per_market_resolutions,
         )
 
-        daily = ingest_per_market_odds(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
-        hourly = ingest_per_market_odds_hourly(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
+        daily = (
+            ingest_per_market_odds(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
+            if _POLYMARKET_DAILY_ODDS_ENABLED
+            else []
+        )
+        hourly = (
+            ingest_per_market_odds_hourly(alt_store, store, max_markets=_ODDS_MAX_MARKETS)
+            if _POLYMARKET_HOURLY_ODDS_ENABLED
+            else []
+        )
         # The authoritative UMA/CTF RESOLUTION join (scout #385 Fix-B): for the SAME markets we ingested odds for,
         # fetch the $1/$0 YES payout when resolved, stamped at the real resolution time. Most liquid-open markets
         # are UNresolved → a clean near-no-op; a market that has since resolved gets its terminal settlement point

@@ -2,7 +2,7 @@
 # gate VERDICT is never loosened here). But a cell that FAILS the gate yet is genuinely promising — sharpe>1.0 AND
 # trades>=30 AND return>0 (net of fees) — is routed to a GENEROUS PAPER (watch) lane INSTEAD of being killed:
 # tagged backtest_symbols.verdict='watch', funded on the SAME zero-real-capital, born-honest paper track survivors
-# use, and forward-tested. The forward/paper performance then separates real from lucky; the human still arms live
+# use, and paper-tested. The paper performance then separates real from lucky; the human still arms live
 # only on what proves out. These tests pin: (1) the near-miss predicate; (2) the finder/loop watch routing (verdict
 # + paper track + lane='watch' event + version status='paper'); (3) a gate-pass cell still papers normally; (4) a
 # thin/negative cell gets NO watch track; (5) the gate verdict (passed_gates / per-cell 'pass') is unchanged; and

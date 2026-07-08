@@ -985,7 +985,7 @@ class StrategyFinder:
                 if self._version_exists(r.code_hash):
                     continue
                 # GENEROUS-PAPER near-miss set (computed once, used for the status, the per-cell verdict, AND the
-                # track fan-out): the gate-FAILED cells promising enough to forward-test (sharpe>1 / trades>=30 /
+                # track fan-out): the gate-FAILED cells promising enough to paper-test (sharpe>1 / trades>=30 /
                 # return>0, net of fees — off the same per-cell display metrics persisted on backtest_symbols).
                 _watch_syms: set[str] = {
                     _sym
@@ -998,7 +998,7 @@ class StrategyFinder:
                     )
                 }
                 # A variant is SCREENED (kept on /lab) iff ANY of its cells passed the brut gate. A variant with NO
-                # gate pass but a WATCH near-miss goes to PAPER (it forward-tests on the generous lane, so it must be
+                # gate pass but a WATCH near-miss goes to PAPER (it paper-tests on the generous lane, so it must be
                 # ALIVE for the funder + executor to step it — KILLED versions are skipped by both). Only a variant
                 # with neither a pass nor a watch cell is truly KILLED. The brut gate VERDICT is unchanged: the
                 # backtest's passed_gates flag still reflects the gate, and a watch version is never live-armable

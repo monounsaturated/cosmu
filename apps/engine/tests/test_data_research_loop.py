@@ -264,10 +264,11 @@ class _StubResolutionSource:
         return []
 
 
-def test_ingest_cron_folds_in_per_market_odds_daily_and_hourly(tmp_path, monkeypatch):
-    """The hourly ingest cron (auto_research_pass(ingest=True)) must ALSO populate the per-market odds lane —
-    both the daily metric="odds" and the hourly metric="odds_60" — for the liquid open polymarket markets."""
+def test_ingest_cron_folds_in_daily_per_market_odds_by_default(tmp_path, monkeypatch):
+    """The ingest cron keeps the per-market odds lane alive, but the high-volume hourly odds_60 series is off by
+    default in Supabase cost-saver mode."""
     import cosmu.ingest.polymarket_odds as odds_mod
+    import cosmu.research.loop as loop_mod
 
     store = _store(tmp_path, "oddscron")
     _seed_polymarket_universe(store, [("0xCID_A", 900.0), ("0xCID_B", 500.0)])
@@ -278,14 +279,37 @@ def test_ingest_cron_folds_in_per_market_odds_daily_and_hourly(tmp_path, monkeyp
     # network-free stubs (the resolution join would otherwise hit live Gamma /markets for the same markets).
     monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
     monkeypatch.setattr(odds_mod, "PolymarketResolutionSource", lambda *a, **k: _StubResolutionSource())  # noqa: ARG005
+    monkeypatch.setattr(loop_mod, "_hoard_universe_bars", lambda store: None)
 
     verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
     assert verdict is None  # ingest-only pass
 
-    # Both cadences landed, keyed by conditionId, under their distinct metrics.
+    # Daily odds landed, keyed by conditionId. The high-volume hourly odds_60 series is opt-in.
+    assert [round(p.value, 2) for p in astore.read_all("polymarket", "0xCID_A", "odds")] == [0.40, 0.45, 0.50]
+    assert astore.read_all("polymarket", "0xCID_B", "odds_60") == []
+    assert stub.fidelities and set(stub.fidelities) == {1440}
+
+
+def test_ingest_cron_hourly_per_market_odds_is_opt_in(tmp_path, monkeypatch):
+    """The dense odds_60 lane can still be enabled explicitly for active prediction-market research."""
+    import cosmu.ingest.polymarket_odds as odds_mod
+    import cosmu.research.loop as loop_mod
+
+    store = _store(tmp_path, "oddshourly")
+    _seed_polymarket_universe(store, [("0xCID_A", 900.0), ("0xCID_B", 500.0)])
+    astore = AltDataStore(root=tmp_path / "alt")
+
+    stub = _StubOddsSource()
+    monkeypatch.setattr(loop_mod, "_POLYMARKET_HOURLY_ODDS_ENABLED", True)
+    monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
+    monkeypatch.setattr(odds_mod, "PolymarketResolutionSource", lambda *a, **k: _StubResolutionSource())  # noqa: ARG005
+    monkeypatch.setattr(loop_mod, "_hoard_universe_bars", lambda store: None)
+
+    verdict = auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
+    assert verdict is None
+
     assert [round(p.value, 2) for p in astore.read_all("polymarket", "0xCID_A", "odds")] == [0.40, 0.45, 0.50]
     assert [round(p.value, 2) for p in astore.read_all("polymarket", "0xCID_B", "odds_60")] == [0.40, 0.45, 0.50]
-    # The hourly variant asked the CLOB at fidelity=60 (and the daily at 1440) — both cadences ran.
     assert 60 in stub.fidelities and 1440 in stub.fidelities
 
 
@@ -302,10 +326,11 @@ def test_ingest_cron_odds_hoard_is_bounded(tmp_path, monkeypatch):
     stub = _StubOddsSource()
     monkeypatch.setattr(odds_mod, "PerMarketOddsSource", lambda *a, **k: stub)  # noqa: ARG005
     monkeypatch.setattr(odds_mod, "PolymarketResolutionSource", lambda *a, **k: _StubResolutionSource())  # noqa: ARG005
+    monkeypatch.setattr(loop_mod, "_hoard_universe_bars", lambda store: None)
 
     auto_research_pass(store, ingest=True, cross_asset_gate=False, alt_store=astore, providers=_fixture_providers())
-    # Two cadences (daily + hourly) × at most _ODDS_MAX_MARKETS markets each.
-    assert len(stub.fidelities) == 2 * loop_mod._ODDS_MAX_MARKETS
+    # Default cost-saver cadence: daily only, capped at _ODDS_MAX_MARKETS markets.
+    assert len(stub.fidelities) == loop_mod._ODDS_MAX_MARKETS
 
 
 def test_ingest_cron_odds_hoard_is_best_effort_one_market_failure(tmp_path, monkeypatch):

@@ -32,7 +32,7 @@ _CENTS = Decimal("0.01")
 WATCH_VERDICT = "watch"
 
 # NEAR-MISS criterion (operator-specified, net of fees). A gate-FAILED cell that meets ALL three is promising
-# enough to forward-test rather than kill: a real Sharpe, enough of its OWN trades to be judgeable, and money made.
+# enough to paper-test rather than kill: a real Sharpe, enough of its OWN trades to be judgeable, and money made.
 # e.g. DeFi-flow on SOL: sharpe 1.37 / 114 trades / +6.1% return — sub-0.95 DSR but clearly worth watching.
 NEAR_MISS_MIN_SHARPE = 1.0
 NEAR_MISS_MIN_TRADES = 30
@@ -62,7 +62,7 @@ class _Inserter(Protocol):
     def insert_or_get(self, table: str, row: dict[str, Any], *, conflict_cols: list[str]) -> str: ...
 
 
-# Lifecycle statuses that count as a LIVE forward-test of a cell. A track whose version is `killed` (failed the
+# Lifecycle statuses that count as a LIVE paper proof of a cell. A track whose version is `killed` (failed the
 # gate, defunded, or deduped) no longer occupies the (strategy × symbol × venue) slot — a fresh paper track for
 # that cell is then legitimate. Mirrors knowledge/lifecycle_status.ALIVE_STATUSES without importing it here (this
 # module is imported very early by the create lanes; the set is a tiny stable whitelist, not user input).

@@ -104,7 +104,7 @@ class LeaderboardRow(BaseModel):
     pnl_pct: float | None = None
     oos_window_days: float | None = None
     # The BACKTEST headline re-keyed to THIS track's OWN (symbol, venue) cell — the per-cell ANNUALIZED (CAGR) return
-    # from `backtest_symbols` for the exact triplet the track forward-tests, compounded over that cell's OWN OOS
+    # from `backtest_symbols` for the exact triplet the track paper-tests, compounded over that cell's OWN OOS
     # window. Fixes the old leaderboard which ranked/displayed the POOLED, non-annualized version-level `oos_return`
     # (track_return_pct / net_pct) — a number that does not match the cell each track actually trades. `null` when no
     # matching cell exists (a documented arm / pre-migration track / legacy version-wide track) — honest "—", never a

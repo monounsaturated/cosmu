@@ -193,7 +193,7 @@ def _dedup_cells(rows: list[dict]) -> list[dict]:
 # them: symbol/venue empty (no cell exists), metrics NULL (nothing was computed per-symbol — never a fabricated 0%),
 # and the VERSION'S OWN status carried straight through so the lifecycle badge reads Paper/Live (not "New"). We scope
 # to track-BEARING versions deliberately: surfacing every cell-less version would dump the whole killed graveyard
-# (~420 rows) into the screener; a track is the honest signal that the strategy is actually being forward-tested.
+# (~420 rows) into the screener; a track is the honest signal that the strategy is actually being paper-tested.
 _TRACK_ONLY_SELECT = (
     "SELECT sv.id AS strategy_version_id, sv.strategy_id, s.name AS strategy_name, sv.kind, sv.status, "
     # has_paper_fills for the track-only (TAA) versions too — same predicate as the cell select / leaderboard. A
@@ -224,7 +224,7 @@ def _track_only_row(r: dict) -> LabSymbolRow:
         # the status is genuinely absent (never invent a more-advanced stage).
         status=r.get("status") or "lab",
         # Whether this funded track has actually executed a paper fill — drives the web's "Paper" badge so a funded
-        # forward-test bot (TAA) reads "Paper", while an armed-but-never-filled track reads "New".
+        # paper-test bot (TAA) reads "Paper", while an armed-but-never-filled track reads "New".
         has_paper_fills=bool(r.get("has_paper_fills")),
         symbol="",
         venue_id=None,
@@ -353,7 +353,7 @@ def lab_symbols(symbol: str | None = None, venue: str | None = None,
     # Belt-and-suspenders: the DB already returns one row per combo, but keep the Python dedup as a no-op safety over
     # the small page (it also normalises the pre-migration cell_timeframe-absent case). The page is already sorted.
     deduped = _dedup_cells(rows)
-    # The track-only (armed, cell-less) strategies — the FUNDED forward-test bots (DAA / VAA / ADM / … and any live
+    # The track-only (armed, cell-less) strategies — the FUNDED paper-test bots (DAA / VAA / ADM / … and any live
     # track). They are the operationally critical rows (real capital at work), so on the first page RESERVE their
     # space first and trim the ranked CELLS to fit (never squeeze a funded Paper bot out behind a fat cell universe).
     # Skip any strategy ALREADY represented by a cell-backed row on this page so a strategy with both cells + a track

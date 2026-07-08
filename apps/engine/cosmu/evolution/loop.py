@@ -681,7 +681,7 @@ class FarmLoop:
         passing = [c for c in sc.cells.values() if c.passed]
         passed = bool(passing)
         # GENEROUS-PAPER near-miss set (computed once for the status, the per-cell verdict, AND the track fan-out):
-        # gate-FAILED cells promising enough to forward-test (sharpe>1 / trades>=30 / return>0, net of fees — off the
+        # gate-FAILED cells promising enough to paper-test (sharpe>1 / trades>=30 / return>0, net of fees — off the
         # same per-cell display metrics persisted on backtest_symbols).
         _watch_syms: set[str] = {
             _sym
@@ -693,7 +693,7 @@ class FarmLoop:
                 return_pct=float(_pm.get("return", 0.0)),
             )
         }
-        # A candidate with NO gate pass but a WATCH near-miss goes to PAPER (it forward-tests on the generous lane,
+        # A candidate with NO gate pass but a WATCH near-miss goes to PAPER (it paper-tests on the generous lane,
         # so it must be ALIVE for the funder + executor to step it). Only neither-pass-nor-watch is truly KILLED. The
         # brut gate VERDICT is unchanged (passed_gates on the backtest still reflects the gate); a watch version is
         # never live-armable (live-eligibility reads the per-cell pass passport, which a watch cell lacks).

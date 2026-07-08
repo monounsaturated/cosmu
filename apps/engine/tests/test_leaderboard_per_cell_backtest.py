@@ -1,6 +1,6 @@
 # Fix 3 — the /leaderboard money surface must show the per-cell ANNUALIZED backtest return for each track's OWN
 # (symbol, venue), NOT the pooled non-annualized version-level oos_return. backtest_return_pct_annualized re-keys the
-# BACKTEST column to the exact triplet the track forward-tests, annualized over that cell's OWN OOS window. The
+# BACKTEST column to the exact triplet the track paper-tests, annualized over that cell's OWN OOS window. The
 # forward paper_return_pct (the real marked money) is unchanged — this only fixes the BACKTEST column shown alongside.
 # Honest NULL when no matching cell exists (documented arm / legacy version-wide track); never the pooled fallback.
 

@@ -1,5 +1,5 @@
 # /live/launch must refuse to arm a (symbol, venue) the forward proof was NOT earned on. A version is funded +
-# forward-tested on ONE cell (the verdict-proven symbol); arming a different cell would launch real money on
+# paper-tested on ONE cell (the verdict-proven symbol); arming a different cell would launch real money on
 # evidence that belongs elsewhere — the cardinal-sin on the money path. The guard runs BEFORE the eligibility
 # gate, so a mismatch is rejected outright.
 

@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS position_exit_state (
 );
 
 -- A track is one BRUT cell's forward-proof: a tradeable triple (strategy_version × symbol × venue), each judged
--- and forward-tested on its OWN data. symbol/venue_id are nullable for legacy version-wide tracks; the cell
+-- and paper-tested on its OWN data. symbol/venue_id are nullable for legacy version-wide tracks; the cell
 -- UNIQUE index lets one version hold one track per passing cell (the old UNIQUE(strategy_version_id) is dropped).
 CREATE TABLE IF NOT EXISTS tracks (
   id TEXT PRIMARY KEY,

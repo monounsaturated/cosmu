@@ -144,15 +144,17 @@ def gate_sweep() -> int:
     return _run(["cosmu.master.scheduler"])
 
 
-@app.function(schedule=modal.Cron("0 * * * *"), **_LIGHT)
+# TEMPORARY_FREE_PLAN_COST_SAVER: restore a faster cadence when Supabase Pro/live-readiness justifies it.
+@app.function(schedule=modal.Cron("0 */6 * * *"), **_LIGHT)
 def ingest() -> int:
-    """Free-data INGEST ONLY (hourly — replaces the dead Railway */15 cron; the canary the heartbeat watches).
+    """Free-data INGEST ONLY (every 6h). Cost-saver cadence: enough freshness for research/UI while avoiding
+    hourly Supabase writes on Free-plan quota. The canary the heartbeat watches expects this slower cadence.
     The leaky cross-asset gate is DEFAULT OFF; pass --cross-asset-gate to opt in. Honest BH-FDR gate path
     (promote_cohort) runs via gate_sweep. ALSO HOARDS bars: the --ingest pass folds in a bounded, best-effort R2
     bar hoard (data/bar_archive.archive_universe_bars) — the cacheless fleet pulls the Tier-0/1 crypto universe's
     keyless windows per venue and union-merges each into its deep R2 series, accumulating history the shallow
     ~720-bar keyless REST window can't serve in one call. No 6th schedule (Modal Free caps at 5); it rides the
-    hourly ingest cadence, which is exactly the keyless-window refresh rate."""
+    ingest cadence."""
     return _run(["cosmu.research.loop", "--ingest"])
 
 
@@ -186,9 +188,10 @@ def heartbeat() -> int:
     return _run(["cosmu.ops.heartbeat"])
 
 
-@app.function(schedule=modal.Cron("0 */4 * * *"), **_HEAVY)
+# TEMPORARY_FREE_PLAN_COST_SAVER: restore the 4h research loop when Supabase Pro/live-readiness justifies it.
+@app.function(schedule=modal.Cron("0 2 * * *"), **_HEAVY)
 def tick() -> int:
-    """EVERY 4h — the full forward cycle in ONE scheduled slot (Modal Free caps schedules at 5, so discovery +
+    """DAILY — the full forward cycle in ONE scheduled slot (Modal Free caps schedules at 5, so discovery +
     paper clock + cohort re-arm share this slot). Discovery (author → deterministic gate/FDR → fund SIM
     survivors) + advance the paper clock (mark held positions + re-arm the documented equity cohort), and refresh
     vendor-cost budgets once/day. SIM only by invariant — NEVER an order. The standalone gate_sweep / paper_mark /

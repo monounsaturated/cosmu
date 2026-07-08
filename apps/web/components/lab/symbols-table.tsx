@@ -99,7 +99,7 @@ function isUncomputed(r: LabSymbolRow): boolean {
 }
 
 // The row's lifecycle lane. Precedence, top-down:
-//   1. A FUNDED forward-test track (status=paper AND a real paper fill, via isPaperRow) → "paper", EVEN when it's
+//   1. A FUNDED paper-test track (status=paper AND a real paper fill, via isPaperRow) → "paper", EVEN when it's
 //      cell-less. These are the operationally live bots (the monthly TAA survivors: DAA/VAA/ADM/…); they MUST
 //      badge "Paper" so the grid agrees with the ribbon's "Trading" count (the operator's "Trading 9" vs
 //      "no Paper rows" reconciliation — they were squeezed out / mislabelled "New" before).

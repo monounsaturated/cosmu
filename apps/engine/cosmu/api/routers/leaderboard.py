@@ -31,7 +31,7 @@ def _tracks_cell_cols() -> str:
 def _backtest_cell_cols() -> str:
     """Two schema-adaptive correlated subquery columns — THIS track's OWN (symbol, venue) backtest cell return +
     its own OOS window — so the leaderboard's BACKTEST headline can be re-keyed off the pooled version-level number
-    to the cell each track actually forward-tests. Emitted ONLY when BOTH the per-cell `tracks` columns
+    to the cell each track actually paper-tests. Emitted ONLY when BOTH the per-cell `tracks` columns
     (`tracks.symbol` / `tracks.venue_id`, the 2026-06-18 brut migration) AND `backtest_symbols.oos_window_days` are
     live; on a pre-migration prod table they are OMITTED (the router substitutes NULLs), so
     `backtest_return_pct_annualized` is honestly NULL rather than risking an UndefinedColumn. Plain CORRELATED
@@ -203,7 +203,7 @@ def leaderboard() -> LeaderboardResponse:
         # `oos_window_days` display column (so the OOS % is shown with its window). None when bounds are bad.
         oos_window_days = _oos_window_days(row["oos_start"], row["oos_end"])
         # RE-KEY the BACKTEST headline to THIS track's OWN (symbol, venue) cell: annualize that cell's standalone
-        # return over ITS OWN OOS window — the honest backtest number for the exact triplet the track forward-tests,
+        # return over ITS OWN OOS window — the honest backtest number for the exact triplet the track paper-tests,
         # NOT the pooled version-level oos_return. None (honest "—") when no cell was matched (documented arm /
         # pre-migration / legacy version-wide track): we never fall back to the pooled number here. The cell columns
         # are present only on the post-migration schema (else .get() → None, so the field stays NULL).
