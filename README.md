@@ -1,8 +1,9 @@
 # Cosmu
 
-**Turn any headline into a backtest.** Ask in plain English ("what if I'd bought Nvidia every time a big
-AI model launched?"). Cosmu finds the matching news, tests it on real prices with your broker's fees, and
-tells you whether it beat random timing.
+**Your AI trading analyst. Most trading ideas lose money: know before yours does.** Describe any
+strategy in plain English, numbers ("buy Bitcoin after a 10% crash") or news ("buy defense stocks when a
+war breaks out"). Cosmu tests it on real prices, with your broker's fees, against 10,000 random entry
+dates, and gives a straight verdict.
 
 This repo holds the landing page (`apps/web`) and the research harness behind its examples
 (`scripts/landing`). The earlier engine (deterministic statistical gate, paper trading, point-in-time
