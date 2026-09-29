@@ -6,31 +6,11 @@
     "node": ">=22 <26"
   },
   "scripts": {
-    "build": "pnpm contracts:generate && pnpm --filter @cosmu/contracts-ts build && pnpm --filter @cosmu/web build",
-    "build:all": "pnpm -r build",
-    "build:railway": "pnpm --filter @cosmu/web build",
-    "contracts:generate": "python3 scripts/generate_contracts.py",
-    "db:reset:local": "node scripts/reset-local-db.mjs",
-    "dev": "pnpm contracts:generate && pnpm --parallel --filter @cosmu/web dev",
-    "engine:api": "PYTHONPATH=apps/engine python3 -m cosmu.api.app",
-    "engine:test": "PYTHONPATH=apps/engine python3 -m pytest apps/engine/tests -n auto --dist=loadfile",
+    "dev": "pnpm --filter @cosmu/web dev",
+    "build": "pnpm --filter @cosmu/web build",
     "start": "pnpm --filter @cosmu/web start",
-    "start:api": "PYTHONPATH=apps/engine python3 -m cosmu.api.app",
-    "start:web": "pnpm --filter @cosmu/web start",
-    "lint": "pnpm -r lint",
-    "prepare": "node scripts/setup-hooks.mjs",
-    "setup:hooks": "node scripts/setup-hooks.mjs",
-    "naming:check": "python3 scripts/check_naming.py",
-    "modal:secret": "python3 scripts/sync_modal_secret.py",
-    "modal:gate": "modal run apps/engine/remote/app.py --job gate_sweep",
-    "modal:ingest": "modal run apps/engine/remote/app.py --job ingest",
-    "modal:costs": "modal run apps/engine/remote/app.py --job cost_refresh",
-    "modal:sweep": "modal run apps/engine/remote/app.py::sweep",
-    "typecheck": "pnpm --filter @cosmu/contracts-ts typecheck && pnpm --filter @cosmu/web typecheck",
-    "contracts:check-drift": "node scripts/check_contracts_drift.mjs",
-    "verify": "pnpm naming:check && pnpm contracts:generate && pnpm contracts:check-drift && pnpm engine:test && pnpm typecheck && pnpm build",
-    "verify:fast": "pnpm naming:check && pnpm contracts:generate && pnpm contracts:check-drift && pnpm engine:test && pnpm typecheck",
-    "verify:local": "pnpm naming:check && pnpm contracts:generate && pnpm contracts:check-drift",
-    "verify:remote": "git push -u origin HEAD && gh run watch $(gh run list --branch $(git rev-parse --abbrev-ref HEAD) --workflow verify.yml --limit 1 --json databaseId --jq '.[0].databaseId') --exit-status"
+    "typecheck": "pnpm --filter @cosmu/web typecheck",
+    "verify": "pnpm typecheck && pnpm build",
+    "demo:data": "python3 scripts/landing/build_cibr_demo.py"
   }
 }

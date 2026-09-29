@@ -35,3 +35,8 @@ TradingAgents-main/
 
 .venv/
 lunarcrush_extract.log
+
+# Static export
+out/
+*.tsbuildinfo
+scripts/landing/cibr_raw.json

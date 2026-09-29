@@ -1,83 +1,40 @@
 # Cosmu
 
-Autonomous quant machine. LLMs propose strategies — a deterministic gate decides what
-gets funded. Live trading is **OFF by default** behind 5 interlocks.
+**Ask a trading question in plain English and get an honest, fee-aware answer.**
 
-## What it does
+Cosmu turns a natural-language idea into a typed strategy, backtests it on real prices and real news net
+of every fee, and lets a deterministic statistical gate (not the AI) decide whether the edge is real.
 
-- Authors trading strategies autonomously (or from your ideas)
-- Screens them through a deterministic, FDR-controlled gate (deflated Sharpe · CSCV-PBO · holdout · regime folds · cohort Benjamini-Hochberg)
-- Runs Paper tracks for survivors — each strategy gets its own standalone SIM track on live data; ≥30 days net of fees is the recommended live-readiness proof (the operator decides when to go live; the 5 interlocks are the hard gate)
-- Ingests free alt-data sources for cross-asset signals, surfaced through the Mind (analyst-panel reasoning)
+This repo is now the **landing page** for that project. The full engine lives in [`archive/`](archive/)
+and at the tag `v1-engine-archive`.
 
-## What it doesn't do
+## What was built (Apr–Jul 2026)
 
-- Trade live without explicit human activation (5 interlocks: toggle on + real keys + gate passed + caps available + no kill-switch)
-- Use LLMs in the funding/execution path (the deterministic gate alone disposes)
-- Pool money across strategies (each survivor has its own standalone track — no shared wallet)
-- Display synthetic data — empty surfaces say so honestly, never fabricate a track record
+- **361** merged PRs · **1,322** commits · **3,181** automated tests · ~**97k** lines of Python
+- A deterministic funding gate: deflated Sharpe, CSCV-PBO, untouched holdout, regime folds and a
+  cohort-level Benjamini-Hochberg FDR, so generating more ideas can't manufacture a winner
+- 11+ point-in-time data sources (GDELT news, Reddit, X, Polymarket, FRED, funding, on-chain…)
+- Paper trading on real prices, each strategy on its own track; live trading behind 5 interlocks
+- Built by directing parallel Claude Code agents (one branch each, merge train, 28 runnable skills)
 
-## Run locally
+Honest results are part of the story: a pre-registered crypto funding-carry strategy **failed** the gate
+and was dropped. Three defensive asset-rotation strategies **passed** it unchanged.
+
+## The landing page
+
+`apps/web`: a static Next.js site (no backend), deployable on Vercel's free tier.
 
 ```bash
 pnpm install
-pnpm dev          # web on :3000 (regenerates contracts, then next dev --turbopack)
-pnpm engine:api   # engine API on :8000 (FastAPI / uvicorn)
+pnpm dev          # http://localhost:3000
+pnpm verify       # typecheck + static build → apps/web/out
 ```
 
-First clone — also install the Python dev deps so `pytest -n auto` works locally:
+The demo ("buy 1 share of CIBR every time a major hack makes national news, 2021–2025") uses **real**
+daily closes. Regenerate it with:
 
 ```bash
-pip install -e "apps/engine[dev]"
+pnpm demo:data    # scripts/landing/build_cibr_demo.py → apps/web/lib/cibr-hacks.json
 ```
 
-Point the web app at the engine with `.env.local`:
-
-```
-API_BASE_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-```
-
-With no engine configured, every surface renders its honest "not connected" state — no fake numbers.
-
-## Verify before pushing
-
-```bash
-pnpm verify         # full: naming:check · contracts:generate · engine:test · typecheck · next build
-pnpm verify:fast    # skip next build — lint + typecheck + engine tests only (fast local loop)
-pnpm verify:remote  # manually dispatch the GitHub Actions 'verify' run → tail it
-```
-
-**The pre-push hook (`.githooks/pre-push`) is the gate** — it runs naming + contracts-drift +
-the engine test suite + typecheck and BLOCKS the push on any failure (push = deploy, and CI does
-not auto-run). It skips a step honestly (loud warning) only when that toolchain isn't installed.
-Escape hatches when you own the risk: `COSMU_PREPUSH=fast git push` (naming + drift only) or
-`git push --no-verify`. The full `pnpm verify` adds the production `next build` on top — run it
-before pushing anything that touches the web app.
-
-CI (`verify.yml`) is `workflow_dispatch`-only — it does NOT auto-run on PRs or pushes (we are not
-paying for GitHub Actions). `verify:remote` manually dispatches it (`gh` CLI required) so the heavy
-`next build` runs on GitHub instead of your RAM.
-
-`verify:fast` is the tight feedback loop — skips the slow Next.js production build.
-
-## Deploy
-
-Push to your working branch. **Railway** (engine + 7 crons: 15-min ingest · 4h autonomous tick · daily+hourly forward-test/mark clocks · hourly voices · daily rotation re-arm — see `apps/engine/railway.toml`) and **Vercel** (web) auto-deploy.
-That's the only trigger — never also run `railway up` / `vercel deploy` (double-deploy race).
-
-## Stack
-
-- **Engine** — Python 3.12, FastAPI, Pydantic, pytest (`apps/engine/cosmu`) on **Railway**
-- **Web** — Next.js, Tailwind, shadcn/ui (`apps/web`) on **Vercel**
-- **Contracts** — `@cosmu/contracts-ts`, generated from the engine OpenAPI (never hand-typed)
-- **Data** — Postgres / Supabase · **Heavy compute** — Modal (scale-to-zero backtests/ML/sweeps)
-- **LLM** — OpenRouter (free `:free` tier by default; xAI fallback) · proposals only, gate is deterministic
-- **CI** — GitHub Actions (`verify.yml`) is **`workflow_dispatch`-only** (manual, OFF by default — we are not paying for it); the **pre-push hook (naming + drift + engine tests + typecheck) is the gate**
-
-## Docs
-
-- `AGENTS.md` — the single canonical entry point for any coding agent
-- `docs/IMPLEMENTATION.md` — what's built, what's next
-- `docs/GLOSSARY.md` — vocabulary (the Mind, the Gate, tracks, lifecycle)
-- `.claude/skills/` — runnable playbooks (the source of truth for common procedures)
+Research project, not investment advice.
