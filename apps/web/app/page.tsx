@@ -1,13 +1,13 @@
-// intent: the Cosmu landing page — a hero you can play with, a scenario gallery, how it fits a trader's
-//   routine, why to trust it, one CTA. Every number shown is computed from lib/showcase.json.
+// intent: the Cosmu landing page — a hero you can play with, how it fits a trader's routine, the story of
+//   how it came to be, why to trust it, one CTA. Market numbers come from lib/showcase.json; the story's
+//   numbers come from the archived engine's reports (archive/docs/reports).
 
 import { CosmuMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Studio } from "@/components/studio";
-import { Gallery } from "@/components/gallery";
 import { Icon } from "@/components/icon";
 import { SITE } from "@/lib/site";
-import { IDEAS, STOCK_PLATFORMS, holdWords, pct, results } from "@/lib/showcase";
+import { IDEAS, RULE, STOCK_PLATFORMS, TESTED, holdWords, pct, results } from "@/lib/showcase";
 
 const GH = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -18,58 +18,62 @@ const GH = (
 // Real numbers for the workflow mock-ups.
 const byKey = (k: string) => IDEAS.find((i) => i.key === k) ?? IDEAS[0];
 const LAYOFF = byKey("spike_layoffs_QQQ");
-const STORM = byKey("spike_hurricane_GNRC");
 const NVDA = byKey("ai_nvda");
 const rL = results(LAYOFF, STOCK_PLATFORMS[0]);
-const rS = results(STORM, STOCK_PLATFORMS[0]);
 const rN = results(NVDA, STOCK_PLATFORMS[0]);
+const PASSED = TESTED.filter((t) => t.pass).length;
 
-const HOW = [
+// The story: from a trading robot to an honest judge. Figures from archive/docs/reports.
+const STORY = [
   {
-    n: "1",
-    t: "Ask",
-    d: "Type an idea the way you'd say it.",
+    k: "The idea",
+    t: "A robot that trades on its own.",
+    d: "Software wrote hundreds of strategies, backtested them and paper-traded the survivors every day, chasing the next 100×.",
     art: (
-      <div className="how-art art-ask">
-        <span>Buy gold when…</span>
+      <div className="st-art">
+        <b>400+</b>
+        <span>strategies written and tested</span>
       </div>
     ),
   },
   {
-    n: "2",
-    t: "Cosmu tests it",
-    d: "Every matching headline, real prices, your broker's fees.",
+    k: "The test",
+    t: "A strict judge said no.",
+    d: "Every idea had to beat luck after real fees. One family made up to +89% before costs. Costs took more than all of it.",
     art: (
-      <div className="how-art art-steps">
-        {["News found", "Prices pulled", "Backtest run", "Luck checked"].map((x) => (
-          <span key={x}><b>✓</b> {x}</span>
-        ))}
+      <div className="st-art st-bars">
+        <div><span>Before costs</span><i className="st-track"><i className="st-up" style={{ width: "89%" }} /></i><em className="up">+89%</em></div>
+        <div><span>After costs</span><i className="st-track" /><em className="dn">below 0</em></div>
       </div>
     ),
   },
   {
-    n: "3",
-    t: "You get the answer",
-    d: "Profit after fees, and whether it beats luck.",
+    k: "The product",
+    t: "The judge was the valuable part.",
+    d: "So Cosmu puts that judge in front of every trader: an honest answer before they risk a cent.",
     art: (
-      <div className="how-art art-answer">
-        <b className="up">{pct(rN.avg)}</b>
-        <span className="pill">Better than random</span>
+      <div className="st-art">
+        <div className="st-dots" aria-hidden>
+          {TESTED.map((t) => (
+            <i key={t.key} className={t.pass ? "p" : ""} title={t.q} />
+          ))}
+        </div>
+        <span>{TESTED.length} news ideas tested · {PASSED} passed</span>
       </div>
     ),
   },
 ];
 
 const TRUST = [
-  { i: "clock", t: "No hindsight", d: "Trades only on news that was already public." },
-  { i: "fees", t: "Your real fees", d: "Your broker's costs, on every single trade." },
-  { i: "dice", t: "Luck test", d: "10,000 random dates, every time." },
-  { i: "shield", t: "Math decides", d: "The AI runs the tests. It never grades itself." },
-  { i: "spark", t: "No code", d: "No spreadsheets, no scripts, no data wrangling." },
-  { i: "users", t: "Every source", d: "Worldwide news, social media, macro data, crypto sentiment." },
-];
+  { i: "clock", t: "No hindsight", d: "Buys only after the news was public, at the next close." },
+  { i: "fees", t: "Your real fees", d: "Every trade pays your broker's commission, currency fee and spread." },
+  { i: "dice", t: "Luck test", d: `10,000 random dates from the same years. Passing takes ${RULE.min_n}+ events and a ${Math.round(RULE.pass * 100)}% win.` },
+  { i: "shield", t: "Math decides", d: "The verdict comes from statistics, never from an AI's opinion." },
+  { i: "spark", t: "Plain words", d: "Ask like you'd text a friend. No spreadsheets, no code." },
+  { i: "clip", t: "Failures included", d: "Every idea tested stays on the record, not just the winners." },
+]
 
-const VENUES = ["Interactive Brokers", "Trade Republic", "DEGIRO", "XTB", "Binance", "Kraken", "TradingView"];
+const VENUES = ["Interactive Brokers", "Trade Republic", "DEGIRO", "XTB", "Binance", "Kraken"];
 
 export default function Page() {
   return (
@@ -90,6 +94,7 @@ export default function Page() {
 
       <main>
         <section className="hero wrap">
+          <span className="badge"><i /> Early preview</span>
           <h1>
             Turn any headline
             <br />
@@ -100,46 +105,23 @@ export default function Page() {
         </section>
 
         <section className="wrap block">
-          <h2>Pick a scenario.</h2>
-          <p className="sub">Big events or everyday news spikes. Click one to open it above.</p>
-          <Gallery />
-        </section>
-
-        <section className="wrap block">
-          <h2>As simple as asking.</h2>
-          <div className="how">
-            {HOW.map((h) => (
-              <div key={h.n} className="how-card">
-                {h.art}
-                <div className="how-txt">
-                  <span className="how-n">{h.n}</span>
-                  <div>
-                    <h3>{h.t}</h3>
-                    <p>{h.d}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="wrap block">
           <h2>Fits the way you trade.</h2>
           <div className="flow">
             <div className="flow-card">
               <div className="flow-art">
                 <div className="paste">
-                  <Icon name="clip" size={14} /> &ldquo;Big Tech announces another round of layoffs&rdquo;
+                  <Icon name="spark" size={14} /> Big AI model launched today. Buy Nvidia?
                 </div>
                 <div className="answer">
-                  <span className="a-l">Last {LAYOFF.trades.length} times, the Nasdaq in {holdWords(LAYOFF.hold_days)}</span>
+                  <span className="a-l">After the last {NVDA.trades.length} launches, Nvidia over a month</span>
                   <span className="a-v">
-                    <b className="up">{pct(rL.avg)}</b> · {rL.wins} of {LAYOFF.trades.length} up
+                    <b className="up">{pct(rN.avg)}</b> vs {pct(rN.randomMonth)} on a random month
                   </span>
+                  <span className="a-verdict">Mostly the market, not the news.</span>
                 </div>
               </div>
               <h3>Check before you click buy</h3>
-              <p>Paste the headline you just read. See what happened every time before.</p>
+              <p>Ask about the headline you just read. See what really happened every time before.</p>
             </div>
 
             <div className="flow-card">
@@ -148,15 +130,15 @@ export default function Page() {
                   <span className="n-icon"><Icon name="bell" size={16} /></span>
                   <div>
                     <div className="n-head"><b>Cosmu</b><span>now</span></div>
-                    <div className="n-title">Hurricane news is spiking</div>
+                    <div className="n-title">Layoff news is spiking</div>
                     <div className="n-body">
-                      Last {STORM.trades.length} times, Generac made {pct(rS.avg)} within {holdWords(STORM.hold_days)}. {rS.wins} of {STORM.trades.length} were up.
+                      After the last {LAYOFF.trades.length} spikes, the Nasdaq averaged {pct(rL.avg)} over {holdWords(LAYOFF.hold_days)}. {rL.wins} of {LAYOFF.trades.length} were up.
                     </div>
                   </div>
                 </div>
               </div>
-              <h3>Get pinged when it happens again</h3>
-              <p>Save an idea. Cosmu watches the news and alerts you the moment it fires.</p>
+              <h3>Get pinged when it happens again <span className="soon">Soon</span></h3>
+              <p>Save an idea that passed. Cosmu watches the news and tells you when it fires.</p>
             </div>
 
             <div className="flow-card">
@@ -165,9 +147,23 @@ export default function Page() {
                   <span key={v}>{v}</span>
                 ))}
               </div>
-              <h3>Works where you already trade</h3>
-              <p>Your broker&apos;s real fees. Charts and alerts in the tools you use.</p>
+              <h3>Your broker&apos;s fees, built in</h3>
+              <p>Pick where you trade. Every result is net of its real costs.</p>
             </div>
+          </div>
+        </section>
+
+        <section className="wrap block">
+          <h2>Built on a hard lesson.</h2>
+          <div className="story">
+            {STORY.map((x, i) => (
+              <div key={x.k} className="st-card">
+                {x.art}
+                <div className="st-k"><span>{String(i + 1).padStart(2, "0")}</span> {x.k}</div>
+                <h3>{x.t}</h3>
+                <p>{x.d}</p>
+              </div>
+            ))}
           </div>
         </section>
 

@@ -16,6 +16,9 @@ K = float(os.environ.get("SPIKE_K", "3"))
 COOLDOWN = 10
 MIN_ARTICLES = 50
 
+# Topics that only make sense in a season (Atlantic hurricane season: June–November).
+SEASON = {"hurricane": ("06-01", "11-30")}
+
 # slug, asset, question
 TOPICS = [
     ("cyber", "CIBR", "Buy cybersecurity stocks when hack news spikes"),
@@ -47,7 +50,10 @@ def spikes(slug, k=K):
     share = [d["value"] / d["norm"] if d["norm"] else 0 for d in data]
     count = [d["value"] for d in data]
     out, last = [], -999
+    season = SEASON.get(slug)
     for i in range(30, len(days)):
+        if season and not (season[0] <= days[i][5:] <= season[1]):
+            continue
         base = statistics.median(share[i - 30 : i])
         if base > 0 and share[i] >= k * base and count[i] >= MIN_ARTICLES and i - last > COOLDOWN:
             out.append((days[i], round(share[i] / base, 1), count[i]))

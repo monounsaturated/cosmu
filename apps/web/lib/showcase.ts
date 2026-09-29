@@ -22,7 +22,20 @@ export type Idea = {
   series: [string, number][];
 };
 
-export const IDEAS = (raw as unknown as { ideas: Idea[] }).ideas;
+export type Tested = { key: string; q: string; n: number; hold_days: number; avg: number; random: number; beats: number; pass: boolean };
+
+const DATA = raw as unknown as { ideas: Idea[]; tested: Tested[]; rule: { min_n: number; pass: number } };
+export const IDEAS = DATA.ideas;
+export const TESTED = DATA.tested;
+export const RULE = DATA.rule;
+
+// One verdict rule for the whole page: enough events AND better than 95% of random-date draws.
+export function verdict(idea: Idea): { cls: "strong" | "edge" | "luck"; text: string } {
+  if (idea.trades.length < RULE.min_n) return { cls: "luck", text: "Too few events to tell" };
+  if (idea.beats_random >= RULE.pass) return { cls: "strong", text: "Passes the luck test" };
+  if (idea.beats_random >= 0.8) return { cls: "edge", text: "Promising, not proven" };
+  return { cls: "luck", text: "No edge found" };
+}
 
 // Round-trip cost of a $1,000 buy + sell, as a fraction. Published retail schedules (2025), rounded.
 export type Platform = { id: string; name: string; roundTrip: number; why: string };
@@ -45,7 +58,7 @@ export const platformsFor = (idea: Idea) => (idea.crypto ? CRYPTO_PLATFORMS : ST
 export function results(idea: Idea, p: Platform) {
   const net = idea.trades.map((t) => t.gross - p.roundTrip);
   const avg = net.reduce((a, b) => a + b, 0) / net.length;
-  const wins = net.filter((r) => r > 0).length;
+  const wins = net.filter((r) => r > 0).length; // same rule as the green dots
   const randomMonth = idea.random_month - p.roundTrip;
   return { net, avg, wins, randomMonth, profitOn1k: net.reduce((a, b) => a + b, 0) * 1000 };
 }
@@ -54,13 +67,6 @@ export function results(idea: Idea, p: Platform) {
 export const holdWords = (h: number) => (h <= 5 ? "1 week" : h <= 10 ? "2 weeks" : "1 month");
 export const randomWords = (h: number) => (h <= 5 ? "Any random week" : h <= 10 ? "Any random 2 weeks" : "Any random month");
 export const triggerWord = (idea: Idea, n = 2) => (idea.spike ? (n === 1 ? "news spike" : "news spikes") : n === 1 ? "headline" : "headlines");
-
-// Opens an idea in the studio from anywhere on the page.
-export const PICK_EVENT = "cosmu:pick";
-export function pickIdea(key: string) {
-  window.dispatchEvent(new CustomEvent(PICK_EVENT, { detail: key }));
-  document.getElementById("try")?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
 
 export const pct = (x: number, digits = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(digits)}%`;
 export const money = (x: number) => `${x >= 0 ? "+" : "−"}$${Math.round(Math.abs(x)).toLocaleString("en-US")}`;

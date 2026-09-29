@@ -2,13 +2,12 @@
 
 // intent: the hero — a plain-English question becomes a news scan, a backtest and a verdict. The intro
 //   plays ONCE when the page opens (one clock `t`, ~6s), then everything stays still and interactive:
-//   switch idea (here or from the gallery), switch broker, hover a trigger. Reduced motion or any click
+//   switch idea, switch broker, hover a trigger. Reduced motion or any click
 //   jumps straight to the end. Every number is derived from lib/showcase.json (real closes).
 
 import { useEffect, useMemo, useState } from "react";
 import {
   IDEAS,
-  PICK_EVENT,
   fmtDate,
   holdWords,
   money,
@@ -17,6 +16,7 @@ import {
   randomWords,
   results,
   triggerWord,
+  verdict,
   type Idea,
 } from "@/lib/showcase";
 import { Icon } from "./icon";
@@ -77,13 +77,6 @@ export function Studio() {
     setHover(null);
   };
 
-  // The gallery further down the page can open an idea here.
-  useEffect(() => {
-    const on = (e: Event) => pick((e as CustomEvent<string>).detail);
-    window.addEventListener(PICK_EVENT, on);
-    return () => window.removeEventListener(PICK_EVENT, on);
-  });
-
   const typed = done ? idea.ask : idea.ask.slice(0, Math.floor(t / TYPE_MS));
   const step = done ? STEPS.length : t < T_STEPS ? -1 : Math.min(STEPS.length, Math.floor((t - T_STEPS) / STEP_MS));
   const cards = done ? idea.trades.length : t < T_SCAN ? 0 : Math.min(idea.trades.length, Math.floor((t - T_SCAN) / CARD_MS) + 1);
@@ -117,11 +110,12 @@ export function Studio() {
   }, [idea]);
 
   const maxBar = Math.max(Math.abs(r.avg), Math.abs(r.randomMonth), 0.001);
-  const verdict = r.avg > r.randomMonth ? (idea.beats_random >= 0.85 ? "strong" : "edge") : "luck";
+  const v = verdict(idea);
+  const toggle = (i: number) => setHover((h) => (h === i ? null : i));
   const show = { opacity: resP >= 1 ? 1 : 0 };
 
   return (
-    <div className="studio" id="try" onPointerDown={done ? undefined : skip}>
+    <div className="studio" onPointerDown={done ? undefined : skip}>
       <div className="ask">
         <span className="ask-icon"><Icon name="spark" /></span>
         <span className="ask-text">
@@ -137,9 +131,9 @@ export function Studio() {
         </span>
       </div>
 
-      <div className="try" role="tablist" aria-label="Example ideas">
+      <div className="try" role="group" aria-label="Example ideas">
         {IDEAS.map((i) => (
-          <button key={i.key} role="tab" aria-selected={i.key === key} className="try-chip" onClick={() => pick(i.key)} type="button">
+          <button key={i.key} aria-pressed={i.key === key} className="try-chip" onClick={() => pick(i.key)} type="button">
             <Icon name={i.icon} /> {i.title}
           </button>
         ))}
@@ -173,6 +167,7 @@ export function Studio() {
                 className={`news ${hover === i ? "on" : ""}`}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
+                onClick={() => toggle(i)}
               >
                 <div className="news-main">
                   <span className="news-date">
@@ -181,7 +176,7 @@ export function Studio() {
                   </span>
                   <span className="news-title">{tr.name}</span>
                 </div>
-                <span className={`news-res ${r.net[i] >= 0 ? "up" : "dn"}`} style={{ opacity: resP > 0 ? 1 : 0 }}>
+                <span className={`news-res ${r.net[i] > 0 ? "up" : "dn"}`} style={{ opacity: resP > 0 ? 1 : 0 }}>
                   {pct(r.net[i])}
                 </span>
               </div>
@@ -192,12 +187,10 @@ export function Studio() {
         <div className="result">
           <div className="res-top">
             <div>
-              <div className="res-label">Average gain, {holdWords(idea.hold_days)} after each {triggerWord(idea, 1)}</div>
+              <div className="res-label">Average return, {holdWords(idea.hold_days)} after each {triggerWord(idea, 1)}</div>
               <div className={`res-big ${r.avg >= 0 ? "up" : "dn"}`}>{resP > 0 ? pct(r.avg * ease) : "—"}</div>
             </div>
-            <div className={`res-verdict v-${verdict}`} style={show}>
-              {verdict === "luck" ? "Luck, not an edge" : verdict === "strong" ? "Beats random timing" : "Better than random"}
-            </div>
+            <div className={`res-verdict v-${v.cls}`} style={show}>{v.text}</div>
           </div>
 
           <div className="compare" style={{ opacity: resP > 0 ? 1 : 0 }}>
@@ -230,9 +223,10 @@ export function Studio() {
                   y={PAD.t}
                   width={Math.max(2, b.x1 - b.x0)}
                   height={H - PAD.t - PAD.b}
-                  className={`band ${r.net[i] >= 0 ? "b-up" : "b-dn"} ${hover === i ? "on" : ""}`}
+                  className={`band ${r.net[i] > 0 ? "b-up" : "b-dn"} ${hover === i ? "on" : ""}`}
                   onMouseEnter={() => setHover(i)}
                   onMouseLeave={() => setHover(null)}
+                  onClick={() => toggle(i)}
                 />
               ))}
               <path className="line" d={chart.path} />
@@ -250,12 +244,12 @@ export function Studio() {
               </div>
               <div className="dots" aria-hidden>
                 {r.net.map((x, i) => (
-                  <i key={i} className={x >= 0 ? "w" : "l"} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
+                  <i key={i} className={x > 0 ? "w" : "l"} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
                 ))}
               </div>
             </div>
             <div className="trio-cell">
-              <div className="trio-l">Beats random timing</div>
+              <div className="trio-l">Better than random dates</div>
               <div className="trio-v">{Math.round(idea.beats_random * 100)}%</div>
               <div className="meter" aria-hidden><i style={{ width: `${idea.beats_random * 100}%` }} /></div>
             </div>

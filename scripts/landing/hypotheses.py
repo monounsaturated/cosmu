@@ -124,7 +124,7 @@ HYP = {
         ],
     },
     "bank_btc": {
-        "q": "Buy Bitcoin every time a bank collapses",
+        "q": "Buy Bitcoin every time a bank crisis hits",
         "events": [
             ("2023-03-10", "BTC-USD", "Silicon Valley Bank fails"),
             ("2023-03-19", "BTC-USD", "Credit Suisse rescued"),
@@ -221,28 +221,40 @@ def fwd(t, i, h):
     return p[i + h] / p[i] - 1 - COST.get(t, DEFAULT_COST) if i + h < len(p) else None
 
 
+def hold(t, h):
+    """Stocks: h trading sessions. Crypto trades every day, so convert to the same calendar span (5 → 7)."""
+    return round(h * 7 / 5) if t.endswith("-USD") else h
+
+
 def run(key, h=H, draws=10_000):
     hyp = HYP[key]
     trades = []
     for news, t, name in hyp["events"]:
         days, p = px(t)
         i = first_after(days, news)
-        if i is None or i + h >= len(p):
+        if i is None or i + hold(t, h) >= len(p):
             continue
-        trades.append({"news": news, "fill": days[i], "asset": t, "name": name, "ret": round(fwd(t, i, h), 4)})
+        trades.append({"news": news, "fill": days[i], "i": i, "h": hold(t, h), "asset": t, "name": name,
+                       "ret": round(fwd(t, i, hold(t, h)), 4)})
     rets = [x["ret"] for x in trades]
     n = len(rets)
     mean = statistics.mean(rets)
-    # Random baseline: same assets, same count, random entry days.
+    # Random baseline: same assets, same count, random entry days drawn from the SAME stretch of time as the
+    # events (first → last trigger, at least ±6 months), so a strong era can't pass for a strong signal.
     rng = random.Random(11)
-    assets = [x["asset"] for x in trades]
+    span = {}
+    for x in trades:
+        lo, hi = span.get(x["asset"], (x["i"], x["i"]))
+        span[x["asset"]] = (min(lo, x["i"]), max(hi, x["i"]))
     rand_means = []
     for _ in range(draws):
         s = 0.0
-        for t in assets:
+        for x in trades:
+            t, hh = x["asset"], x["h"]
             days, p = px(t)
-            j = rng.randrange(0, len(p) - h - 1)
-            s += fwd(t, j, h)
+            lo, hi = span[t]
+            lo, hi = max(0, min(lo, x["i"] - 126)), min(len(p) - hh - 1, max(hi, x["i"] + 126))
+            s += fwd(t, rng.randint(lo, hi), hh)
         rand_means.append(s / n)
     rand_means.sort()
     beaten = sum(1 for m in rand_means if m < mean) / draws
