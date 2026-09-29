@@ -4,17 +4,19 @@
 
 import raw from "./showcase.json";
 
-export type Trade = { news: string; name: string; in: string; out: string; gross: number };
+export type Trade = { news: string; name: string; note?: string; in: string; out: string; gross: number };
 export type Idea = {
   key: string;
   title: string;
   icon: string;
   q: string;
+  ask: string; // the plain-English question shown in the prompt bar
   asset: string;
   label: string;
   crypto: boolean;
-  hold_days: number;
-  random_month: number; // gross average 1-month return on random entry days
+  hold_days: number; // trading sessions held after each trigger
+  spike: boolean; // true = triggers are detected news-volume spikes, false = hand-listed events
+  random_month: number; // gross average return over the same hold, on random entry days
   beats_random: number;
   trades: Trade[];
   series: [string, number][];
@@ -27,9 +29,9 @@ export type Platform = { id: string; name: string; roundTrip: number; why: strin
 
 export const STOCK_PLATFORMS: Platform[] = [
   { id: "ibkr", name: "Interactive Brokers", roundTrip: 0.0013, why: "$0.35 per order + a tight spread" },
-  { id: "t212", name: "Trading 212", roundTrip: 0.0038, why: "no commission, 0.15% currency fee each way" },
-  { id: "mt5", name: "MetaTrader 5", roundTrip: 0.0072, why: "CFD spread + about a month of overnight financing" },
+  { id: "tr", name: "Trade Republic", roundTrip: 0.004, why: "€1 per order + exchange spread" },
   { id: "degiro", name: "DEGIRO", roundTrip: 0.0102, why: "€2 per US trade + 0.25% currency fee each way" },
+  { id: "xtb", name: "XTB", roundTrip: 0.011, why: "no commission, 0.5% currency conversion each way" },
 ];
 
 export const CRYPTO_PLATFORMS: Platform[] = [
@@ -46,6 +48,18 @@ export function results(idea: Idea, p: Platform) {
   const wins = net.filter((r) => r > 0).length;
   const randomMonth = idea.random_month - p.roundTrip;
   return { net, avg, wins, randomMonth, profitOn1k: net.reduce((a, b) => a + b, 0) * 1000 };
+}
+
+// Trading sessions → plain words.
+export const holdWords = (h: number) => (h <= 5 ? "1 week" : h <= 10 ? "2 weeks" : "1 month");
+export const randomWords = (h: number) => (h <= 5 ? "Any random week" : h <= 10 ? "Any random 2 weeks" : "Any random month");
+export const triggerWord = (idea: Idea, n = 2) => (idea.spike ? (n === 1 ? "news spike" : "news spikes") : n === 1 ? "headline" : "headlines");
+
+// Opens an idea in the studio from anywhere on the page.
+export const PICK_EVENT = "cosmu:pick";
+export function pickIdea(key: string) {
+  window.dispatchEvent(new CustomEvent(PICK_EVENT, { detail: key }));
+  document.getElementById("try")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export const pct = (x: number, digits = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(digits)}%`;

@@ -2,18 +2,24 @@
 
 // intent: the hero — a plain-English question becomes a news scan, a backtest and a verdict. The intro
 //   plays ONCE when the page opens (one clock `t`, ~6s), then everything stays still and interactive:
-//   switch idea, switch broker, hover a headline. Reduced motion or any click jumps straight to the end.
-//   Every number is derived from lib/showcase.json (real closes); nothing is invented.
+//   switch idea (here or from the gallery), switch broker, hover a trigger. Reduced motion or any click
+//   jumps straight to the end. Every number is derived from lib/showcase.json (real closes).
 
 import { useEffect, useMemo, useState } from "react";
-import { IDEAS, fmtDate, money, pct, platformsFor, results, type Idea } from "@/lib/showcase";
-
-const ASK: Record<string, string> = {
-  ai_nvda: "What if I'd bought Nvidia every time a big AI model launched?",
-  war_defense: "What if I'd bought defense stocks every time a war broke out?",
-  bank_btc: "What if I'd bought Bitcoin every time a bank collapsed?",
-  hack_cibr: "What if I'd bought cybersecurity stocks after every big hack?",
-};
+import {
+  IDEAS,
+  PICK_EVENT,
+  fmtDate,
+  holdWords,
+  money,
+  pct,
+  platformsFor,
+  randomWords,
+  results,
+  triggerWord,
+  type Idea,
+} from "@/lib/showcase";
+import { Icon } from "./icon";
 
 const STEPS = ["Reading your idea", "Scanning 6 years of news", "Pulling real prices", "Backtesting with your fees", "Luck test · 10,000 random dates"];
 
@@ -22,7 +28,7 @@ const TYPE_MS = 26;
 const T_STEPS = 1900;
 const STEP_MS = 520;
 const T_SCAN = T_STEPS + STEP_MS;
-const CARD_MS = 150;
+const CARD_MS = 130;
 const T_CHART = T_STEPS + STEP_MS * 2;
 const CHART_MS = 1400;
 const T_RESULT = T_STEPS + STEP_MS * 4 + 200;
@@ -30,22 +36,8 @@ const COUNT_MS = 700;
 const T_END = T_RESULT + COUNT_MS + 100;
 
 const W = 600;
-const H = 230;
-const PAD = { l: 8, r: 8, t: 14, b: 22 };
-
-function Icon({ name }: { name: string }) {
-  const p = {
-    spark: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
-    shield: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z",
-    bank: "M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18",
-    lock: "M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3",
-  }[name];
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" aria-hidden>
-      <path d={p} />
-    </svg>
-  );
-}
+const H = 210;
+const PAD = { l: 8, r: 8, t: 12, b: 22 };
 
 export function Studio() {
   const [key, setKey] = useState(IDEAS[0].key);
@@ -78,14 +70,21 @@ export function Studio() {
 
   const pick = (k: string) => {
     skip();
-    const next = IDEAS.find((i) => i.key === k) as Idea;
-    if (next.crypto !== idea.crypto) setPlatId(platformsFor(next)[0].id);
+    const next = IDEAS.find((i) => i.key === k);
+    if (!next) return;
+    setPlatId((cur) => (platformsFor(next).some((p) => p.id === cur) ? cur : platformsFor(next)[0].id));
     setKey(k);
     setHover(null);
   };
 
-  const ask = ASK[idea.key] ?? idea.q;
-  const typed = done ? ask : ask.slice(0, Math.floor(t / TYPE_MS));
+  // The gallery further down the page can open an idea here.
+  useEffect(() => {
+    const on = (e: Event) => pick((e as CustomEvent<string>).detail);
+    window.addEventListener(PICK_EVENT, on);
+    return () => window.removeEventListener(PICK_EVENT, on);
+  });
+
+  const typed = done ? idea.ask : idea.ask.slice(0, Math.floor(t / TYPE_MS));
   const step = done ? STEPS.length : t < T_STEPS ? -1 : Math.min(STEPS.length, Math.floor((t - T_STEPS) / STEP_MS));
   const cards = done ? idea.trades.length : t < T_SCAN ? 0 : Math.min(idea.trades.length, Math.floor((t - T_SCAN) / CARD_MS) + 1);
   const chartP = done ? 1 : Math.max(0, Math.min(1, (t - T_CHART) / CHART_MS));
@@ -93,6 +92,7 @@ export function Studio() {
   const ease = 1 - Math.pow(1 - resP, 3);
 
   const r = results(idea, plat);
+  const n = idea.trades.length;
 
   const chart = useMemo(() => {
     const s = idea.series;
@@ -117,11 +117,11 @@ export function Studio() {
   }, [idea]);
 
   const maxBar = Math.max(Math.abs(r.avg), Math.abs(r.randomMonth), 0.001);
-  const verdict = r.avg > r.randomMonth ? (idea.beats_random >= 0.8 ? "strong" : "edge") : "luck";
+  const verdict = r.avg > r.randomMonth ? (idea.beats_random >= 0.85 ? "strong" : "edge") : "luck";
+  const show = { opacity: resP >= 1 ? 1 : 0 };
 
   return (
-    <div className="studio" onPointerDown={done ? undefined : skip}>
-      {/* ask bar */}
+    <div className="studio" id="try" onPointerDown={done ? undefined : skip}>
       <div className="ask">
         <span className="ask-icon"><Icon name="spark" /></span>
         <span className="ask-text">
@@ -145,12 +145,11 @@ export function Studio() {
         ))}
       </div>
 
-      {/* agent progress */}
       <div className="agent" aria-live="polite">
         {done ? (
           <span className="agent-done">
             <span className="tick">✓</span>
-            {`Tested ${idea.trades.length} headlines against real ${idea.label} prices, with your broker's fees`}
+            {`Tested ${n} ${triggerWord(idea, n)} against real ${idea.label} prices, with your broker's fees`}
           </span>
         ) : (
           STEPS.map((s, i) => (
@@ -162,44 +161,41 @@ export function Studio() {
       </div>
 
       <div className="studio-body">
-        {/* news scan */}
         <div className="scan">
           <div className="scan-head">
-            <span>Headlines</span>
+            <span>{idea.spike ? "News spikes" : "Headlines"}</span>
             <span className="scan-count">{cards}</span>
           </div>
           <div className="scan-list">
-            {idea.trades.slice(0, cards).map((tr, i) => {
-              const net = r.net[i];
-              return (
-                <div
-                  key={idea.key + tr.news + tr.name}
-                  className={`news ${hover === i ? "on" : ""}`}
-                  onMouseEnter={() => setHover(i)}
-                  onMouseLeave={() => setHover(null)}
-                  style={{ animationDelay: done ? "0ms" : undefined }}
-                >
-                  <div className="news-main">
-                    <span className="news-date">{fmtDate(tr.news)}</span>
-                    <span className="news-title">{tr.name}</span>
-                  </div>
-                  <span className={`news-res ${net >= 0 ? "up" : "dn"}`} style={{ opacity: resP > 0 ? 1 : 0 }}>
-                    {pct(net)}
+            {idea.trades.slice(0, cards).map((tr, i) => (
+              <div
+                key={idea.key + tr.news + tr.name}
+                className={`news ${hover === i ? "on" : ""}`}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+              >
+                <div className="news-main">
+                  <span className="news-date">
+                    {fmtDate(tr.news)}
+                    {tr.note && <span className="news-note"> · {tr.note}</span>}
                   </span>
+                  <span className="news-title">{tr.name}</span>
                 </div>
-              );
-            })}
+                <span className={`news-res ${r.net[i] >= 0 ? "up" : "dn"}`} style={{ opacity: resP > 0 ? 1 : 0 }}>
+                  {pct(r.net[i])}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* result */}
         <div className="result">
           <div className="res-top">
             <div>
-              <div className="res-label">Average gain, 1 month after each headline</div>
+              <div className="res-label">Average gain, {holdWords(idea.hold_days)} after each {triggerWord(idea, 1)}</div>
               <div className={`res-big ${r.avg >= 0 ? "up" : "dn"}`}>{resP > 0 ? pct(r.avg * ease) : "—"}</div>
             </div>
-            <div className={`res-verdict v-${verdict}`} style={{ opacity: resP >= 1 ? 1 : 0 }}>
+            <div className={`res-verdict v-${verdict}`} style={show}>
               {verdict === "luck" ? "Luck, not an edge" : verdict === "strong" ? "Beats random timing" : "Better than random"}
             </div>
           </div>
@@ -211,13 +207,13 @@ export function Studio() {
               <span className="cmp-val">{pct(r.avg)}</span>
             </div>
             <div className="cmp-row">
-              <span className="cmp-name">Any random month</span>
+              <span className="cmp-name">{randomWords(idea.hold_days)}</span>
               <span className="cmp-track"><i style={{ width: `${(Math.max(0, r.randomMonth) / maxBar) * 100 * ease}%` }} /></span>
               <span className="cmp-val">{pct(r.randomMonth)}</span>
             </div>
           </div>
 
-          <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${idea.label} price with each headline's one-month hold`}>
+          <svg className="chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${idea.label} price with each ${holdWords(idea.hold_days)} hold`}>
             <defs>
               <clipPath id="studio-clip">
                 <rect x="0" y="0" height={H} width={W * chartP} />
@@ -241,22 +237,35 @@ export function Studio() {
               ))}
               <path className="line" d={chart.path} />
               {chart.bands.map((b, i) => (
-                <circle key={i} cx={b.x0} cy={b.py} r={hover === i ? 6 : 4} className="pin" />
+                <circle key={i} cx={b.x0} cy={b.py} r={hover === i ? 6 : n > 20 ? 3 : 4} className="pin" />
               ))}
             </g>
           </svg>
 
-          <div className="res-foot" style={{ opacity: resP >= 1 ? 1 : 0 }}>
-            <div className="wins" title={`${r.wins} of ${idea.trades.length} made money`}>
-              {r.net.map((n, i) => (
-                <i key={i} className={n >= 0 ? "w" : "l"} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
-              ))}
-              <span>{r.wins} of {idea.trades.length} made money</span>
+          <div className="trio" style={show}>
+            <div className="trio-cell">
+              <div className="trio-l">Made money</div>
+              <div className="trio-v">
+                {r.wins}<span className="of"> of {n}</span>
+              </div>
+              <div className="dots" aria-hidden>
+                {r.net.map((x, i) => (
+                  <i key={i} className={x >= 0 ? "w" : "l"} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
+                ))}
+              </div>
             </div>
-            <div className="k1000">$1,000 each time → <b className={r.profitOn1k >= 0 ? "up" : "dn"}>{money(r.profitOn1k)}</b></div>
+            <div className="trio-cell">
+              <div className="trio-l">Beats random timing</div>
+              <div className="trio-v">{Math.round(idea.beats_random * 100)}%</div>
+              <div className="meter" aria-hidden><i style={{ width: `${idea.beats_random * 100}%` }} /></div>
+            </div>
+            <div className="trio-cell">
+              <div className="trio-l">$1,000 each time</div>
+              <div className={`trio-v ${r.profitOn1k >= 0 ? "up" : "dn"}`}>{money(r.profitOn1k)}</div>
+            </div>
           </div>
 
-          <div className="fees" style={{ opacity: resP >= 1 ? 1 : 0 }}>
+          <div className="fees" style={show}>
             <span className="fees-label">Fees from</span>
             <div className="seg" role="radiogroup" aria-label="Broker">
               {plats.map((p) => (

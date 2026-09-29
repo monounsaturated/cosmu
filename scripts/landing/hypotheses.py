@@ -51,7 +51,7 @@ HYP = {
         ],
     },
     "war_defense": {
-        "q": "Buy defense stocks every time a war or major strike breaks out",
+        "q": "Buy defense stocks every time a war breaks out",
         "events": [
             ("2020-01-03", "ITA", "US kills Soleimani"),
             ("2022-02-24", "ITA", "Russia invades Ukraine"),
@@ -178,7 +178,7 @@ HYP = {
         ],
     },
     "hack_cibr": {
-        "q": "Buy cybersecurity stocks every time a major hack makes the news",
+        "q": "Buy cybersecurity stocks after every big hack",
         "events": [(d, "CIBR", n) for d, n in [
             ("2021-03-02", "Microsoft Exchange"), ("2021-05-08", "Colonial Pipeline"), ("2021-05-31", "JBS Foods"),
             ("2021-07-02", "Kaseya"), ("2021-08-16", "T-Mobile"), ("2021-12-10", "Log4Shell"),
