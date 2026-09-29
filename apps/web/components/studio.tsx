@@ -135,6 +135,7 @@ export function Studio() {
         {IDEAS.map((i) => (
           <button key={i.key} aria-pressed={i.key === key} className="try-chip" onClick={() => pick(i.key)} type="button">
             <Icon name={i.icon} /> {i.title}
+            <span className={`chip-dot d-${verdict(i).cls}`} title={verdict(i).text} />
           </button>
         ))}
       </div>

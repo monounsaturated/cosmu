@@ -157,8 +157,11 @@ h1 { font-size: clamp(42px, 7vw, 80px); line-height: 1; letter-spacing: -0.05em;
 .res-big { font-size: clamp(48px, 7vw, 72px); font-weight: 720; letter-spacing: -0.05em; line-height: 1; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .res-verdict { font-size: 14px; font-weight: 600; padding: 7px 14px; border-radius: 999px; transition: opacity 500ms; }
 .v-strong { color: var(--up); background: var(--up-dim); }
-.v-edge { color: var(--iris-s); background: var(--iris-dim); }
 .v-luck { color: var(--gold); background: var(--gold-dim); }
+.v-rare { color: var(--iris-s); background: var(--iris-dim); }
+.v-edge { color: var(--up); background: var(--up-dim); }
+.chip-dot { width: 7px; height: 7px; border-radius: 50%; margin-left: 2px; }
+.d-strong, .d-edge { background: var(--up); } .d-rare { background: var(--iris-s); } .d-luck { background: var(--gold); }
 
 .compare { display: grid; gap: 8px; transition: opacity 400ms; }
 .cmp-row { display: grid; grid-template-columns: 130px 1fr 64px; align-items: center; gap: 12px; font-size: 14px; }
@@ -219,9 +222,12 @@ h1 { font-size: clamp(42px, 7vw, 80px); line-height: 1; letter-spacing: -0.05em;
 .st-bars .st-up { background: var(--up); }
 .st-bars em { font-style: normal; font-weight: 650; text-align: right; }
 
-.st-dots { display: grid; grid-template-columns: repeat(13, 12px); gap: 5px; margin-bottom: 10px; }
-.st-dots i { width: 12px; height: 12px; border-radius: 3px; background: var(--surf3); }
+.st-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; max-width: 250px; margin-bottom: 10px; }
+.st-dots i { width: 11px; height: 11px; border-radius: 3px; background: var(--surf3); }
 .st-dots i.p { background: var(--up); box-shadow: 0 0 0 3px var(--up-dim); }
+.st-dots i.m { background: var(--iris-s); }
+.proof { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 28px; margin-top: 26px; font-size: 14.5px; color: var(--muted); }
+.proof b { color: var(--fg); font-weight: 680; font-variant-numeric: tabular-nums; }
 .soon { font-size: 11.5px; font-weight: 650; padding: 2px 8px; border-radius: 999px; color: var(--iris-s); background: var(--iris-dim); vertical-align: 3px; margin-left: 6px; letter-spacing: 0; }
 .a-verdict { font-size: 13.5px; font-weight: 600; color: var(--gold); margin-top: 2px; }
 

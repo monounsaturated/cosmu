@@ -7,7 +7,11 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
+const DESC = "Ask in plain English. Cosmu finds the news, tests it on real prices with your broker's fees, and tells you if it would have made money.";
+
 export const metadata: Metadata = {
+  openGraph: { title: "Cosmu: turn any headline into a backtest", description: DESC, type: "website" },
+  twitter: { card: "summary", title: "Cosmu: turn any headline into a backtest", description: DESC },
   title: "Cosmu: turn any headline into a backtest",
   description:
     "Ask in plain English. Cosmu finds the news, tests it on real prices with your broker's fees, and tells you if it would have made money.",

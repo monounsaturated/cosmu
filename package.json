@@ -13,6 +13,7 @@
     "verify": "pnpm typecheck && pnpm build",
     "research": "cd scripts/landing && python3 hypotheses.py",
     "research:spikes": "cd scripts/landing && python3 news_spikes.py",
+    "research:wiki": "cd scripts/landing && python3 wiki_spikes.py",
     "demo:data": "cd scripts/landing && python3 build_showcase.py"
   }
 }

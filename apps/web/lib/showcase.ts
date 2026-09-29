@@ -22,19 +22,22 @@ export type Idea = {
   series: [string, number][];
 };
 
-export type Tested = { key: string; q: string; n: number; hold_days: number; avg: number; random: number; beats: number; pass: boolean };
+export type Tested = { key: string; q: string; n: number; hold_days: number; avg: number; random: number; beats: number; pass: boolean; promising: boolean };
 
-const DATA = raw as unknown as { ideas: Idea[]; tested: Tested[]; rule: { min_n: number; pass: number } };
+const DATA = raw as unknown as { ideas: Idea[]; tested: Tested[]; rule: { min_n: number; pass: number; promising: number } };
 export const IDEAS = DATA.ideas;
 export const TESTED = DATA.tested;
 export const RULE = DATA.rule;
 
-// One verdict rule for the whole page: enough events AND better than 95% of random-date draws.
-export function verdict(idea: Idea): { cls: "strong" | "edge" | "luck"; text: string } {
-  if (idea.trades.length < RULE.min_n) return { cls: "luck", text: "Too few events to tell" };
-  if (idea.beats_random >= RULE.pass) return { cls: "strong", text: "Passes the luck test" };
-  if (idea.beats_random >= 0.8) return { cls: "edge", text: "Promising, not proven" };
-  return { cls: "luck", text: "No edge found" };
+// One verdict rule for the whole page (same thresholds as scripts/landing/build_showcase.py).
+export type Verdict = { cls: "strong" | "edge" | "rare" | "luck"; text: string };
+export function verdict(idea: Idea): Verdict {
+  const n = idea.trades.length;
+  const b = idea.beats_random;
+  if (n >= RULE.min_n && b >= RULE.pass) return { cls: "strong", text: "Passes the luck test" };
+  if (n >= RULE.min_n && b >= RULE.promising) return { cls: "edge", text: "Promising edge" };
+  if (n < RULE.min_n && b >= 0.9) return { cls: "rare", text: "Big but rare" };
+  return { cls: "luck", text: "Fakeout · no edge" };
 }
 
 // Round-trip cost of a $1,000 buy + sell, as a fraction. Published retail schedules (2025), rounded.

@@ -13,6 +13,7 @@ const PATHS: Record<string, string> = {
   fees: "M4 7h16M4 12h10M4 17h7",
   dice: "M4 4h16v16H4zM9 9h.01M15 15h.01M15 9h.01M9 15h.01",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  target: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5v1",
 };
 
 export function Icon({ name, size = 15 }: { name: string; size?: number }) {

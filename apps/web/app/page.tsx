@@ -7,7 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Studio } from "@/components/studio";
 import { Icon } from "@/components/icon";
 import { SITE } from "@/lib/site";
-import { IDEAS, RULE, STOCK_PLATFORMS, TESTED, holdWords, pct, results } from "@/lib/showcase";
+import { CRYPTO_PLATFORMS, IDEAS, RULE, STOCK_PLATFORMS, TESTED, holdWords, pct, results } from "@/lib/showcase";
 
 const GH = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -22,6 +22,7 @@ const NVDA = byKey("ai_nvda");
 const rL = results(LAYOFF, STOCK_PLATFORMS[0]);
 const rN = results(NVDA, STOCK_PLATFORMS[0]);
 const PASSED = TESTED.filter((t) => t.pass).length;
+const PROMISING = TESTED.filter((t) => t.promising).length;
 
 // The story: from a trading robot to an honest judge. Figures from archive/docs/reports.
 const STORY = [
@@ -55,10 +56,10 @@ const STORY = [
       <div className="st-art">
         <div className="st-dots" aria-hidden>
           {TESTED.map((t) => (
-            <i key={t.key} className={t.pass ? "p" : ""} title={t.q} />
+            <i key={t.key} className={t.pass ? "p" : t.promising ? "m" : ""} title={t.q} />
           ))}
         </div>
-        <span>{TESTED.length} news ideas tested · {PASSED} passed</span>
+        <span>{TESTED.length} ideas tested · {PASSED} passed · {PROMISING} promising</span>
       </div>
     ),
   },
@@ -102,6 +103,12 @@ export default function Page() {
           </h1>
           <p className="lede">Ask in plain English. Cosmu finds the news, tests it on real prices, and tells you if it would have made money.</p>
           <Studio />
+          <div className="proof">
+            <span><b>{TESTED.length}</b> ideas tested</span>
+            <span><b>6 years</b> of daily prices</span>
+            <span><b>10,000</b> random dates per verdict</span>
+            <span><b>{STOCK_PLATFORMS.length + CRYPTO_PLATFORMS.length}</b> platforms&apos; real fees</span>
+          </div>
         </section>
 
         <section className="wrap block">
