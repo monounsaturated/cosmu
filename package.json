@@ -11,6 +11,7 @@
     "start": "pnpm --filter @cosmu/web start",
     "typecheck": "pnpm --filter @cosmu/web typecheck",
     "verify": "pnpm typecheck && pnpm build",
-    "demo:data": "python3 scripts/landing/build_cibr_demo.py"
+    "research": "cd scripts/landing && python3 hypotheses.py",
+    "demo:data": "cd scripts/landing && python3 build_showcase.py"
   }
 }

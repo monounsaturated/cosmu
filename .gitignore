@@ -40,3 +40,4 @@ lunarcrush_extract.log
 out/
 *.tsbuildinfo
 scripts/landing/cibr_raw.json
+scripts/landing/cache/

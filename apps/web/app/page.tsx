@@ -1,14 +1,12 @@
-// intent: the Cosmu landing page — what it does (live demo on real data), how it decides, what was built.
+// intent: the Cosmu landing page — a hero you can play with, three steps, four guardrails, one CTA.
 
 import { CosmuMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { HeroDemo } from "@/components/hero-demo";
-import { NewsImpact } from "@/components/news-impact";
-import { FeeLab } from "@/components/fee-lab";
-import { Pipeline } from "@/components/pipeline";
-import { Reveal } from "@/components/reveal";
-import { DEMO } from "@/lib/demo";
-import { FACTS, SITE } from "@/lib/site";
+import { Studio } from "@/components/studio";
+import { SITE } from "@/lib/site";
+import { IDEAS, STOCK_PLATFORMS, pct, results } from "@/lib/showcase";
+
+const SAMPLE = results(IDEAS[0], STOCK_PLATFORMS[0]).avg;
 
 const GH = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -16,26 +14,50 @@ const GH = (
   </svg>
 );
 
-const TIMELINE = [
-  { d: "2026-04-10", c: "var(--quiet)", t: "First commit", chip: null, p: "FastAPI engine, typed strategy spec, TypeScript types generated from the API." },
-  { d: "2026-06-03", c: "var(--iris)", t: "Autonomous loop on real data", chip: null, p: "Every 4h: ingest → author → backtest → gate → fund a sim track. Real Binance bars, 11+ point-in-time sources." },
-  { d: "2026-06-04", c: "var(--down)", t: "Crypto funding-carry: killed", chip: ["dn", "failed the gate"], p: "Pass criteria written before the run. Best deflated Sharpe 0.43 vs a 0.95 bar. Dropped, not tuned until it passed." },
-  { d: "2026-06-14", c: "var(--up)", t: "First strategies pass the full gate", chip: ["up", "3 passed"], p: "Defensive asset-rotation strategies (DAA, VAA, ADM) cleared the unchanged bar and beat buy & hold." },
-  { d: "2026-06-16", c: "var(--iris)", t: "First real order routed", chip: ["iris", "broker paper API"], p: "A gate-passed order went through all 5 interlocks to Alpaca's paper API. It exposed a booking bug, which was fixed." },
-  { d: "2026-07-06", c: "var(--quiet)", t: "Sub-hour strategies + maker lane", chip: null, p: "60 higher-frequency strategies, with fee modelling honest to the maker/taker split." },
+const HOW = [
+  {
+    n: "1",
+    t: "Ask",
+    d: "Type an idea the way you'd say it.",
+    art: (
+      <div className="how-art art-ask">
+        <span>Buy gold when…</span>
+      </div>
+    ),
+  },
+  {
+    n: "2",
+    t: "Cosmu tests it",
+    d: "Every matching headline, real prices, your tools.",
+    art: (
+      <div className="how-art art-tools">
+        {["MetaTrader 5", "TradingView", "Interactive Brokers", "Binance"].map((x) => (
+          <span key={x}>{x}</span>
+        ))}
+      </div>
+    ),
+  },
+  {
+    n: "3",
+    t: "You get the answer",
+    d: "Profit after fees, and whether it beats luck.",
+    art: (
+      <div className="how-art art-answer">
+        <b className="up">{pct(SAMPLE)}</b>
+        <span className="pill">Better than random</span>
+      </div>
+    ),
+  },
 ];
 
-const STACK = [
-  ["Engine", "Python 3.12 · FastAPI · Pydantic"],
-  ["Web", "Next.js · React 19 · hand-written CSS"],
-  ["Data", "Postgres · pgvector · point-in-time store"],
-  ["Compute", "Modal, scale-to-zero, for sweeps + ML"],
-  ["LLMs", "OpenRouter gateway, propose-only"],
-  ["Venues", "Binance · Alpaca · Polymarket · Kraken · IBKR"],
+const GUARDS = [
+  { i: "M12 8v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z", t: "No hindsight", d: "Trades only on news that was already public." },
+  { i: "M4 7h16M4 12h10M4 17h7", t: "Real fees", d: "Your broker's costs, on every single trade." },
+  { i: "M4 20V10M10 20V4M16 20v-7M22 20H2", t: "Luck test", d: "10,000 random dates, every time." },
+  { i: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z", t: "Math decides", d: "The AI runs the tests. It never grades itself." },
 ];
 
 export default function Page() {
-  const st = DEMO.stats;
   return (
     <>
       <header className="nav">
@@ -43,212 +65,76 @@ export default function Page() {
           <a href="#" className="brand">
             <CosmuMark size={26} /> Cosmu
           </a>
-          <nav className="nav-links" aria-label="Sections">
-            <a href="#features">Features</a>
-            <a href="#impact">News impact</a>
-            <a href="#gate">How it decides</a>
-            <a href="#built">What I built</a>
-          </nav>
           <div className="nav-actions">
             <ThemeToggle />
             <a className="btn btn-sm" href={SITE.repo} target="_blank" rel="noreferrer">
-              {GH} Code
+              {GH} GitHub
             </a>
           </div>
         </div>
       </header>
 
-      <main className="wrap">
-        {/* ── hero ── */}
-        <div className="hero">
-          <span className="chip iris">
-            <span className="dot pulse" /> Quant research engine · built in {FACTS.days} days
-          </span>
+      <main>
+        <section className="hero wrap">
           <h1>
-            Ask a trading question. <span className="grad">Get an honest answer.</span>
+            Turn any headline
+            <br />
+            <span className="grad">into a backtest.</span>
           </h1>
-          <p className="lede">
-            Cosmu turns plain English into a testable strategy, backtests it on real prices and real news net of
-            every fee, and lets statistics, not the AI, decide whether the edge is real.
-          </p>
-          <div className="hero-ctas">
-            <a className="btn btn-primary" href="#impact">Explore the data</a>
-            <a className="btn" href="#built">See what I built</a>
-          </div>
-          <div className="hero-meta">
-            <span><b>{FACTS.prs}</b> merged PRs</span>
-            <span><b>{FACTS.tests.toLocaleString("en-US")}</b> tests</span>
-            <span><b>{FACTS.pyLines}</b> lines of Python</span>
-            <span><b>0</b> synthetic numbers on this page</span>
-          </div>
-          <HeroDemo />
-        </div>
-
-        {/* ── features ── */}
-        <section id="features">
-          <Reveal className="sec-head">
-            <div className="eyebrow"><span className="n">01</span> What it does</div>
-            <h2>Two questions every trader asks, answered with data.</h2>
-          </Reveal>
-          <div className="bento">
-            <Reveal className="cell feat span-6">
-              <span className="num">A · natural language → backtest</span>
-              <h3>&ldquo;What if I had…&rdquo;, tested in seconds.</h3>
-              <p>
-                Describe an idea the way you&apos;d say it out loud. An LLM drafts a typed strategy. A compiler
-                rejects anything vague, magic-numbered, or able to see the future. Then it runs.
-              </p>
-              <ul>
-                <li>Every rule has a stated reason and fitted thresholds, not hand-picked ones</li>
-                <li>Imports TradingView Pine scripts; next step is plugging into MetaTrader 5 and existing backtest engines</li>
-                <li>Results are net of commission, FX and slippage for the platform you pick</li>
-              </ul>
-            </Reveal>
-            <Reveal className="cell feat span-6" delay={80}>
-              <span className="num">B · news → price impact</span>
-              <h3>Did the headline actually move the price?</h3>
-              <p>
-                Headlines, press and social posts become dated, point-in-time events. Each one is lined up with
-                what the price did next, and compared with an ordinary day.
-              </p>
-              <ul>
-                <li>Sources wired: GDELT news, Reddit, X/Twitter, Polymarket odds, FRED macro, on-chain flows</li>
-                <li>Signals are only used at the moment they were public, so the backtest never sees the future</li>
-                <li>Every effect is tested against random dates: luck gets named as luck</li>
-              </ul>
-            </Reveal>
-          </div>
+          <p className="lede">Ask in plain English. Cosmu finds the news, tests it on real prices, and tells you if it would have made money.</p>
+          <Studio />
+          <p className="fine">Real daily prices, 2020–2025. Past results don&apos;t predict future ones.</p>
         </section>
 
-        {/* ── news impact ── */}
-        <section id="impact">
-          <Reveal className="sec-head">
-            <div className="eyebrow"><span className="n">02</span> Real example · {DEMO.window[0].slice(0, 4)}–{DEMO.window[1].slice(0, 4)}</div>
-            <h2>{st.trades} major hacks. What did cybersecurity stocks do next?</h2>
-            <p className="lede">
-              Every point is a real headline, placed on the first trading day after it broke. Prices are real
-              {" "}{DEMO.asset} closes, dividends included.
-            </p>
-          </Reveal>
-          <Reveal>
-            <NewsImpact />
-          </Reveal>
-        </section>
-
-        {/* ── costs ── */}
-        <section id="costs">
-          <Reveal className="sec-head">
-            <div className="eyebrow"><span className="n">03</span> Costs are part of the strategy</div>
-            <h2>Same trades, different platform, different result.</h2>
-            <p className="lede">
-              Small edges live or die on fees. Pick where you&apos;d place the {st.trades} orders and the
-              backtest re-prices every one.
-            </p>
-          </Reveal>
-          <Reveal>
-            <FeeLab />
-          </Reveal>
-        </section>
-
-        {/* ── gate ── */}
-        <section id="gate">
-          <Reveal className="sec-head">
-            <div className="eyebrow"><span className="n">04</span> How it decides</div>
-            <h2>The AI can propose. It can never fund.</h2>
-            <p className="lede">
-              LLMs are good at ideas and bad at telling luck from skill. So every idea passes through a fixed
-              statistical gate written in code, and real money needs five independent switches all on.
-            </p>
-          </Reveal>
-          <Reveal>
-            <Pipeline />
-          </Reveal>
-        </section>
-
-        {/* ── built ── */}
-        <section id="built">
-          <Reveal className="sec-head">
-            <div className="eyebrow"><span className="n">05</span> What I built</div>
-            <h2>One person, a team of AI agents, {FACTS.days} days.</h2>
-            <p className="lede">
-              A full autonomous research engine and trading cockpit, built by directing parallel coding agents,
-              each on its own branch, merged through a review train.
-            </p>
-          </Reveal>
-
-          <div className="bento">
-            {[
-              [FACTS.prs.toString(), "merged pull requests", `${FACTS.commits.toLocaleString("en-US")} commits`],
-              [FACTS.tests.toLocaleString("en-US"), "automated tests", "offline, no API keys needed"],
-              [FACTS.specs.toString(), "strategy specs authored", "each checked by the real compiler"],
-              [FACTS.skills.toString(), "agent playbooks", "runnable skills for every recurring task"],
-            ].map(([v, l, d], i) => (
-              <Reveal key={l} className="cell stat span-3" delay={i * 60}>
-                <div className="cell-label">{l}</div>
-                <div className="v">{v}</div>
-                <div className="d">{d}</div>
-              </Reveal>
+        <section className="wrap block">
+          <h2>As simple as asking.</h2>
+          <div className="how">
+            {HOW.map((h) => (
+              <div key={h.n} className="how-card">
+                {h.art}
+                <div className="how-txt">
+                  <span className="how-n">{h.n}</span>
+                  <div>
+                    <h3>{h.t}</h3>
+                    <p>{h.d}</p>
+                  </div>
+                </div>
+              </div>
             ))}
-
-            <Reveal className="cell span-7">
-              <div className="cell-label" style={{ marginBottom: 18 }}>Milestones · 2026 · including the failures</div>
-              <div className="tl">
-                {TIMELINE.map((m) => (
-                  <div key={m.d} className="tl-item">
-                    <div className="tl-date">{m.d.slice(5).replace("-", "/")}</div>
-                    <div className="tl-rail"><i style={{ background: m.c }} /></div>
-                    <div className="tl-body">
-                      <h4>
-                        {m.t}
-                        {m.chip && <span className={`chip ${m.chip[0]}`}>{m.chip[1]}</span>}
-                      </h4>
-                      <p>{m.p}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Reveal>
-
-            <Reveal className="cell span-5" delay={80}>
-              <div className="cell-label">Architecture</div>
-              <div className="stack" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                {STACK.map(([n, w]) => (
-                  <div key={n} className="layer">
-                    <div className="n">{n}</div>
-                    <div className="w">{w}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="cell-label" style={{ marginTop: 22 }}>Rules the design enforces</div>
-              <ul style={{ listStyle: "none", display: "grid", gap: 8, marginTop: 12, fontSize: 13 }} className="muted">
-                <li>✓ Signal and fill stored as separate records</li>
-                <li>✓ Dead strategies stay visible (no survivor bias)</li>
-                <li>✓ Live trading off by default, per-strategy caps</li>
-                <li>✓ No martingale, no revenge sizing, no pooled wallet</li>
-              </ul>
-            </Reveal>
           </div>
         </section>
 
-        {/* ── end ── */}
-        <Reveal className="cell cta-end">
-          <h2>Most trading ideas don&apos;t survive contact with data.</h2>
-          <p className="lede">Cosmu was built to find that out quickly, cheaply, and honestly.</p>
-          <div className="hero-ctas">
-            <a className="btn btn-primary" href={SITE.repo} target="_blank" rel="noreferrer">{GH} Read the code</a>
-            <a className="btn" href={SITE.contact} target="_blank" rel="noreferrer">Get in touch</a>
+        <section className="wrap block">
+          <h2>Honest by design.</h2>
+          <div className="guards">
+            {GUARDS.map((g) => (
+              <div key={g.t} className="guard">
+                <span className="g-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d={g.i} />
+                  </svg>
+                </span>
+                <h3>{g.t}</h3>
+                <p>{g.d}</p>
+              </div>
+            ))}
           </div>
-        </Reveal>
+        </section>
 
-        <footer>
-          <span>
-            <b style={{ color: "var(--fg)" }}>Cosmu</b> · research project, not investment advice.
-          </span>
-          <span>
-            Data: {DEMO.source} Fee schedules: published retail rates, 2025.
-          </span>
-        </footer>
+        <section className="wrap block">
+          <div className="end">
+            <h2>Your next idea, tested in seconds.</h2>
+            <a className="btn btn-primary" href={SITE.repo} target="_blank" rel="noreferrer">
+              {GH} View on GitHub
+            </a>
+          </div>
+        </section>
       </main>
+
+      <footer className="wrap foot">
+        <span className="brand-sm"><CosmuMark size={18} /> Cosmu</span>
+        <span>Research tool, not investment advice.</span>
+      </footer>
     </>
   );
 }

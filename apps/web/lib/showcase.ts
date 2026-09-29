@@ -1,0 +1,54 @@
+// intent: typed access to the landing-page ideas (lib/showcase.json, built from real closes by
+//   scripts/landing/build_showcase.py) + the broker cost models the visitor can switch between.
+//   Never hand-edit the JSON; never invent a number.
+
+import raw from "./showcase.json";
+
+export type Trade = { news: string; name: string; in: string; out: string; gross: number };
+export type Idea = {
+  key: string;
+  title: string;
+  icon: string;
+  q: string;
+  asset: string;
+  label: string;
+  crypto: boolean;
+  hold_days: number;
+  random_month: number; // gross average 1-month return on random entry days
+  beats_random: number;
+  trades: Trade[];
+  series: [string, number][];
+};
+
+export const IDEAS = (raw as unknown as { ideas: Idea[] }).ideas;
+
+// Round-trip cost of a $1,000 buy + sell, as a fraction. Published retail schedules (2025), rounded.
+export type Platform = { id: string; name: string; roundTrip: number; why: string };
+
+export const STOCK_PLATFORMS: Platform[] = [
+  { id: "ibkr", name: "Interactive Brokers", roundTrip: 0.0013, why: "$0.35 per order + a tight spread" },
+  { id: "t212", name: "Trading 212", roundTrip: 0.0038, why: "no commission, 0.15% currency fee each way" },
+  { id: "mt5", name: "MetaTrader 5", roundTrip: 0.0072, why: "CFD spread + about a month of overnight financing" },
+  { id: "degiro", name: "DEGIRO", roundTrip: 0.0102, why: "€2 per US trade + 0.25% currency fee each way" },
+];
+
+export const CRYPTO_PLATFORMS: Platform[] = [
+  { id: "binance", name: "Binance", roundTrip: 0.003, why: "0.10% fee each way + spread" },
+  { id: "kraken", name: "Kraken Pro", roundTrip: 0.009, why: "0.40% taker fee each way + spread" },
+  { id: "revolut", name: "Revolut", roundTrip: 0.031, why: "about 1.5% fee each way on the standard plan" },
+];
+
+export const platformsFor = (idea: Idea) => (idea.crypto ? CRYPTO_PLATFORMS : STOCK_PLATFORMS);
+
+export function results(idea: Idea, p: Platform) {
+  const net = idea.trades.map((t) => t.gross - p.roundTrip);
+  const avg = net.reduce((a, b) => a + b, 0) / net.length;
+  const wins = net.filter((r) => r > 0).length;
+  const randomMonth = idea.random_month - p.roundTrip;
+  return { net, avg, wins, randomMonth, profitOn1k: net.reduce((a, b) => a + b, 0) * 1000 };
+}
+
+export const pct = (x: number, digits = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(digits)}%`;
+export const money = (x: number) => `${x >= 0 ? "+" : "−"}$${Math.round(Math.abs(x)).toLocaleString("en-US")}`;
+export const fmtDate = (d: string) =>
+  new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });

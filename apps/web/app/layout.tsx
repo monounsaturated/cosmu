@@ -8,9 +8,9 @@ const sans = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Cosmu: honest backtests from plain English",
+  title: "Cosmu: turn any headline into a backtest",
   description:
-    "Describe a trading idea in plain English. Cosmu turns it into a strategy, backtests it on real data net of every fee, and lets statistics, not the AI, decide what survives.",
+    "Ask in plain English. Cosmu finds the news, tests it on real prices with your broker's fees, and tells you if it would have made money.",
 };
 
 // Theme before paint: stored choice wins, else follow the OS. Dark is the default.
