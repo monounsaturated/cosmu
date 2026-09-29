@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "outputDirectory": ".next",
+  "installCommand": "cd ../.. && pnpm install",
+  "buildCommand": "cd ../.. && pnpm --filter @cosmu/web build"
+}

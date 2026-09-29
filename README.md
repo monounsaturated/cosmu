@@ -1,83 +1,37 @@
 # Cosmu
 
-Autonomous quant machine. LLMs propose strategies — a deterministic gate decides what
-gets funded. Live trading is **OFF by default** behind 5 interlocks.
+**Your AI trading analyst. Most trading ideas lose money: know before yours does.** Describe any
+strategy in plain English, numbers ("buy Bitcoin after a 10% crash") or news ("buy defense stocks when a
+war breaks out"). Cosmu tests it on real prices, with your broker's fees, against 10,000 random entry
+dates, and gives a straight verdict.
 
-## What it does
+This repo holds the landing page (`apps/web`) and the research harness behind its examples
+(`scripts/landing`). The earlier engine (deterministic statistical gate, paper trading, point-in-time
+data) is kept in [`archive/`](archive/) and at the tag `v1-engine-archive`.
 
-- Authors trading strategies autonomously (or from your ideas)
-- Screens them through a deterministic, FDR-controlled gate (deflated Sharpe · CSCV-PBO · holdout · regime folds · cohort Benjamini-Hochberg)
-- Runs Paper tracks for survivors — each strategy gets its own standalone SIM track on live data; ≥30 days net of fees is the recommended live-readiness proof (the operator decides when to go live; the 5 interlocks are the hard gate)
-- Ingests free alt-data sources for cross-asset signals, surfaced through the Mind (analyst-panel reasoning)
-
-## What it doesn't do
-
-- Trade live without explicit human activation (5 interlocks: toggle on + real keys + gate passed + caps available + no kill-switch)
-- Use LLMs in the funding/execution path (the deterministic gate alone disposes)
-- Pool money across strategies (each survivor has its own standalone track — no shared wallet)
-- Display synthetic data — empty surfaces say so honestly, never fabricate a track record
-
-## Run locally
+## Run
 
 ```bash
 pnpm install
-pnpm dev          # web on :3000 (regenerates contracts, then next dev --turbopack)
-pnpm engine:api   # engine API on :8000 (FastAPI / uvicorn)
+pnpm dev          # landing page on http://localhost:3000
+pnpm verify       # typecheck + static build → apps/web/out
 ```
 
-First clone — also install the Python dev deps so `pytest -n auto` works locally:
+## Research
 
 ```bash
-pip install -e "apps/engine[dev]"
+pnpm research          # event ideas through one harness, ranked
+pnpm research:spikes   # news-volume spike ideas (GDELT), ranked
+pnpm research:wiki     # public-attention spike ideas (Wikipedia pageviews), ranked
+pnpm demo:data         # export the page's data → apps/web/lib/showcase.json
 ```
 
-Point the web app at the engine with `.env.local`:
+Every idea runs the same way: buy at the close of the first trading day after the news broke, hold a
+fixed period (events: 1 month; news and attention spikes: 2 weeks), subtract costs, then compare with the same asset
+bought on 10,000 random sets of dates drawn from the same years. An idea passes only with at least 10
+events and a result better than 95% of those random draws ("promising": 80–95%). Of 53 ideas tested,
+1 passed (layoff-news spikes → Nasdaq) and 2 are promising (wars and missile news → US defense stocks). Prices: Yahoo Finance daily closes (2020–2025, dividends included). News volume: GDELT. Public attention: Wikipedia pageviews. Headlines shown for
+news spikes: Google News RSS, restricted to the spike day (`scripts/landing/fetch_headlines.py`).
+Big-event dates are hand-curated from public reporting.
 
-```
-API_BASE_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
-```
-
-With no engine configured, every surface renders its honest "not connected" state — no fake numbers.
-
-## Verify before pushing
-
-```bash
-pnpm verify         # full: naming:check · contracts:generate · engine:test · typecheck · next build
-pnpm verify:fast    # skip next build — lint + typecheck + engine tests only (fast local loop)
-pnpm verify:remote  # manually dispatch the GitHub Actions 'verify' run → tail it
-```
-
-**The pre-push hook (`.githooks/pre-push`) is the gate** — it runs naming + contracts-drift +
-the engine test suite + typecheck and BLOCKS the push on any failure (push = deploy, and CI does
-not auto-run). It skips a step honestly (loud warning) only when that toolchain isn't installed.
-Escape hatches when you own the risk: `COSMU_PREPUSH=fast git push` (naming + drift only) or
-`git push --no-verify`. The full `pnpm verify` adds the production `next build` on top — run it
-before pushing anything that touches the web app.
-
-CI (`verify.yml`) is `workflow_dispatch`-only — it does NOT auto-run on PRs or pushes (we are not
-paying for GitHub Actions). `verify:remote` manually dispatches it (`gh` CLI required) so the heavy
-`next build` runs on GitHub instead of your RAM.
-
-`verify:fast` is the tight feedback loop — skips the slow Next.js production build.
-
-## Deploy
-
-Push to your working branch. **Railway** (engine + 7 crons: 15-min ingest · 4h autonomous tick · daily+hourly forward-test/mark clocks · hourly voices · daily rotation re-arm — see `apps/engine/railway.toml`) and **Vercel** (web) auto-deploy.
-That's the only trigger — never also run `railway up` / `vercel deploy` (double-deploy race).
-
-## Stack
-
-- **Engine** — Python 3.12, FastAPI, Pydantic, pytest (`apps/engine/cosmu`) on **Railway**
-- **Web** — Next.js, Tailwind, shadcn/ui (`apps/web`) on **Vercel**
-- **Contracts** — `@cosmu/contracts-ts`, generated from the engine OpenAPI (never hand-typed)
-- **Data** — Postgres / Supabase · **Heavy compute** — Modal (scale-to-zero backtests/ML/sweeps)
-- **LLM** — OpenRouter (free `:free` tier by default; xAI fallback) · proposals only, gate is deterministic
-- **CI** — GitHub Actions (`verify.yml`) is **`workflow_dispatch`-only** (manual, OFF by default — we are not paying for it); the **pre-push hook (naming + drift + engine tests + typecheck) is the gate**
-
-## Docs
-
-- `AGENTS.md` — the single canonical entry point for any coding agent
-- `docs/IMPLEMENTATION.md` — what's built, what's next
-- `docs/GLOSSARY.md` — vocabulary (the Mind, the Gate, tracks, lifecycle)
-- `.claude/skills/` — runnable playbooks (the source of truth for common procedures)
+Research tool, not investment advice.

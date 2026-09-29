@@ -1,20 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "baseUrl": ".",
-    "paths": {
-      "@cosmu/shared": ["packages/shared/src/index.ts"]
-    },
-    "ignoreDeprecations": "6.0",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true,
-    "declaration": true,
-    "outDir": "dist"
+    "allowSyntheticDefaultImports": true
   }
 }
