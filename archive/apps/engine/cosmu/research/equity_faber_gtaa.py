@@ -47,7 +47,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import os
 
-CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 
 # Faber's canonical 5-asset GTAA sleeves (equal-weight). GLD = the real-asset sleeve, IEF = the rate-duration sleeve.
 SLEEVES = ["SPY", "EFA", "AGG", "GLD", "IEF"]

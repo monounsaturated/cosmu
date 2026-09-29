@@ -67,7 +67,7 @@ BARS_LIMIT: int = 2000
 # Absolute local Binance spot bar cache (the M2 store) — read through the BinanceSpotOHLCVProvider seam, exactly
 # like the perp harness reads its cache. Absolute so a run from any cwd resolves the real cache (a relative
 # default would miss it and trigger a geo-blocked live fetch).
-BARS_CACHE = "/Users/device/cosmu/.cosmu/market_data/binance"
+BARS_CACHE = "<repo>/.cosmu/market_data/binance"
 
 # REAL maker fee (fraction) from the venue catalog — NOT a magic number. The de-risk overlay trades with LIMIT
 # orders (step out / step back in), so it is charged the MAKER rate.
@@ -428,7 +428,7 @@ def _gate_settings():  # noqa: ANN202
     return get_settings().gates
 
 
-FUNDING_CACHE = "/Users/device/cosmu/.cosmu/market_data/binance_funding"
+FUNDING_CACHE = "<repo>/.cosmu/market_data/binance_funding"
 
 
 def _funding_control(symbol: str, bars: list[Bar]) -> list[float | None]:

@@ -17,7 +17,7 @@ In COSMU **paper = forward test** (one step): `orchestrator/paper_step.py::step_
 
 ## Run (from `apps/engine`, read-only against prod)
 ```bash
-cd apps/engine && set -a && . /Users/device/cosmu/.env.local && set +a && PYTHONPATH=. python3 - <<'PY'
+cd apps/engine && set -a && . <repo>/.env.local && set +a && PYTHONPATH=. python3 - <<'PY'
 import os, json, random
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal

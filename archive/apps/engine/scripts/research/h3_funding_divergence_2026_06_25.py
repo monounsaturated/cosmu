@@ -86,7 +86,7 @@ UNIVERSE = {
     "LTC":  {"binance": "LTCUSDT",  "okx": "LTC-USDT-SWAP",  "krakenfut": "PF_LTCUSD",  "kraken_spot": "LTCUSDT"},
 }
 
-BINANCE_FUNDING_DIR = "/Users/device/cosmu/apps/engine/.cosmu/market_data/binance_funding"
+BINANCE_FUNDING_DIR = "<repo>/apps/engine/.cosmu/market_data/binance_funding"
 GATES = GateSettings()  # LOCKED: DSR>=0.95 PBO<=0.50 folds>=0.60 min_trades>=30 holdout>0 beat-B&H
 
 OUT_JSON = _ENGINE / "scripts" / "research" / "h3_funding_divergence_results_2026_06_25.json"

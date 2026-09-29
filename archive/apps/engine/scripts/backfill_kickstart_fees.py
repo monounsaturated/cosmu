@@ -13,7 +13,7 @@
 # positions / realized P&L / the money path); reversible via --revert (restores each row from its audit event);
 # dry-run by DEFAULT (pass --apply to write). SEQUENCE: run AFTER the writer fix is deployed.
 #
-# PROD: connects via DATABASE_URL from /Users/device/cosmu/.env.local (Store(Settings()) handles pgbouncer / #comment).
+# PROD: connects via DATABASE_URL from <repo>/.env.local (Store(Settings()) handles pgbouncer / #comment).
 
 from __future__ import annotations
 

@@ -105,4 +105,4 @@ store.rows("SELECT ts, pnl FROM portfolio_snapshots WHERE scope = 'aggregate' OR
 ---
 
 ### Method note
-Read `DATABASE_URL` from `/Users/device/cosmu/.env.local` (stripped inline `#…` comment + `?pgbouncer=true`), connected `psycopg2` in `set_session(readonly=True)`. Hit prod API read-only with `X-API-Key`. No writes; no files under `/Users/device/cosmu` touched.
+Read `DATABASE_URL` from `<repo>/.env.local` (stripped inline `#…` comment + `?pgbouncer=true`), connected `psycopg2` in `set_session(readonly=True)`. Hit prod API read-only with `X-API-Key`. No writes; no files under `<repo>` touched.

@@ -39,7 +39,7 @@ STRATEGY_NAME = "Risk Parity (Inverse-Vol SPY/AGG/GLD, Monthly)"
 STRATEGY_ORIGIN = "documented"  # NOT 'finder' — the deploy-a-documented-strategy track, labeled honestly
 VENUE = "ibkr"
 TRACK_CAPITAL = get_settings().sim_track_capital  # canonical $1k SIM track size (settings.sim_track_capital)
-CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 IBKR_ETF_BPS_PER_SIDE = rp.IBKR_ETF_BPS_PER_SIDE
 # The proven-regime passport is DERIVED from the arm's OWN per-regime net PnL (research._arm_regimes), NOT a
 # hardcoded full set: each invested period is tagged bull/bear/chop off the benchmark trend (the same classifier

@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 
 # PAA risk universe (the liquid ETFs we hold point-in-time) + the single safe / crash-protection asset.
 RISK_UNIVERSE = ["SPY", "QQQ", "EFA", "EEM", "GLD", "AGG", "LQD", "TLT"]

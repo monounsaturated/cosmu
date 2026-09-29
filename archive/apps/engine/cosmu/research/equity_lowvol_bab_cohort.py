@@ -39,7 +39,7 @@ from cosmu.master.trials import register_trial, trial_stats
 from cosmu.master.verdict_log import durable_persist
 from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed_split
 
-CACHE = Path("/Users/device/cosmu/.cosmu/market_data/equities")
+CACHE = Path("<repo>/.cosmu/market_data/equities")
 
 # Per-SIDE cost (fraction). 1 bp = 0.0001.
 COST_STOCK_PER_SIDE = 0.0013   # 2 bps slip + 10 bps impact + 1 bp commission

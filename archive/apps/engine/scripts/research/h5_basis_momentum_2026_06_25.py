@@ -90,7 +90,7 @@ UNIVERSE = [
     "ADAUSDT", "DOTUSDT", "LTCUSDT", "XRPUSDT", "BCHUSDT", "ATOMUSDT",
 ]
 GATES = GateSettings()  # the LOCKED gate
-FUNDING_DIR = "/Users/device/cosmu/apps/engine/.cosmu/market_data/binance_funding"
+FUNDING_DIR = "<repo>/apps/engine/.cosmu/market_data/binance_funding"
 RESULTS_JSON = _ENGINE / "scripts" / "research" / "h5_basis_momentum_results_2026_06_25.json"
 BYBIT_PAGES = 8  # ~8000 4h bars ≈ 3.65yr per leg (the keyless ceiling we measured)
 INTERVAL = "240"  # 4h — densest keyless bar with deep paginated history

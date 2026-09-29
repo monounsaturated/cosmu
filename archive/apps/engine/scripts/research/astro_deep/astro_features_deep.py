@@ -463,7 +463,7 @@ if __name__ == "__main__":
     import sys
 
     # Make the engine package importable for the cross-validation import.
-    sys.path.insert(0, "/Users/device/cosmu/.claude/worktrees/tender-turing-19c2dd/apps/engine")
+    sys.path.insert(0, "<repo>/.claude/worktrees/tender-turing-19c2dd/apps/engine")
 
     today = pd.Timestamp.utcnow().normalize().tz_localize(None)
     idx = pd.date_range(end=today, periods=400, freq="D")

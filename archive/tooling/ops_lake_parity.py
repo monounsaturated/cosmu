@@ -19,7 +19,7 @@ def load_env(path: str) -> None:
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-load_env("/Users/device/cosmu/.env.local")
+load_env("<repo>/.env.local")
 acct = os.environ["R2_ACCOUNT_ID"]
 
 # --- enumerate the lake's CURRENT files via boto3 (authoritative; matches the 61 catalog rows, no orphans) ---

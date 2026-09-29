@@ -35,7 +35,7 @@ ENGINE_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ENGINE_ROOT / "scripts" / "research" / "astro_strategy_lab"))
 
 _REST = "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article"
-_UA = "cosmu-research/0.1 (contact.moncory@gmail.com)"
+_UA = "cosmu-research/0.1 (github.com/monounsaturated/cosmu)"
 PUBLISH_LAG_DAYS = 1  # a day-t count is observable only at t+1 (the API finalizes ~24h late) → PIT-honest
 
 # The belief TOPICS the plan names. Value is the article the Wikimedia API actually serves (after redirect

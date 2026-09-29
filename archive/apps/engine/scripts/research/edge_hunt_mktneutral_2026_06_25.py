@@ -77,7 +77,7 @@ UNIVERSE = [
 ]
 GATES = GateSettings()  # the LOCKED gate
 # Real Binance funding cache (operator's), read-only.
-FUNDING_DIR = "/Users/device/cosmu/apps/engine/.cosmu/market_data/binance_funding"
+FUNDING_DIR = "<repo>/apps/engine/.cosmu/market_data/binance_funding"
 RESULTS_JSON = _ENGINE / "scripts" / "research" / "edge_hunt_mktneutral_results_2026_06_25.json"
 BYBIT_PAGES = 8  # ~8000 4h bars ≈ 3.6yr (the keyless ceiling we measured)
 

@@ -46,7 +46,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import os
 
-CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 
 # VAA-G4 aggressive universe.
 OFFENSIVE = ["SPY", "EFA", "EEM", "AGG"]

@@ -90,7 +90,7 @@ def _binance_cached_bars(symbol: str) -> list[Bar]:
     """Operator's cached REAL Binance daily bars (PIT, closed-candle). Empty when not cached."""
     path = _ENGINE.parent.parent / "apps" / "engine"  # not used; cache resolved below
     # The cache lives in the MAIN repo (the worktree has no cache); read it directly, read-only.
-    main_cache = Path("/Users/device/cosmu/apps/engine/.cosmu/market_data/binance") / f"{symbol}_1d.json"
+    main_cache = Path("<repo>/apps/engine/.cosmu/market_data/binance") / f"{symbol}_1d.json"
     if not main_cache.exists():
         return []
     rows = json.loads(main_cache.read_text())
@@ -229,7 +229,7 @@ def run_theme_funding(binance_panel: dict[str, list[Bar]]) -> list[Combo]:
     grid = _grid(spec, points=3, max_variants=24)
     grid_size = max(1, len(grid))
     funding = CachedFundingRateProvider(
-        cache_dir="/Users/device/cosmu/apps/engine/.cosmu/market_data/binance_funding"
+        cache_dir="<repo>/apps/engine/.cosmu/market_data/binance_funding"
     )
     out: list[Combo] = []
     for symbol, bars in binance_panel.items():

@@ -58,7 +58,7 @@ from cosmu.master.trials import register_trial, trial_stats_for_cohort
 from cosmu.master.verdict_log import durable_persist
 from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed_split
 
-CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 
 # Universe (all carry DEEP daily total-return history in our cache).
 SECTORS = ["XLB", "XLE", "XLF", "XLI", "XLK", "XLP", "XLU", "XLV", "XLY"]  # 9 SPDR sectors, daily TR from 1998-12

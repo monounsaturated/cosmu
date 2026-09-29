@@ -6,7 +6,7 @@ Plan written and grounded against the prior COSMU record + web-verified anchors.
 
 ## Done — the run-on-approval plan
 
-**File:** `/Users/device/cosmu/docs/research/ASTRO_ULTIMATE_DEEPDIVE_PLAN.md` (supersedes the older `astro_final_deepdive_PLAN.md`).
+**File:** `<repo>/docs/research/ASTRO_ULTIMATE_DEEPDIVE_PLAN.md` (supersedes the older `astro_final_deepdive_PLAN.md`).
 
 ### The five sections, decided and quantified
 

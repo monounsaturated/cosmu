@@ -23,7 +23,7 @@ This skill reads the prod DB + the pure settings resolvers read-only and reports
 
 ## Run (from `apps/engine`, read-only against prod)
 ```bash
-cd apps/engine && set -a && . /Users/device/cosmu/.env.local && set +a && PYTHONPATH=. python3 - <<'PY'
+cd apps/engine && set -a && . <repo>/.env.local && set +a && PYTHONPATH=. python3 - <<'PY'
 import os
 from datetime import datetime, timezone
 import psycopg2, psycopg2.extras

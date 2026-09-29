@@ -154,7 +154,7 @@ class OnchainBlockchainSource:
 
     def _live_fetch(self, url: str) -> Any:
         req = urllib.request.Request(
-            url, headers={"User-Agent": "cosmu-engine/0.1 (contact.moncory@gmail.com)"}
+            url, headers={"User-Agent": "cosmu-engine/0.1 (github.com/monounsaturated/cosmu)"}
         )
         with urllib.request.urlopen(req, timeout=20, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))

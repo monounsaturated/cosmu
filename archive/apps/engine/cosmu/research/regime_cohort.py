@@ -45,7 +45,7 @@ _REGIME_GRID = [
     for dw in (15, 30)
 ]
 # Equity-cache default; env-overridable so it works off this Mac / on Modal-Railway (the §9 hardcoded-path fix).
-_EQUITY_CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+_EQUITY_CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 
 
 @dataclass(frozen=True)

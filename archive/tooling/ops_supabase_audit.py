@@ -22,7 +22,7 @@ def load_env(path: str) -> None:
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-load_env("/Users/device/cosmu/.env.local")
+load_env("<repo>/.env.local")
 dsn = os.environ.get("DATABASE_URL")
 if not dsn:
     print("NO DATABASE_URL", file=sys.stderr)

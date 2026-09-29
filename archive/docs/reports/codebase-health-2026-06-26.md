@@ -7,7 +7,7 @@
 | Date | 2026-06-26 09:43 CEST |
 | Base | `origin/main` @ `7741c65` (clean) |
 | Branch | `docs/codebase-health` (report-only, do NOT merge) |
-| Worktree | isolated; `/Users/device/cosmu` never touched |
+| Worktree | isolated; `<repo>` never touched |
 | Python | 3.13.9 · pytest 9.0.2 · pytest-xdist 3.8.0 |
 | Scope | second-pass non-regression: verify everything, change nothing, delete nothing |
 

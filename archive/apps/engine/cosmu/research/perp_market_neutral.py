@@ -51,8 +51,8 @@ from cosmu.research.equity_holdout import metrics_with_holdout, purged_embargoed
 
 # Default perp bar cache (the local M2 store); the spot/perp providers share the Bar shape, so the perp cache is
 # read through the same BinanceSpotOHLCVProvider seam with the perp cache_dir.
-PERP_CACHE = "/Users/device/cosmu/.cosmu/market_data/binanceperp"
-FUNDING_CACHE = "/Users/device/cosmu/.cosmu/market_data/binance_funding"
+PERP_CACHE = "<repo>/.cosmu/market_data/binanceperp"
+FUNDING_CACHE = "<repo>/.cosmu/market_data/binance_funding"
 
 # Per-SIDE perp taker fee (fraction), read from the REAL venue catalog — NOT a magic number. Charged on the
 # realized two-sided turnover of the book each rebalance (Σ|w_t - w_{t-1}| * per_side), so a low-turnover monthly

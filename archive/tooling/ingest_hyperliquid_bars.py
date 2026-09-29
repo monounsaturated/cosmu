@@ -24,7 +24,7 @@ _ENGINE = Path(__file__).resolve().parents[1] / "apps" / "engine"
 if str(_ENGINE) not in sys.path:
     sys.path.insert(0, str(_ENGINE))
 
-CACHE_DIR = Path(os.environ.get("COSMU_HL_CACHE", "/Users/device/cosmu/.cosmu/market_data/hyperliquid"))
+CACHE_DIR = Path(os.environ.get("COSMU_HL_CACHE", "<repo>/.cosmu/market_data/hyperliquid"))
 HL_API = "https://api.hyperliquid.xyz/info"
 # Bars a single candle request can return; HL supports arbitrary windows but throttles heavy requests.
 _PAGE_DAYS = 365

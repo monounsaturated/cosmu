@@ -13,7 +13,7 @@
 # SEQUENCE: run this AFTER the writer fix (master/portfolio.mark_to_market) is deployed, otherwise the still-running
 # old funder keeps appending fresh collapse rows and they re-accumulate.
 #
-# PROD: connect via DATABASE_URL from /Users/device/cosmu/.env.local (strip a trailing ` #comment` + `?pgbouncer=true`,
+# PROD: connect via DATABASE_URL from <repo>/.env.local (strip a trailing ` #comment` + `?pgbouncer=true`,
 # use port 5432).
 
 from __future__ import annotations

@@ -266,7 +266,7 @@ def _dsn_from_env() -> str:
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError(
-            "DATABASE_URL is not set — `set -a; . /Users/device/cosmu/.env.local; set +a` first"
+            "DATABASE_URL is not set — `set -a; . <repo>/.env.local; set +a` first"
         )
     p = urlsplit(url)
     q = [(k, v) for k, v in parse_qsl(p.query) if k.lower() not in ("pgbouncer", "connection_limit")]

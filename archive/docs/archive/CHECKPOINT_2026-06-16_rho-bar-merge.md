@@ -55,7 +55,7 @@ This resolution **compiles** and the **directly-affected tests pass** (see QA be
 ## ⚠️ The blocker: a live multi-agent fleet on ONE shared branch
 
 `ps aux` shows **6+ concurrent Claude Code sessions** (mix of `opus-4-8[1m]` and `sonnet-4-6`, several
-`ultracode:true`), all on `/Users/device/cosmu` with `bypassPermissions`. They are actively:
+`ultracode:true`), all on `<repo>` with `bypassPermissions`. They are actively:
 - committing (one made `2368ea8` 13 min before checkpoint),
 - and writing **uncommitted in-flight files** (see below).
 

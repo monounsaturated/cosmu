@@ -5,7 +5,7 @@ Append a one-liner whenever a mistake costs real time. Keep it lean.
 
 ## Worktree-isolation discipline
 - **Mistake:** agents (and sessions) writing to `main`/the orchestrator checkout via absolute
-  `/Users/device/cosmu/…` paths from inside a worktree → commits landed on the wrong branch and
+  `<repo>/…` paths from inside a worktree → commits landed on the wrong branch and
   drifted `main`.
 - **Rule:** in a worktree, do **all** git/edit work **inside that worktree**, with relative paths.
   One branch per agent; never two agents in one working tree. The orchestrator rebases before

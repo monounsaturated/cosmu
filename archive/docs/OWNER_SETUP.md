@@ -25,7 +25,7 @@ Already set for you: `XAI_API_KEY` (LLM works), `DATABASE_URL` (Supabase wired).
 2. Add ~$5 under **Credits**. The 24/7 loop uses cheap/free models (~$1–5/mo).
 3. Skip this and the machine still runs on the existing `XAI_API_KEY` (Grok only). OpenRouter unlocks many models **by config** — the preferred gateway.
 
-### Step 4 — Paste the keys into `/Users/device/cosmu/.env.local`
+### Step 4 — Paste the keys into `<repo>/.env.local`
 Use these **exact** names (they must match Railway/Vercel exactly):
 ```
 FRED_API_KEY=your_fred_key_here
@@ -35,7 +35,7 @@ OPENROUTER_API_KEY=sk-or-...        # optional
 
 ### Step 5 — Run the real-data gate
 ```
-cd /Users/device/cosmu/apps/engine
+cd <repo>/apps/engine
 python3 -m cosmu.research.loop --ingest     # ingest real data → run the four-arm gate → record the verdict
 python3 -m cosmu.research.gate              # print just PASS / STOP-narrow
 ```
@@ -150,7 +150,7 @@ Testnet is **not worth it**: Binance's testnet has thin, unrealistic liquidity/p
 ## E. New-chat prompt (copy-paste verbatim)
 
 ```text
-You are continuing Cosmu v2 (autonomous quant money machine) at /Users/device/cosmu.
+You are continuing Cosmu v2 (autonomous quant money machine) at <repo>.
 
 READ FIRST (in order, don't crawl): AGENTS.md (canonical entry) · docs/OWNER_SETUP.md (owner state + what's set) · docs/IMPLEMENTATION.md (state + ranked next steps — the Alpha-decay/drift primitive is now BUILT, gap #4 closed) · docs/GLOSSARY.md · docs/MASTER_PLAN.md · docs/VISION.md §4.
 
@@ -182,7 +182,7 @@ STANDARDS (uniform, so it grows without getting messy — match these patterns e
 Codify these in docs/CODING_AGENT.md (task 6) as copy-me templates so every future addition is uniform.
 
 FIRST, CHECK STATE, THEN SELF-ROUTE:
-Run: `grep -E '^(FRED_API_KEY|POLYMARKET_TOKEN|OPENROUTER_API_KEY)=' /Users/device/cosmu/.env.local` (values present?). POLYMARKET_TOKEN is OPTIONAL — blank is expected (task 1b). FRED + OpenRouter are set.
+Run: `grep -E '^(FRED_API_KEY|POLYMARKET_TOKEN|OPENROUTER_API_KEY)=' <repo>/.env.local` (values present?). POLYMARKET_TOKEN is OPTIONAL — blank is expected (task 1b). FRED + OpenRouter are set.
 - If FRED_API_KEY is set → TASK 1: `cd apps/engine && python3 -m cosmu.research.loop --ingest`, then publish a PASS or a documented FAIL (with the per-source / per-asset-class drop-one). With no Polymarket token yet, risk_on falls back to synthetic — note that in the writeup, and prioritize task 1b to make it fully real. This number is the only thing that matters until it exists.
 - If FRED_API_KEY is NOT set → tell the owner (point to docs/OWNER_SETUP.md §A), then do task 1b + task 2 so progress continues while they grab the (one) free key.
 

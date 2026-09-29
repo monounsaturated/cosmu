@@ -8,7 +8,7 @@
 # idempotent (only NULL windows are filled), offline-safe (a cell whose bars won't load stays NULL — honest),
 # dry-run by default (pass --apply to write). Mirrors the schema-adaptive forward path in finder/loop _persist.
 #
-# PROD: connect via DATABASE_URL from /Users/device/cosmu/.env.local (strip a trailing ` #comment` + `?pgbouncer=true`,
+# PROD: connect via DATABASE_URL from <repo>/.env.local (strip a trailing ` #comment` + `?pgbouncer=true`,
 # use port 5432). Run AFTER the 2026-06-19_backtest_symbols_oos_window migration is applied (the column must exist).
 
 from __future__ import annotations

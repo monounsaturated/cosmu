@@ -17,7 +17,7 @@ def load_env(path: str) -> None:
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-load_env("/Users/device/cosmu/.env.local")
+load_env("<repo>/.env.local")
 dsn = os.environ["DATABASE_URL"].split("?", 1)[0]
 conn = psycopg2.connect(dsn, connect_timeout=20)
 conn.autocommit = True

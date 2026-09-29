@@ -22,7 +22,7 @@ def load_env(path: str) -> None:
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-load_env("/Users/device/cosmu/.env.local")
+load_env("<repo>/.env.local")
 
 # locate pg_dump (PATH, then homebrew libpq keg)
 pgdump = shutil.which("pg_dump")
@@ -39,7 +39,7 @@ raw = os.environ["DATABASE_URL"]
 session_dsn = raw.replace(":6543", ":5432").split("?", 1)[0]
 
 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-out_dir = Path("/Users/device/cosmu/.cosmu/backups/pg")
+out_dir = Path("<repo>/.cosmu/backups/pg")
 out_dir.mkdir(parents=True, exist_ok=True)
 local_file = out_dir / f"cosmu_pg_{stamp}.dump"
 

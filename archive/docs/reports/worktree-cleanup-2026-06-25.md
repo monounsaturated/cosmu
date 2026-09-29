@@ -26,7 +26,7 @@
 
 ### 1. `interesting-jemison-b561ec` — paris-beer-weather (MEASURED 0-edge / killed)
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/interesting-jemison-b561ec`
+**Path:** `<repo>/.claude/worktrees/interesting-jemison-b561ec`
 **Branch:** `claude/interesting-jemison-b561ec` (HEAD `db6f596`, no commits ahead of main).
 
 **Uncommitted content:**
@@ -54,7 +54,7 @@ re-run. The `__pycache__/*.pyc` is build artifact — never commit it.
 
 ### 2. `elegant-jennings-075baa` — zero_capital / loop (BOTH already merged)
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/elegant-jennings-075baa`
+**Path:** `<repo>/.claude/worktrees/elegant-jennings-075baa`
 **Branch:** `claude/elegant-jennings-075baa` (HEAD `da7ae7a`, **44 commits behind** `origin/main`).
 
 **Uncommitted content (2 modified files):**
@@ -76,7 +76,7 @@ stash/commit value — keeping it only risks a confusing future re-apply of alre
 
 ### 3. `charming-blackburn-6d6a39` — research fixtures (LIVE, not yet merged)
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/charming-blackburn-6d6a39`
+**Path:** `<repo>/.claude/worktrees/charming-blackburn-6d6a39`
 **Branch:** `claude/charming-blackburn-6d6a39` (HEAD `ea7d5ba`, no commits ahead of main).
 
 **Uncommitted content (2 modified files, +23/−6):**
@@ -99,7 +99,7 @@ Run `pytest` on the touched test before merging.
 
 ### 4. `pedantic-kalam-62a080` — logo
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/pedantic-kalam-62a080`
+**Path:** `<repo>/.claude/worktrees/pedantic-kalam-62a080`
 **Branch:** `claude/pedantic-kalam-62a080` (HEAD `2303232`, no commits ahead of main).
 
 **Uncommitted content (3 modified files, +29/−28):** `apps/web/app/icon.svg`,
@@ -115,12 +115,12 @@ trading / correctness risk either way.
 
 ### 5. `mystifying-gagarin-5c371d` — sweep script
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/mystifying-gagarin-5c371d`
+**Path:** `<repo>/.claude/worktrees/mystifying-gagarin-5c371d`
 **Branch:** `fix/dedup-watch-tracks-per-cell` (HEAD `db6f596`).
 
 **Uncommitted content (1 untracked file):** `apps/engine/_full_multivenue_sweep.py` (51 lines) — a one-off
 research-run harness that screens every inbox spec through the FarmLoop against PROD from an EU host. It
-**reads `DATABASE_URL` by parsing `/Users/device/cosmu/.env.local` directly** and lives at the engine root
+**reads `DATABASE_URL` by parsing `<repo>/.env.local` directly** and lives at the engine root
 (the `_`-prefix marks it as a throwaway).
 
 **Recommended disposition:** **Discard.** This is a disposable research script, not library/product code: a
@@ -133,7 +133,7 @@ there, don't preserve this file.
 
 ### 6. `quirky-austin-f6a067` — copy-trade killed-epic doc
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/quirky-austin-f6a067`
+**Path:** `<repo>/.claude/worktrees/quirky-austin-f6a067`
 **Branch:** `claude/quirky-austin-f6a067` (HEAD `c45f83c`, no commits ahead of main).
 
 **Uncommitted content (1 untracked file):** `docs/epics/copy-trade-lane.md` (184 lines). Header:
@@ -154,7 +154,7 @@ single docs landing).
 
 ### 7. `peaceful-tesla-a6ad40` — polymarket plans + sec_edgar dup
 
-**Path:** `/Users/device/cosmu/.claude/worktrees/peaceful-tesla-a6ad40`
+**Path:** `<repo>/.claude/worktrees/peaceful-tesla-a6ad40`
 **Branch:** `claude/peaceful-tesla-a6ad40` (HEAD `db6f596`, no commits ahead of main).
 
 **Uncommitted content:**

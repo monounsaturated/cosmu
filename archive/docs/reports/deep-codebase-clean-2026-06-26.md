@@ -1,7 +1,7 @@
 # Deep codebase-cleanliness review + uncommitted-work disposition — 2026-06-26
 
 READ-ONLY review. Branch `docs/deep-codebase-clean` off `origin/main` (`588b935`). Nothing executed,
-nothing deleted, nothing written to the operator's checkout `/Users/device/cosmu`. This report flags;
+nothing deleted, nothing written to the operator's checkout `<repo>`. This report flags;
 it does not remove (per *build-free / delete-nothing / keep-old-code-for-reference*).
 
 ---
@@ -153,7 +153,7 @@ cleanly onto current main without any reconciliation. That IS the clean path.
 ## STEP-BY-STEP integration plan (greenlight required — NOT executed)
 
 Goal: capture the ~12 forward files, abandon the revert risk, leave main green. Run in a worktree off
-current `origin/main` (never in `/Users/device/cosmu`).
+current `origin/main` (never in `<repo>`).
 
 1. **Branch fresh off current main** (NOT a rebase of `feat/rho-bar-wiring`):
    `git fetch origin && git switch -c feat/polymarket-prediction-lane origin/main`

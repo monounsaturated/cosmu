@@ -16,7 +16,7 @@ robustness**. Everything else is LEAVE — v2 already does it cleaner.
 
 ## 0. Where v1 lives
 
-- **Path:** `/Users/device/cosmu light/` — a *separate sibling folder* (not inside the v2 repo), its
+- **Path:** `<repo> light/` — a *separate sibling folder* (not inside the v2 repo), its
   own git repo (`04c1835 edit kill switch`), authored **Apr 13 – May 5 2026**, predating v2's first
   commits (late May). The operator made a new folder for v2; v1 was left intact. Confirmed v1.
 - **Stack:** TypeScript pnpm monorepo — `apps/api` (Node backend), `apps/web` (Next.js internal
@@ -297,8 +297,8 @@ prompt sprawl) back into v2. Take the *operational mechanics*, leave the *shape*
 
 ## 5. Pointers
 
-- v1 product truth: `/Users/device/cosmu light/SYSTEM.md`
-- v1 non-obvious mechanics (read this): `/Users/device/cosmu light/ARCHITECTURE.md`
+- v1 product truth: `<repo> light/SYSTEM.md`
+- v1 non-obvious mechanics (read this): `<repo> light/ARCHITECTURE.md`
 - v2 LLM-lane design: [docs/epics/agentic-lane.md](docs/epics/agentic-lane.md)
 - v2 LLM contract: [strategy/agent_spec.py](apps/engine/cosmu/strategy/agent_spec.py)
 - v2 reasoning/dispose: [strategy/agent_loop.py](apps/engine/cosmu/strategy/agent_loop.py),

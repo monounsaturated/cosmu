@@ -64,7 +64,7 @@ tempting luck lever.
 ## Per-spec × per-timeframe result
 
 Run: `--timeframes 1h,4h,1d --shallow --max-variants 8`, `persist=False`, `COSMU_BARS_URL` unset, local deep bar cache
-(341 MB, `/Users/device/.cosmu/market_data`) symlinked in (then removed; tree clean). Each spec was `model_copy`'d to
+(341 MB, `~/.cosmu/market_data`) symlinked in (then removed; tree clean). Each spec was `model_copy`'d to
 `horizon.bar_sizes = [1h, 4h, 1d]` so the finder screens it once per timeframe — every other Gate input byte-identical.
 
 | version | native | 1h | 4h | 1d | would-pass at ANY tf? |

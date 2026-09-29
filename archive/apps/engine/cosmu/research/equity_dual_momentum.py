@@ -42,7 +42,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # Equity-cache default; env-overridable so it works off this Mac / on Modal-Railway (the §9 hardcoded-path fix).
-CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "/Users/device/cosmu/.cosmu/market_data/equities"))
+CACHE = Path(os.environ.get("COSMU_EQUITY_CACHE", "<repo>/.cosmu/market_data/equities"))
 
 # The four series GEM needs. BIL is the risk-free hurdle; AGG the risk-off leg; SPY/EFA the two equity legs.
 EQUITY_US = "SPY"

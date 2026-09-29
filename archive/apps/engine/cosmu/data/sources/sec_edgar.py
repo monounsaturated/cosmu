@@ -51,7 +51,7 @@ TRANSFORM_VERSION = "sec-edgar-insider-v1"
 _DEFAULT_WINDOW_DAYS = 90
 
 # SEC requires a descriptive User-Agent on every request (see https://www.sec.gov/os/accessing-edgar-data).
-_USER_AGENT = "cosmu-engine research contact.moncory@gmail.com"
+_USER_AGENT = "cosmu-engine research github.com/monounsaturated/cosmu"
 
 # Curated EXTENSIBLE seed: liquid US large-caps → their REAL zero-padded 10-digit SEC CIK. A ticker NOT in
 # this map yields value=None (a gap, never a fabricated 0). Add tickers here to widen coverage.

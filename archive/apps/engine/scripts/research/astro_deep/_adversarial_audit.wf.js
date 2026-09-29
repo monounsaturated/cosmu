@@ -21,11 +21,11 @@ of real signals, after costs + multiple-testing." Your job is to TRY TO BREAK th
 would either (a) hide a real edge that exists, or (b) be manufacturing/own-goal a false negative or false positive.
 Read the ACTUAL files; quote line numbers as evidence. Be specific and skeptical; vague doubts are useless.
 
-Files (cwd = repo root /Users/device/cosmu/.claude/worktrees/tender-turing-19c2dd):
+Files (cwd = repo root <repo>/.claude/worktrees/tender-turing-19c2dd):
 - Report (round 2): ${REPORT}
 - Round-1 report: ${R1}
 - Modules: ${DEEP}/astro_features_deep.py, real_panel.py, ml_harness.py, astro_deep_study.py, extra_signals.py, modal_sweep.py
-To run code, cd apps/engine and (if DB/Modal needed) set -a; . /Users/device/cosmu/.env.local; set +a.
+To run code, cd apps/engine and (if DB/Modal needed) set -a; . <repo>/.env.local; set +a.
 `;
 
 const VERDICT = {

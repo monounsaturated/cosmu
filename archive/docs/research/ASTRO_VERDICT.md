@@ -75,10 +75,10 @@ The one residual channel (astrology-as-belief/attention) was tested end-to-end (
 ## 9. How to RESUME / review later (the exact recipe — verified)
 A future session (even in a fresh worktree) picks up the entire astro effort:
 1. **READ** this file + `docs/research/RESEARCH_PREVIEW.md` (auto-scoreboard of all 19 experiments) + `docs/research/RESEARCH_LESSONS.md`.
-2. **THE INDEX:** `cd apps/engine; set -a; . /Users/device/cosmu/.env.local; set +a; python3 scripts/research/research_registry.py list` → every experiment + verdict + artifacts. `python3 scripts/research/research_registry.py` rebuilds the preview.
+2. **THE INDEX:** `cd apps/engine; set -a; . <repo>/.env.local; set +a; python3 scripts/research/research_registry.py list` → every experiment + verdict + artifacts. `python3 scripts/research/research_registry.py` rebuilds the preview.
 3. **THE RAW DATA (two durable homes):**
    - **R2** (big data): DuckDB → `SELECT * FROM read_parquet('r2://cosmu-lake/astro_lab/run_*/*.parquet')` (152,166 trials), + `composite|event_study|lunar_vol|belief/`, + `research_registry/exp/`. Creds: the DuckDB-native R2 secret in `scripts/research/astro_strategy_lab/lab_store.py` (reads R2_* from .env.local).
    - **GIT/main** (versioned): the edge-hunt result CSVs (`apps/engine/scripts/research/astro_deep/*.csv`), all reports (`docs/research/*.md`), all scripts.
 4. **RE-RUN any experiment** — the scripts are self-contained: `python3 scripts/research/astro_strategy_lab/run_lab.py` (152k sweep), `.../lunar_vol.py`, `.../astro_belief/belief_study.py`, `scripts/research/astro_deep/*_study.py`. Heavy sweeps → Modal via `scripts/research/astro_deepdive_modal.py` (harness fixed).
 5. **KEEP GOING** — add a new `ResearchExperiment` record (§6); the format is locked. The PREPARED next dive is `docs/research/astro_ULTIMATE_dive_PLAN.md` (run on approval).
-**Durability rule:** R2 `cosmu-lake` = durable big data; git/main = durable code + reports + CSVs + index code. The local `.cosmu/` mirror is convenience-only (gitignored, temp-worktree) — never rely on it. Note: `.env.local` lives at `/Users/device/cosmu/.env.local` (repo root, persists across worktrees), NOT inside the worktree.
+**Durability rule:** R2 `cosmu-lake` = durable big data; git/main = durable code + reports + CSVs + index code. The local `.cosmu/` mirror is convenience-only (gitignored, temp-worktree) — never rely on it. Note: `.env.local` lives at `<repo>/.env.local` (repo root, persists across worktrees), NOT inside the worktree.
