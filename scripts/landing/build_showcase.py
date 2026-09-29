@@ -8,6 +8,7 @@
 #   "promising" = at least 10 triggers and 80–95%.
 #   Platform costs are applied in the browser so the visitor can switch broker. Real closes only.
 import json
+import re
 from pathlib import Path
 
 import hypotheses as hx
@@ -29,7 +30,18 @@ SHOW = [
 ]
 
 TOPIC_WORD = {"layoffs": "Layoff", "hurricane": "Hurricane", "musk": "Elon Musk"}
-HEADLINES = ns.G / "headlines.json"
+HEADLINES = ns.G / "headlines.json"  # real, same-day headlines (fetch_headlines.py)
+
+
+def clean(title):
+    """Drop outlet furniture: 'Exclusive | …', '… | CNN Business'."""
+    t = re.sub(r"^(exclusive|breaking|update[d]?)\s*[|:]\s*", "", title, flags=re.I)
+    return re.sub(r"\s+\|\s+[^|]+$", "", t).strip()
+
+
+def headline(heads, cache_key):
+    h = heads.get(cache_key) or {}
+    return (clean(h["title"]), h.get("source")) if h.get("title") else (None, None)
 
 
 def register_spikes(heads, notes):
@@ -42,11 +54,10 @@ def register_spikes(heads, notes):
         key = f"spike_{slug}_{asset}"
         events = []
         for d, m, _ in ev:
-            head = (heads.get(f"{slug}|{d}") or {}).get("title")
+            head, source = headline(heads, f"{slug}|{d}")
             word = TOPIC_WORD.get(slug, slug.capitalize())
             events.append((d, asset, head or f"{word} news at {m}× normal"))
-            if head:
-                notes[f"{key}|{d}"] = f"{m}× normal coverage"
+            notes[f"{key}|{d}"] = f"{source} · {m}× normal coverage" if head else f"{m}× normal coverage"
         hx.HYP[key] = {"q": q, "events": events}
         keys.append(key)
     return keys
@@ -61,7 +72,16 @@ def main():
     hx.HYP["fear_btc"] = {"q": "Buy Bitcoin when crypto sentiment hits Extreme Fear",
                           "events": [(d, "BTC-USD", f"Fear & Greed {v}") for d, v, _ in ns.fear_events()]}
     spike_keys.add("fear_btc")
-    spike_keys |= set(ws.register())  # public-attention spikes (Wikipedia), same 2-week hold
+    for key in ws.register():  # public-attention spikes (Wikipedia), same 2-week hold
+        spike_keys.add(key)
+        art = key.split("_", 1)[1].rsplit("_", 1)[0]
+        mult = {d: m for d, m, _ in ws.spikes(art)}
+        events = []
+        for d, asset, name in hx.HYP[key]["events"]:
+            head, source = headline(heads, f"wiki:{art}|{d}")
+            events.append((d, asset, head or name))
+            notes[f"{key}|{d}"] = f"{source} · {mult[d]}× normal attention" if head else f"{mult[d]}× normal attention"
+        hx.HYP[key]["events"] = events
 
     # Every idea, one fixed setting per kind.
     tested = []

@@ -31,6 +31,7 @@ export const RULE = DATA.rule;
 
 // One verdict rule for the whole page (same thresholds as scripts/landing/build_showcase.py).
 export type Verdict = { cls: "strong" | "edge" | "rare" | "luck"; text: string };
+export const VERDICT_ICON: Record<Verdict["cls"], string> = { strong: "check", edge: "trend", rare: "gem", luck: "alert" };
 export function verdict(idea: Idea): Verdict {
   const n = idea.trades.length;
   const b = idea.beats_random;
@@ -68,7 +69,8 @@ export function results(idea: Idea, p: Platform) {
 
 // Trading sessions → plain words.
 export const holdWords = (h: number) => (h <= 5 ? "1 week" : h <= 10 ? "2 weeks" : "1 month");
-export const randomWords = (h: number) => (h <= 5 ? "Any random week" : h <= 10 ? "Any random 2 weeks" : "Any random month");
+export const holdAdj = (h: number) => (h <= 5 ? "1-week" : h <= 10 ? "2-week" : "1-month");
+export const randomWords = (h: number) => (h <= 5 ? "Random week" : h <= 10 ? "Random 2 weeks" : "Random month");
 export const triggerWord = (idea: Idea, n = 2) => (idea.spike ? (n === 1 ? "news spike" : "news spikes") : n === 1 ? "headline" : "headlines");
 
 export const pct = (x: number, digits = 1) => `${x >= 0 ? "+" : "−"}${Math.abs(x * 100).toFixed(digits)}%`;

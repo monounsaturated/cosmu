@@ -1,60 +1,74 @@
-# intent: one real, representative English headline for each news-spike day (GDELT DOC API, artlist mode),
-#   so the landing page's news scan shows what people actually read that day. Cached per (topic, day);
-#   GDELT allows ~1 request / 5 s, so this runs slowly and can be re-run to fill gaps.
+# intent: one real, dated headline for each news-spike day shown on the landing page, so the news scan
+#   shows what people actually read that day. Source: Google News RSS search (keyless) restricted to the
+#   spike day itself — never a later article (no look-ahead). Prefers major outlets. Cached per
+#   (topic, day) in cache/gdelt/headlines.json; re-runnable, polite (1.5 s between requests).
 import json
+import re
 import subprocess
 import sys
 import time
 import urllib.parse
 from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 import news_spikes as ns
+import wiki_spikes as ws
 
 OUT = ns.G / "headlines.json"
-QUERY = {"layoffs": "layoffs", "hurricane": "hurricane"}
+MAJOR = ["Reuters", "Associated Press", "AP News", "Bloomberg", "CNBC", "The Wall Street Journal", "WSJ",
+         "The New York Times", "Financial Times", "BBC", "CNN", "The Guardian", "Axios", "Forbes",
+         "Business Insider", "The Washington Post", "Fortune", "Al Jazeera", "NPR", "CBS News", "ABC News",
+         "NBC News", "Yahoo Finance", "MarketWatch", "The Verge", "TechCrunch", "Politico", "Time"]
+
+# The headline must be about the topic, not a sports "layoff" or a band's comeback.
+MUST = {"layoffs": ("layoffs", "job cuts", "cut jobs", "cuts jobs", "jobs cut", "to cut", "laid off", "lay off"),
+        "wiki:Ballistic_missile": ("missile",)}
 
 
-def fetch(query, day):
+# cache key prefix, search words, list of spike days
+def jobs():
+    out = [("layoffs", "layoffs OR \"job cuts\"", [d for d, _, _ in ns.spikes("layoffs", 2.0)])]
+    out.append(("wiki:Ballistic_missile", "missile strike", [d for d, _, _ in ws.spikes("Ballistic_missile")]))
+    return out
+
+
+def fetch(prefix, words, day):
     d0 = datetime.strptime(day, "%Y-%m-%d")
-    params = {
-        "query": f"{query} sourcelang:english",
-        "mode": "artlist",
-        "maxrecords": "10",
-        "sort": "hybridrel",
-        "format": "json",
-        "startdatetime": d0.strftime("%Y%m%d000000"),
-        "enddatetime": (d0 + timedelta(days=1)).strftime("%Y%m%d000000"),
-    }
-    url = "https://api.gdeltproject.org/api/v2/doc/doc?" + urllib.parse.urlencode(params)
-    raw = subprocess.run(["curl", "-s", "-m", "60", url], capture_output=True, text=True).stdout
-    if not raw.lstrip().startswith("{"):
-        raise RuntimeError(raw[:60])
-    arts = json.loads(raw).get("articles", [])
-    for a in arts:  # prefer a clean, readable title
-        t = " ".join(a.get("title", "").split())
-        if 25 <= len(t) <= 110 and query.split()[0].lower()[:6] in t.lower():
-            return {"title": t, "domain": a.get("domain", "")}
-    return {"title": None, "domain": None}
-
-
-def main(pause=30):
-    cache = json.loads(OUT.read_text()) if OUT.exists() else {}
-    jobs = [(slug, d) for slug, k in (("layoffs", 2.0), ("hurricane", 3.0)) for d, _, _ in ns.spikes(slug, k)]
-    for slug, day in jobs:
-        key = f"{slug}|{day}"
-        if key in cache:
+    q = f"{words} after:{(d0 - timedelta(days=1)):%Y-%m-%d} before:{(d0 + timedelta(days=1)):%Y-%m-%d}"
+    url = "https://news.google.com/rss/search?" + urllib.parse.urlencode({"q": q, "hl": "en-US", "gl": "US", "ceid": "US:en"})
+    xml = subprocess.run(["curl", "-s", "-m", "30", "-A", "Mozilla/5.0", url], capture_output=True, text=True).stdout
+    best = None
+    for it in re.findall(r"<item>(.*?)</item>", xml, re.S):
+        title = " ".join(re.search(r"<title>(.*?)</title>", it, re.S).group(1).split())
+        pub = parsedate_to_datetime(re.search(r"<pubDate>(.*?)</pubDate>", it).group(1)).strftime("%Y-%m-%d")
+        if pub != day:  # the spike day only — nothing published later
             continue
-        for attempt in range(4):
-            try:
-                cache[key] = fetch(QUERY[slug], day)
-                OUT.write_text(json.dumps(cache, indent=1))
-                print("ok", key, cache[key]["title"], flush=True)
+        title = (title.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
+                 .replace("&lt;", "<").replace("&gt;", ">"))
+        head, _, source = title.rpartition(" - ")
+        head = head or title
+        if not (25 <= len(head) <= 100) or not any(m in head.lower() for m in MUST[prefix]):
+            continue
+        score = 2 if any(m.lower() in source.lower() for m in MAJOR) else 1
+        if not best or score > best[0]:
+            best = (score, {"title": head.strip(), "source": source.strip()})
+            if score == 2:
                 break
-            except Exception as e:  # rate limited or network — back off and retry
-                print("retry", key, str(e)[:50], flush=True)
-                time.sleep(pause * (attempt + 2))
-        time.sleep(pause)
+    return best[1] if best else {"title": None, "source": None}
+
+
+def main(pause=1.5):  # add --refresh to re-fetch cached days
+    cache = json.loads(OUT.read_text()) if OUT.exists() else {}
+    for prefix, words, days in jobs():
+        for day in days:
+            key = f"{prefix}|{day}"
+            if cache.get(key, {}).get("title") and "--refresh" not in sys.argv:
+                continue
+            cache[key] = fetch(prefix, words, day)
+            OUT.write_text(json.dumps(cache, indent=1))
+            print(key, "→", cache[key]["title"], f"({cache[key]['source']})", flush=True)
+            time.sleep(pause)
 
 
 if __name__ == "__main__":
-    main(int(sys.argv[1]) if len(sys.argv) > 1 else 30)
+    main()

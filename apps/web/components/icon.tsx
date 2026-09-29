@@ -13,6 +13,10 @@ const PATHS: Record<string, string> = {
   fees: "M4 7h16M4 12h10M4 17h7",
   dice: "M4 4h16v16H4zM9 9h.01M15 15h.01M15 9h.01M9 15h.01",
   arrow: "M5 12h14M13 6l6 6-6 6",
+  check: "M5 12.5l4.5 4.5L19 7.5",
+  trend: "M3 17l6-6 4 4 8-8M15 7h6v6",
+  gem: "M6 4h12l3 5-9 11L3 9zM3 9h18M9 4l3 16M15 4l-3 16",
+  alert: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v5M12 16.5v.01",
   target: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5v1",
 };
 

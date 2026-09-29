@@ -29,7 +29,8 @@ Every idea runs the same way: buy at the close of the first trading day after th
 fixed period (events: 1 month; news and attention spikes: 2 weeks), subtract costs, then compare with the same asset
 bought on 10,000 random sets of dates drawn from the same years. An idea passes only with at least 10
 events and a result better than 95% of those random draws ("promising": 80–95%). Of 53 ideas tested,
-1 passed (layoff-news spikes → Nasdaq) and 2 are promising (wars and missile news → US defense stocks). Prices: Yahoo Finance daily closes (2020–2025, dividends included). News volume: GDELT. Public attention: Wikipedia pageviews.
+1 passed (layoff-news spikes → Nasdaq) and 2 are promising (wars and missile news → US defense stocks). Prices: Yahoo Finance daily closes (2020–2025, dividends included). News volume: GDELT. Public attention: Wikipedia pageviews. Headlines shown for
+news spikes: Google News RSS, restricted to the spike day (`scripts/landing/fetch_headlines.py`).
 Big-event dates are hand-curated from public reporting.
 
 Research tool, not investment advice.

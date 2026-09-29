@@ -6,8 +6,9 @@ import { CosmuMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Studio } from "@/components/studio";
 import { Icon } from "@/components/icon";
+import { VerdictBadge } from "@/components/verdict-badge";
 import { SITE } from "@/lib/site";
-import { CRYPTO_PLATFORMS, IDEAS, RULE, STOCK_PLATFORMS, TESTED, holdWords, pct, results } from "@/lib/showcase";
+import { CRYPTO_PLATFORMS, IDEAS, RULE, STOCK_PLATFORMS, TESTED, holdWords, pct, results, verdict } from "@/lib/showcase";
 
 const GH = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -68,7 +69,7 @@ const STORY = [
 const TRUST = [
   { i: "clock", t: "No hindsight", d: "Buys only after the news was public, at the next close." },
   { i: "fees", t: "Your real fees", d: "Every trade pays your broker's commission, currency fee and spread." },
-  { i: "dice", t: "Luck test", d: `10,000 random dates from the same years. Passing takes ${RULE.min_n}+ events and a ${Math.round(RULE.pass * 100)}% win.` },
+  { i: "dice", t: "Luck test", d: `Compared with 10,000 random dates from the same years. To pass: ${RULE.min_n}+ events, better than ${Math.round(RULE.pass * 100)}% of them.` },
   { i: "shield", t: "Math decides", d: "The verdict comes from statistics, never from an AI's opinion." },
   { i: "spark", t: "Plain words", d: "Ask like you'd text a friend. No spreadsheets, no code." },
   { i: "clip", t: "Failures included", d: "Every idea tested stays on the record, not just the winners." },
@@ -120,11 +121,11 @@ export default function Page() {
                   <Icon name="spark" size={14} /> Big AI model launched today. Buy Nvidia?
                 </div>
                 <div className="answer">
-                  <span className="a-l">After the last {NVDA.trades.length} launches, Nvidia over a month</span>
+                  <span className="a-l">Last {NVDA.trades.length} launches · Nvidia 1 month later</span>
                   <span className="a-v">
                     <b className="up">{pct(rN.avg)}</b> vs {pct(rN.randomMonth)} on a random month
                   </span>
-                  <span className="a-verdict">Mostly the market, not the news.</span>
+                  <VerdictBadge v={verdict(NVDA)} />
                 </div>
               </div>
               <h3>Check before you click buy</h3>
@@ -139,8 +140,9 @@ export default function Page() {
                     <div className="n-head"><b>Cosmu</b><span>now</span></div>
                     <div className="n-title">Layoff news is spiking</div>
                     <div className="n-body">
-                      After the last {LAYOFF.trades.length} spikes, the Nasdaq averaged {pct(rL.avg)} over {holdWords(LAYOFF.hold_days)}. {rL.wins} of {LAYOFF.trades.length} were up.
+                      Last {LAYOFF.trades.length} times, the Nasdaq averaged {pct(rL.avg)} over {holdWords(LAYOFF.hold_days)}.
                     </div>
+                    <VerdictBadge v={verdict(LAYOFF)} />
                   </div>
                 </div>
               </div>
@@ -179,8 +181,7 @@ export default function Page() {
           <div className="guards">
             {TRUST.map((g) => (
               <div key={g.t} className="guard">
-                <span className="g-icon2"><Icon name={g.i} size={18} /></span>
-                <h3>{g.t}</h3>
+                <h3><span className="g-icon"><Icon name={g.i} size={16} /></span>{g.t}</h3>
                 <p>{g.d}</p>
               </div>
             ))}
@@ -189,7 +190,10 @@ export default function Page() {
 
         <section className="wrap block">
           <div className="end">
-            <h2>Stop guessing. Test the headline.</h2>
+            <div>
+              <h2>Stop guessing. Test the headline.</h2>
+              <p className="end-sub">See exactly how every number on this page is made.</p>
+            </div>
             <a className="btn btn-primary" href={SITE.repo} target="_blank" rel="noreferrer">
               {GH} View on GitHub
             </a>
