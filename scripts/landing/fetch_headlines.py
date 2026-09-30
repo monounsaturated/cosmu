@@ -1,8 +1,9 @@
 # intent: one real, dated headline for each news-spike day shown on the landing page, so the news scan
 #   shows what people actually read that day. Source: Google News RSS search (keyless) restricted to the
 #   spike day itself — never a later article (no look-ahead). Prefers major outlets. Cached per
-#   (topic, day) in cache/gdelt/headlines.json; re-runnable, polite (1.5 s between requests).
+#   (topic, day) in scripts/landing/data/headlines.json (tracked); re-runnable, polite (1.5 s between requests).
 import json
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -14,7 +15,7 @@ from email.utils import parsedate_to_datetime
 import news_spikes as ns
 import wiki_spikes as ws
 
-OUT = ns.G / "headlines.json"
+OUT = Path(__file__).parent / "data" / "headlines.json"  # tracked: the page must be reproducible
 MAJOR = ["Reuters", "Associated Press", "AP News", "Bloomberg", "CNBC", "The Wall Street Journal", "WSJ",
          "The New York Times", "Financial Times", "BBC", "CNN", "The Guardian", "Axios", "Forbes",
          "Business Insider", "The Washington Post", "Fortune", "Al Jazeera", "NPR", "CBS News", "ABC News",

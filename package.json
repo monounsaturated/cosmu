@@ -10,10 +10,13 @@
     "build": "pnpm --filter @cosmu/web build",
     "start": "pnpm --filter @cosmu/web start",
     "typecheck": "pnpm --filter @cosmu/web typecheck",
-    "verify": "pnpm typecheck && pnpm build",
+    "verify": "pnpm typecheck && pnpm test:research && pnpm build",
+    "test:research": "cd scripts/landing && python3 -m unittest -q test_hypotheses",
+    "research:fetch": "cd scripts/landing && python3 fetch_data.py",
     "research": "cd scripts/landing && python3 hypotheses.py",
     "research:spikes": "cd scripts/landing && python3 news_spikes.py",
     "research:wiki": "cd scripts/landing && python3 wiki_spikes.py",
-    "demo:data": "cd scripts/landing && python3 build_showcase.py"
+    "demo:data": "cd scripts/landing && python3 build_showcase.py",
+    "engine:stats": "python3 scripts/landing/engine_stats.py"
   }
 }

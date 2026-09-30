@@ -16,6 +16,26 @@ K = float(os.environ.get("SPIKE_K", "3"))
 COOLDOWN = 10
 MIN_ARTICLES = 50
 
+# The GDELT search behind each topic slug (fetch_data.py downloads these).
+QUERIES = {
+    "cyber": "(cyberattack OR ransomware)",
+    "strike": '(airstrike OR "missile strike" OR "missile attack")',
+    "hurricane": "hurricane",
+    "tariff": "tariffs",
+    "birdflu": '"bird flu"',
+    "heatwave": "heatwave",
+    "drought": "drought",
+    "bankrun": '("bank run" OR "bank failure" OR "bank collapse")',
+    "recession": "recession",
+    "chipshort": '"chip shortage"',
+    "ai": '("artificial intelligence" OR ChatGPT)',
+    "oil": '(OPEC OR "oil prices")',
+    "musk": '"Elon Musk"',
+    "inflation": "inflation",
+    "cryptohack": '("crypto hack" OR "exchange hack" OR "crypto exchange hacked")',
+    "layoffs": "layoffs",
+}
+
 # Topics that only make sense in a season (Atlantic hurricane season: June–November).
 SEASON = {"hurricane": ("06-01", "11-30")}
 

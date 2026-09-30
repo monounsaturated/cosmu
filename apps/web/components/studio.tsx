@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   IDEAS,
+  RULE,
   fmtDate,
   holdAdj,
   holdWords,
@@ -147,6 +148,7 @@ export function Studio() {
           <span className="agent-done">
             <span className="tick">✓</span>
             {`Tested ${n} ${triggerWord(idea, n)} against real ${idea.label} prices, with your broker's fees`}
+            <span className="precomp"> · precomputed example</span>
           </span>
         ) : (
           STEPS.map((s, i) => (
@@ -269,7 +271,7 @@ export function Studio() {
             <div className="stat">
               <div className="stat-l">Beats random dates</div>
               <div className="stat-v">{Math.round(idea.beats_random * 100)}%</div>
-              <div className="meter" aria-hidden><i style={{ width: `${idea.beats_random * 100}%` }} /><span style={{ left: "95%" }} /></div>
+              <div className="meter" aria-hidden><i style={{ width: `${idea.beats_random * 100}%` }} /><span style={{ left: `${RULE.promising * 100}%` }} title="Beats random from here" /></div>
             </div>
             <div className="stat">
               <div className="stat-l">$1,000 each time</div>

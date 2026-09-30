@@ -8,7 +8,8 @@ import { Studio } from "@/components/studio";
 import { Icon } from "@/components/icon";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { SITE } from "@/lib/site";
-import { IDEAS, STOCK_PLATFORMS, TESTED, pct, results, verdict } from "@/lib/showcase";
+import { IDEAS, STOCK_PLATFORMS, pct, results, verdict } from "@/lib/showcase";
+import ENGINE from "@/lib/engine-stats.json";
 
 const GH = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -18,7 +19,16 @@ const GH = (
 
 const NVDA = IDEAS.find((i) => i.key === "ai_nvda") ?? IDEAS[0];
 const rN = results(NVDA, STOCK_PLATFORMS[0]);
-const PASSED = TESTED.filter((t) => t.pass).length;
+const fmt = (n: number) => n.toLocaleString("en-US");
+const COST = ENGINE.cost_example; // sourced: archive/docs/reports/edge-hunt-mktneutral-2026-06-25.md
+const pctInt = (x: number) => `${x >= 0 ? "+" : "−"}${Math.round(Math.abs(x) * 100)}%`;
+// The engine's real funnel (lib/engine-stats.json, snapshotted from its production DB by scripts/landing/engine_stats.py).
+const FUNNEL = [
+  { l: "Strategies tested", n: ENGINE.strategies_tested },
+  { l: "Survived the first screen", n: ENGINE.survived_first_screen },
+  { l: "Earned paper trading", n: ENGINE.paper_traded },
+];
+const window2 = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
 
 // Three reasons retail traders lose, each with Cosmu's fix and one visual proof.
 const PAINS = [
@@ -45,24 +55,27 @@ const PAINS = [
     fix: "Every result is net of your broker's real commission, currency fee and spread. Before you trade, not after.",
     art: (
       <div className="p-art p-bars">
-        <div><span>Before costs</span><i className="p-track"><i style={{ width: "89%" }} /></i><em className="up">+89%</em></div>
-        <div><span>After costs</span><i className="p-track" /><em className="dn">below 0</em></div>
-        <small>A real strategy family from our own research.</small>
+        <div><span>Before costs</span><i className="p-track"><i style={{ width: `${COST.gross * 100}%` }} /></i><em className="up">{pctInt(COST.gross)}</em></div>
+        <div><span>After costs</span><i className="p-track"><i className="neg" style={{ width: `${Math.abs(COST.net) * 100}%` }} /></i><em className="dn">{pctInt(COST.net)}</em></div>
+        <small>Our own crypto momentum research · {fmt(COST.trades)} trades · fees and slippage included</small>
       </div>
     ),
   },
   {
     pain: "Luck looks like skill.",
-    fix: "Every idea is checked against 10,000 random entry dates. Most fail. You only act on the few that don't.",
+    fix: "Every idea is checked against luck: random dates, overfitting tests, a period it never saw. Most fail. You only act on the few that don't.",
     art: (
-      <div className="p-art p-dots">
-        <div className="dotgrid" aria-hidden>
-          {TESTED.map((t) => (
-            <i key={t.key} className={t.pass ? "p" : t.promising ? "m" : ""} title={t.q} />
-          ))}
-        </div>
+      <div className="p-art p-funnel">
+        {FUNNEL.map((f) => (
+          <div key={f.l} className="fn-row">
+            <span>{f.l}</span>
+            <i className="p-track"><i style={{ width: `${Math.max(2.5, (f.n / FUNNEL[0].n) * 100)}%` }} /></i>
+            <b>{fmt(f.n)}</b>
+          </div>
+        ))}
         <small>
-          <b>{TESTED.length}</b> ideas tested · <b className="up">{PASSED}</b> passed
+          Our own engine, {window2(ENGINE.window[0])}–{window2(ENGINE.window[1])} 2026 · {fmt(ENGINE.backtests)} backtests ·{" "}
+          {(ENGINE.simulated_trades / 1e6).toFixed(1)}M simulated trades
         </small>
       </div>
     ),
@@ -130,6 +143,7 @@ export default function Page() {
 
         <section className="wrap block">
           <h2>From idea to trade, safely.</h2>
+          <p className="h2-sub">The pipeline our first engine ran, June to August 2026.</p>
           <ol className="steps">
             {STEPS.map((x, i) => (
               <li key={x.t} className="step">

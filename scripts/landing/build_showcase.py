@@ -9,6 +9,7 @@
 #   Platform costs are applied in the browser so the visitor can switch broker. Real closes only.
 import json
 import re
+import sys
 from pathlib import Path
 
 import hypotheses as hx
@@ -18,6 +19,8 @@ import wiki_spikes as ws
 OUT = Path(__file__).parents[2] / "apps/web/lib/showcase.json"
 EVENT_H, SPIKE_H, SPIKE_K = 20, 10, 2.0
 MIN_N, PASS, PROMISING = 10, 0.95, 0.80
+DRAWS = 10_000  # random-date draws per idea (the page says 10,000)
+FDR_Q = 0.10    # Benjamini-Hochberg false-discovery rate across every idea tested (as in archive .../master/fdr.py)
 
 # key, asset label, short title, icon, question typed into the prompt
 SHOW = [
@@ -30,7 +33,7 @@ SHOW = [
 ]
 
 TOPIC_WORD = {"layoffs": "Layoff", "hurricane": "Hurricane", "musk": "Elon Musk"}
-HEADLINES = ns.G / "headlines.json"  # real, same-day headlines (fetch_headlines.py)
+HEADLINES = Path(__file__).parent / "data" / "headlines.json"  # real, same-day headlines (fetch_headlines.py)
 
 
 def clean(title):
@@ -44,12 +47,16 @@ def headline(heads, cache_key):
     return (clean(h["title"]), h.get("source")) if h.get("title") else (None, None)
 
 
-def register_spikes(heads, notes):
-    """Every downloaded news topic, with the one standard threshold."""
+def register_spikes(heads, notes, not_tested):
+    """Every news topic, with the one standard threshold. Topics without data are recorded, never silently dropped."""
     keys = []
     for slug, asset, q in ns.TOPICS:
         ev = ns.spikes(slug, SPIKE_K)
+        if ev is None:
+            not_tested.append({"q": q, "reason": "news-volume data not downloaded (GDELT rate limit)"})
+            continue
         if not ev:
+            not_tested.append({"q": q, "reason": f"no news spike reached {SPIKE_K}× normal"})
             continue
         key = f"spike_{slug}_{asset}"
         events = []
@@ -68,11 +75,12 @@ def main():
     hx.variants()
     heads = json.loads(HEADLINES.read_text()) if HEADLINES.exists() else {}
     notes: dict[str, str] = {}
-    spike_keys = set(register_spikes(heads, notes))
+    not_tested: list[dict] = []
+    spike_keys = set(register_spikes(heads, notes, not_tested))
     hx.HYP["fear_btc"] = {"q": "Buy Bitcoin when crypto sentiment hits Extreme Fear",
                           "events": [(d, "BTC-USD", f"Fear & Greed {v}") for d, v, _ in ns.fear_events()]}
     spike_keys.add("fear_btc")
-    for key in ws.register():  # public-attention spikes (Wikipedia), same 2-week hold
+    for key in ws.register(not_tested):  # public-attention spikes (Wikipedia), same 2-week hold
         spike_keys.add(key)
         art = key.split("_", 1)[1].rsplit("_", 1)[0]
         mult = {d: m for d, m, _ in ws.spikes(art)}
@@ -87,13 +95,29 @@ def main():
     tested = []
     for key in hx.HYP:
         h = SPIKE_H if key in spike_keys else EVENT_H
-        r = hx.run(key, h=h, draws=4000)
+        r = hx.run(key, h=h, draws=DRAWS)
         tested.append({"key": key, "q": r["q"], "n": r["n"], "hold_days": h, "avg": round(r["mean"], 4),
                        "random": round(r["rand_mean"], 4), "beats": round(r["beaten"], 4),
                        "pass": r["n"] >= MIN_N and r["beaten"] >= PASS,
                        "promising": r["n"] >= MIN_N and PROMISING <= r["beaten"] < PASS})
     tested.sort(key=lambda x: -x["beats"])
+
+    # Multiple-testing correction: one-sided empirical p-value per idea, then Benjamini-Hochberg across all of them.
+    m = len(tested)
+    for t in tested:
+        t["p"] = round(max(1 - t["beats"], 1 / (DRAWS + 1)), 5)
+    ranked = sorted(tested, key=lambda t: t["p"])
+    k = max((i + 1 for i, t in enumerate(ranked) if t["p"] <= (i + 1) / m * FDR_Q), default=0)
+    survivors = {t["key"] for t in ranked[:k]}
+    for t in tested:
+        t["fdr_pass"] = t["key"] in survivors
+    print(f"Benjamini-Hochberg at q={FDR_Q} over {m} ideas: {k} survive; smallest p = {ranked[0]['p']} ({ranked[0]['key']})")
     print(f"tested {len(tested)} ideas, passed {sum(t['pass'] for t in tested)}, promising {sum(t['promising'] for t in tested)}")
+
+    missing = [key for key, *_ in SHOW if key not in hx.HYP]
+    if missing:
+        sys.exit(f"Missing inputs for {', '.join(missing)} (a source rate-limited the download). "
+                 "Re-run `pnpm research:fetch` later; apps/web/lib/showcase.json was left unchanged.")
 
     ideas = []
     for key, label, title, icon, ask in SHOW:
@@ -126,8 +150,10 @@ def main():
             "trades": trades, "series": series,
         })
         print(f"{key:<24} H={h:<3} {len(trades):>3} trades  avg {r['mean'] * 100:+.1f}%  rnd {r['rand_mean'] * 100:+.1f}%  beats {r['beaten'] * 100:.0f}%")
-    OUT.write_text(json.dumps({"window": ["2020-01-01", "2025-12-31"], "rule": {"min_n": MIN_N, "pass": PASS, "promising": PROMISING},
-                               "tested": tested, "ideas": ideas}, separators=(",", ":")))
+    OUT.write_text(json.dumps({"window": ["2020-01-01", "2025-12-31"], "draws": DRAWS,
+                               "rule": {"min_n": MIN_N, "pass": PASS, "promising": PROMISING},
+                               "fdr": {"q": FDR_Q, "ideas": m, "survivors": sorted(survivors)},
+                               "tested": tested, "not_tested": not_tested, "ideas": ideas}, separators=(",", ":")))
 
 
 if __name__ == "__main__":
