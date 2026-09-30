@@ -29,16 +29,19 @@ export const IDEAS = DATA.ideas;
 export const TESTED = DATA.tested;
 export const RULE = DATA.rule;
 
-// One verdict rule for the whole page (same thresholds as scripts/landing/build_showcase.py).
-export type Verdict = { cls: "strong" | "edge" | "rare" | "luck"; text: string };
-export const VERDICT_ICON: Record<Verdict["cls"], string> = { strong: "check", edge: "trend", rare: "gem", luck: "alert" };
+export type Verdict = { cls: "strong" | "edge" | "luck"; text: string };
+export const VERDICT_ICON: Record<Verdict["cls"], string> = { strong: "check", edge: "trend", luck: "minus" };
+
+// Three verdicts, one rule for the whole page (same thresholds as scripts/landing/build_showcase.py):
+//   Beats luck = 10+ events AND better than 95% of random-date draws;
+//   Promising  = better than 80% of random draws (not proven: too few events or below 95%);
+//   No edge    = everything else.
 export function verdict(idea: Idea): Verdict {
   const n = idea.trades.length;
   const b = idea.beats_random;
-  if (n >= RULE.min_n && b >= RULE.pass) return { cls: "strong", text: "Passes the luck test" };
-  if (n >= RULE.min_n && b >= RULE.promising) return { cls: "edge", text: "Promising edge" };
-  if (n < RULE.min_n && b >= 0.9) return { cls: "rare", text: "Big but rare" };
-  return { cls: "luck", text: "Fakeout · no edge" };
+  if (n >= RULE.min_n && b >= RULE.pass) return { cls: "strong", text: "Beats luck" };
+  if (b >= RULE.promising) return { cls: "edge", text: "Promising" };
+  return { cls: "luck", text: "No edge" };
 }
 
 // Round-trip cost of a $1,000 buy + sell, as a fraction. Published retail schedules (2025), rounded.
