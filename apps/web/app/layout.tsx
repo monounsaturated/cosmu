@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   description: DESC,
 };
 
-// Theme before paint: stored choice wins, else follow the OS. Dark is the default.
-const themeScript = `try{var t=localStorage.getItem('cosmu.theme');if(!t&&window.matchMedia)t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';if(t==='light')document.documentElement.classList.add('light')}catch(e){}`;
+// Theme before paint: light by default; a visitor's saved choice (the toggle) wins.
+const themeScript = `try{if(localStorage.getItem('cosmu.theme')!=='dark')document.documentElement.classList.add('light')}catch(e){document.documentElement.classList.add('light')}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

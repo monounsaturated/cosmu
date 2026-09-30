@@ -1,7 +1,8 @@
 /*
   Cosmu — Iris Bento, landing edition. One token set, one type scale, one radius scale.
   Palette carried over from the operator cockpit (archive/apps/web-cockpit): Obsidian Iris base,
-  bento surfaces with an inner top-light, up/down/gold semantics. Dark by default; `.light` on <html>.
+  bento surfaces with an inner top-light, up/down/gold semantics. Light by default (`.light` on <html>,
+  set pre-paint in layout.tsx); the toggle switches to the dark palette below.
 */
 
 :root {
@@ -162,10 +163,9 @@ h1 { font-size: clamp(42px, 7vw, 80px); line-height: 1; letter-spacing: -0.05em;
 /* the one verdict badge */
 .verdict { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 10px; border-radius: 999px; font-size: 13.5px; font-weight: 620; white-space: nowrap; border: 1px solid; flex-shrink: 0; transition: opacity 500ms; }
 .v-strong { color: var(--up); background: var(--up-dim); border-color: color-mix(in oklch, var(--up) 30%, transparent); }
-.v-edge { color: var(--iris-s); background: var(--iris-dim); border-color: var(--iris-mid); }
 .v-luck { color: var(--muted); background: var(--surf2); border-color: var(--border); }
 .chip-dot { width: 7px; height: 7px; border-radius: 50%; margin-left: 2px; }
-.d-strong { background: var(--up); } .d-edge { background: var(--iris-s); } .d-luck { background: var(--quiet); }
+.d-strong { background: var(--up); } .d-luck { background: var(--quiet); }
 
 .compare { display: grid; gap: 8px; transition: opacity 400ms; }
 .cmp-row { display: grid; grid-template-columns: 124px 1fr 60px; align-items: center; gap: 12px; font-size: 14px; }
