@@ -72,11 +72,17 @@ def label(article):
     return NICE.get(article, article.replace("_", " "))
 
 
-def register():
+def register(not_tested=None):
     keys = []
     for art, asset, q, _ in TOPICS:
+        if not (W / f"{art}.json").exists():
+            if not_tested is not None:
+                not_tested.append({"q": q, "reason": "Wikipedia pageviews not downloaded"})
+            continue
         ev = spikes(art)
         if not ev:
+            if not_tested is not None:
+                not_tested.append({"q": q, "reason": f"no attention spike reached {K}× normal"})
             continue
         key = f"wiki_{art}_{asset}"
         hx.HYP[key] = {"q": q, "events": [(d, asset, f"{label(art)} news at {m}× normal") for d, m, _ in ev]}

@@ -1,0 +1,37 @@
+{
+ "as_of": "2026-09-30",
+ "source": "archived engine production database (Supabase Postgres + DuckLake catalog for the R2 lake)",
+ "window": [
+  "2026-06-02",
+  "2026-08-13"
+ ],
+ "strategies_tested": 3661,
+ "survived_first_screen": 335,
+ "paper_traded": 11,
+ "killed": 3326,
+ "backtests": 146059,
+ "markets": 66,
+ "venues": 3,
+ "simulated_trades": 2300930,
+ "dead_ends_recorded": 3464,
+ "paper_fills": 43,
+ "data_points": 14813134,
+ "data_metrics": 72,
+ "data_providers": 23,
+ "lake_files": 252,
+ "strategies_by_signal_family": {
+  "math_price": 1733,
+  "onchain_flow": 887,
+  "macro_positioning": 752,
+  "social": 276,
+  "news_events": 13
+ },
+ "non_price_share": 0.527,
+ "cost_example": {
+  "label": "Crypto market-neutral momentum, rebalanced ~daily (4h bars)",
+  "gross": 0.892,
+  "net": -0.604,
+  "trades": 6036,
+  "source": "archive/docs/reports/edge-hunt-mktneutral-2026-06-25.md"
+ }
+}
