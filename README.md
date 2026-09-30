@@ -75,4 +75,4 @@ rate-limited, so `research:fetch` may need a second run). Public attention: Wiki
 shown for news spikes: Google News RSS, restricted to the spike day, saved in
 `scripts/landing/data/headlines.json`. Big-event dates are hand-picked from public reporting.
 
-Research tool, not investment advice.
+Research tool, not investment advice. MIT licensed (see `LICENSE`).

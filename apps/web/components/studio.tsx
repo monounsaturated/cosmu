@@ -145,11 +145,16 @@ export function Studio() {
 
       <div className="agent" aria-live="polite">
         {done ? (
-          <span className="agent-done">
-            <span className="tick">✓</span>
-            {`Tested ${n} ${triggerWord(idea, n)} against real ${idea.label} prices, with your broker's fees`}
-            <span className="precomp"> · precomputed example</span>
-          </span>
+          <div className="fees">
+            <span className="fees-label">Fees from</span>
+            <div className="seg" role="radiogroup" aria-label="Broker">
+              {plats.map((p) => (
+                <button key={p.id} role="radio" aria-checked={p.id === plat.id} title={p.why} onClick={() => setPlatId(p.id)} type="button">
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
           STEPS.map((s, i) => (
             <span key={s} className={`agent-step ${i < step ? "done" : i === step ? "now" : ""}`}>
@@ -280,16 +285,6 @@ export function Studio() {
             </div>
           </div>
 
-          <div className="fees" style={show}>
-            <span className="fees-label">Fees from</span>
-            <div className="seg" role="radiogroup" aria-label="Broker">
-              {plats.map((p) => (
-                <button key={p.id} role="radio" aria-checked={p.id === plat.id} title={p.why} onClick={() => setPlatId(p.id)} type="button">
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>

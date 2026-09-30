@@ -131,9 +131,6 @@ h1 { font-size: clamp(2.25rem, 1.35rem + 3.1vw, 4.125rem); line-height: 1; lette
 .agent-step { display: inline-flex; align-items: center; gap: 7px; transition: color var(--tr); }
 .agent-step.done { color: var(--up); }
 .agent-step.now { color: var(--fg); }
-.agent-done { color: var(--muted); }
-.precomp { color: var(--quiet); }
-.agent-done .tick { color: var(--up); font-weight: 700; margin-right: 4px; }
 .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--iris-mid); border-top-color: var(--iris); animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -215,7 +212,7 @@ h1 { font-size: clamp(2.25rem, 1.35rem + 3.1vw, 4.125rem); line-height: 1; lette
 .meter i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--iris), var(--up)); }
 .meter span { position: absolute; top: -4px; width: 2px; height: 14px; border-radius: 1px; background: var(--fg); opacity: 0.55; }
 
-.fees { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--hairline); transition: opacity 500ms; }
+.fees { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; animation: drop 420ms both; }
 .fees-label { font-size: 14px; color: var(--muted); }
 .seg { display: flex; gap: 4px; flex-wrap: wrap; background: var(--surf2); border: 1px solid var(--hairline); border-radius: 999px; padding: 3px; }
 .seg button { font-size: 13.5px; font-weight: 550; padding: 6px 12px; border-radius: 999px; color: var(--muted); transition: all var(--tr); }
