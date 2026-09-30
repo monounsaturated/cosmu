@@ -1,5 +1,5 @@
 // intent: the Cosmu landing page — lean and pain-first. Hero (pain + live demo) → why traders lose and how
-//   Cosmu fixes each cause → any idea, numbers or news → CTA. Market numbers come from lib/showcase.json;
+//   Cosmu fixes each cause → how it works (the engine's real pipeline) → any idea, numbers or news → CTA. Market numbers come from lib/showcase.json;
 //   the "+89% before costs" figure comes from the archived engine's reports (archive/docs/reports).
 
 import { CosmuMark } from "@/components/logo";
@@ -8,7 +8,7 @@ import { Studio } from "@/components/studio";
 import { Icon } from "@/components/icon";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { SITE } from "@/lib/site";
-import { CRYPTO_PLATFORMS, IDEAS, STOCK_PLATFORMS, TESTED, pct, results, verdict } from "@/lib/showcase";
+import { IDEAS, STOCK_PLATFORMS, TESTED, pct, results, verdict } from "@/lib/showcase";
 
 const GH = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -69,6 +69,15 @@ const PAINS = [
   },
 ];
 
+// The pipeline the engine actually ran (archive/apps/engine): spec → backtest → gate → paper → live.
+const STEPS = [
+  { t: "Describe it", d: "In plain words. AI turns it into precise rules, with no peeking at the future." },
+  { t: "Test it", d: "On years of real prices, news, sentiment and on-chain data, with your broker's fees." },
+  { t: "Judge it", d: "Against luck: random dates, overfitting checks, an untouched test period. Most ideas die here." },
+  { t: "Paper-trade it", d: "Survivors trade live prices with virtual money, each in its own account." },
+  { t: "Go live, if you choose", d: "Real money only when you say so, behind five safety locks." },
+];
+
 const QUANT = ["Buy Bitcoin after a 10% daily crash", "Buy the Nasdaq when the Fed cuts rates", "Sell when a stock runs 20% above its 200-day average"];
 const QUAL = ["Buy defense stocks when a war breaks out", "Buy the Nasdaq when layoff news spikes", "Buy Bitcoin when a bank collapses"];
 
@@ -91,7 +100,6 @@ export default function Page() {
 
       <main>
         <section className="hero wrap">
-          <span className="badge"><i /> Your AI trading analyst · early preview</span>
           <h1>
             Most trading ideas lose money.
             <br />
@@ -102,12 +110,6 @@ export default function Page() {
             and gives you a straight answer.
           </p>
           <Studio />
-          <div className="proof">
-            <span><b>{TESTED.length}</b> ideas tested</span>
-            <span><b>6 years</b> of real prices</span>
-            <span><b>10,000</b> luck checks per idea</span>
-            <span><b>{STOCK_PLATFORMS.length + CRYPTO_PLATFORMS.length}</b> brokers&apos; real fees</span>
-          </div>
         </section>
 
         <section className="wrap block">
@@ -124,6 +126,19 @@ export default function Page() {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="wrap block">
+          <h2>From idea to trade, safely.</h2>
+          <ol className="steps">
+            {STEPS.map((x, i) => (
+              <li key={x.t} className="step">
+                <span className="step-n">{i + 1}</span>
+                <h3>{x.t}</h3>
+                <p>{x.d}</p>
+              </li>
+            ))}
+          </ol>
         </section>
 
         <section className="wrap block">

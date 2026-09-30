@@ -253,6 +253,16 @@ h1 { font-size: clamp(42px, 7vw, 80px); line-height: 1; letter-spacing: -0.05em;
 .p-dots small { font-size: 14px; color: var(--muted); }
 .p-dots small b { color: var(--fg); }
 
+/* how it works: the pipeline, one open row */
+.steps { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); gap: 24px; margin-top: 44px; position: relative; }
+.steps::before { content: ""; position: absolute; top: 17px; left: 18px; right: 18px; height: 1px; background: linear-gradient(90deg, var(--iris-mid), var(--border)); }
+.step { position: relative; }
+.step-n { width: 36px; height: 36px; border-radius: 50%; background: var(--bg); border: 1px solid var(--iris-mid); color: var(--iris-s); font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; position: relative; margin-bottom: 16px; }
+.step:last-child .step-n { background: var(--iris); border-color: var(--iris); color: #fff; }
+.step h3 { font-size: 17px; }
+.step p { color: var(--muted); font-size: 14.5px; margin-top: 6px; line-height: 1.45; }
+@media (max-width: 900px) { .steps { grid-template-columns: 1fr; gap: 20px; } .steps::before { top: 18px; bottom: 18px; left: 17px; right: auto; width: 1px; height: auto; background: linear-gradient(180deg, var(--iris-mid), var(--border)); } .step { padding-left: 52px; } .step-n { position: absolute; left: 0; top: -6px; margin: 0; } }
+
 /* quantitative + qualitative */
 .kinds { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 36px; }
 @media (max-width: 700px) { .kinds { grid-template-columns: 1fr; } }
