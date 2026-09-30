@@ -161,11 +161,11 @@ h1 { font-size: clamp(42px, 7vw, 80px); line-height: 1; letter-spacing: -0.05em;
 
 /* the one verdict badge */
 .verdict { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px 0 10px; border-radius: 999px; font-size: 13.5px; font-weight: 620; white-space: nowrap; border: 1px solid; flex-shrink: 0; transition: opacity 500ms; }
-.v-strong, .v-edge { color: var(--up); background: var(--up-dim); border-color: color-mix(in oklch, var(--up) 30%, transparent); }
-.v-rare { color: var(--iris-s); background: var(--iris-dim); border-color: var(--iris-mid); }
-.v-luck { color: var(--gold); background: var(--gold-dim); border-color: color-mix(in oklch, var(--gold) 30%, transparent); }
+.v-strong { color: var(--up); background: var(--up-dim); border-color: color-mix(in oklch, var(--up) 30%, transparent); }
+.v-edge { color: var(--iris-s); background: var(--iris-dim); border-color: var(--iris-mid); }
+.v-luck { color: var(--muted); background: var(--surf2); border-color: var(--border); }
 .chip-dot { width: 7px; height: 7px; border-radius: 50%; margin-left: 2px; }
-.d-strong, .d-edge { background: var(--up); } .d-rare { background: var(--iris-s); } .d-luck { background: var(--gold); }
+.d-strong { background: var(--up); } .d-edge { background: var(--iris-s); } .d-luck { background: var(--quiet); }
 
 .compare { display: grid; gap: 8px; transition: opacity 400ms; }
 .cmp-row { display: grid; grid-template-columns: 124px 1fr 60px; align-items: center; gap: 12px; font-size: 14px; }
@@ -277,7 +277,6 @@ h3 { font-size: 18px; font-weight: 640; letter-spacing: -0.02em; }
 
 .end { text-align: center; padding: 72px 24px; border-radius: 28px; background: radial-gradient(500px 220px at 50% 0%, var(--iris-dim), transparent 75%), var(--surf); border: 1px solid var(--border); box-shadow: var(--shadow); display: flex; flex-direction: column; align-items: center; gap: 28px; }
 
-.end-sub { color: var(--muted); font-size: 17px; margin-top: 12px; }
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 40px; padding-bottom: 48px; font-size: 14px; color: var(--quiet); }
 .brand-sm { display: flex; align-items: center; gap: 8px; font-weight: 620; color: var(--muted); }
 

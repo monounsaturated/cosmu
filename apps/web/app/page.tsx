@@ -157,10 +157,7 @@ export default function Page() {
 
         <section className="wrap block">
           <div className="end">
-            <div>
-              <h2>Stop guessing. Test it first.</h2>
-              <p className="end-sub">Built from 400+ strategies tested the hard way. Most failed. That&apos;s why Cosmu exists.</p>
-            </div>
+            <h2>Stop guessing. Test it first.</h2>
             <a className="btn btn-primary" href={SITE.repo} target="_blank" rel="noreferrer">
               {GH} View on GitHub
             </a>
