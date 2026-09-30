@@ -28,6 +28,15 @@ def curl(url: str, dest: Path, ua: str = "Mozilla/5.0") -> bool:
     return ok
 
 
+def fetch_with_retry(url: str, dest: Path, ua: str, tries: int = 3, backoff: float = 20) -> bool:
+    """Public APIs rate-limit bursts (Wikimedia, GDELT): retry with a growing pause instead of giving up."""
+    for attempt in range(tries):
+        if curl(url, dest, ua):
+            return True
+        time.sleep(backoff * (attempt + 1))
+    return False
+
+
 def tickers() -> set[str]:
     # every asset any idea trades (data-derived triggers use SPY/QQQ/BTC-USD, the AI variant uses SMH)
     out = {"SPY", "QQQ", "BTC-USD", "SMH"}
@@ -59,9 +68,11 @@ def main():
             continue
         url = ("https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/"
                f"{urllib.parse.quote(art)}/daily/20191101/20251231")
-        ok = curl(url, f, UA)
-        print("wikipedia", art, "ok" if ok else "FAILED", flush=True)
-        time.sleep(1.5)
+        ok = fetch_with_retry(url, f, UA, tries=3, backoff=10)
+        print("wikipedia", art, "ok" if ok else "FAILED (rate-limited, re-run later)", flush=True)
+        if not ok:
+            missing.append(f"wikipedia:{art}")
+        time.sleep(4)
     # 4) GDELT news volume (one request per ~10 s; GDELT blocks faster callers)
     for slug, query in ns.QUERIES.items():
         f = ns.G / f"{slug}.json"
@@ -69,13 +80,15 @@ def main():
             continue
         params = {"query": query, "mode": "timelinevolraw", "startdatetime": "20200101000000",
                   "enddatetime": "20251231000000", "format": "json"}
-        ok = curl("https://api.gdeltproject.org/api/v2/doc/doc?" + urllib.parse.urlencode(params), f, UA)
+        ok = fetch_with_retry("https://api.gdeltproject.org/api/v2/doc/doc?" + urllib.parse.urlencode(params), f, UA,
+                              tries=2, backoff=30)
         print("gdelt", slug, "ok" if ok else "rate-limited, re-run later", flush=True)
         if not ok:
-            missing.append(slug)
+            missing.append(f"gdelt:{slug}")
         time.sleep(10)
     if missing:
-        print(f"\n{len(missing)} GDELT topics still missing ({', '.join(missing)}). Re-run later; the build lists them as not tested.")
+        print(f"\n{len(missing)} inputs still missing ({', '.join(missing)}): the sources rate-limit bursts. "
+              "Re-run later; the build lists anything still missing as not tested.")
     else:
         print("\nall inputs present")
     return 0
