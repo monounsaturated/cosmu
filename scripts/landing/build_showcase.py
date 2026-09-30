@@ -9,6 +9,7 @@
 #   Platform costs are applied in the browser so the visitor can switch broker. Real closes only.
 import json
 import re
+import sys
 from pathlib import Path
 
 import hypotheses as hx
@@ -112,6 +113,11 @@ def main():
         t["fdr_pass"] = t["key"] in survivors
     print(f"Benjamini-Hochberg at q={FDR_Q} over {m} ideas: {k} survive; smallest p = {ranked[0]['p']} ({ranked[0]['key']})")
     print(f"tested {len(tested)} ideas, passed {sum(t['pass'] for t in tested)}, promising {sum(t['promising'] for t in tested)}")
+
+    missing = [key for key, *_ in SHOW if key not in hx.HYP]
+    if missing:
+        sys.exit(f"Missing inputs for {', '.join(missing)} (a source rate-limited the download). "
+                 "Re-run `pnpm research:fetch` later; apps/web/lib/showcase.json was left unchanged.")
 
     ideas = []
     for key, label, title, icon, ask in SHOW:
